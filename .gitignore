@@ -1,0 +1,8 @@
+node_modules/
+server/_build/
+server/deps/
+server/*.beam
+server/erl_crash.dump
+tui/src/generated/musubi.d.ts
+tui/dist/
+.DS_Store

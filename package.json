@@ -1,0 +1,9 @@
+{
+  "name": "redbug-cli",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "tui",
+    "server/deps/musubi/packages/*"
+  ]
+}
