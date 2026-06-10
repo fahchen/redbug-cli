@@ -3,6 +3,9 @@ defmodule ServerWeb.UserSocket do
 
   use Musubi.Socket,
     roots: [
-      Server.Stores.TraceStore
+      Server.Stores.NodesRoot,
+      Server.Stores.PresetsRoot,
+      Server.Stores.SettingsRoot,
+      Server.Stores.SessionRoot
     ]
 end

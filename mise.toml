@@ -2,3 +2,16 @@
 erlang = "28.3"
 elixir = "1.19.5-otp-28"
 bun = "1.3"
+
+[tasks.dev]
+description = "Start server (4010) then TUI; cookie via RB_COOKIE (default rbtest)"
+dir = "server"
+run = """
+set -e
+cookie="${RB_COOKIE:-rbtest}"
+elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server &
+server_pid=$!
+trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
+until nc -z 127.0.0.1 4010 2>/dev/null; do sleep 0.3; done
+cd ../tui && bun run dev
+"""

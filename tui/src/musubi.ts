@@ -7,15 +7,30 @@ export const SOCKET_URL = "ws://127.0.0.1:4010/socket"
 // global WebSocket, so pass it explicitly rather than relying on `window`.
 export const socket = new Socket(SOCKET_URL, { transport: WebSocket })
 
-export const TRACE_ROOT = {
-  module: "Server.Stores.TraceStore",
-  id: "trace",
-  params: {
-    target: process.env.REDBUG_TARGET ?? "target@127.0.0.2",
-    cookie: process.env.REDBUG_COOKIE ?? "poc",
-    pattern: process.env.REDBUG_PATTERN ?? "lists:seq -> return"
-  }
+export const NODES_ROOT = {
+  module: "Server.Stores.NodesRoot",
+  id: "nodes",
+  params: {}
 } as const
+
+export const PRESETS_ROOT = {
+  module: "Server.Stores.PresetsRoot",
+  id: "presets",
+  params: {}
+} as const
+
+export const SETTINGS_ROOT = {
+  module: "Server.Stores.SettingsRoot",
+  id: "settings",
+  params: {}
+} as const
+
+export const sessionRoot = (nodeId: string, sessionId: string) =>
+  ({
+    module: "Server.Stores.SessionRoot",
+    id: `session:${sessionId}`,
+    params: { node_id: nodeId, session_id: sessionId }
+  }) as const
 
 export const {
   connect,

@@ -1,7 +1,7 @@
-defmodule Server.TraceEvent do
+defmodule Server.Schema.TraceEvent do
   @moduledoc """
-  One redbug trace event row: kind (call/retn/send/recv), originating pid,
-  registered name, the MFA, a kind-specific info blob, and a timestamp.
+  One cooked redbug trace row sent to the TUI. `kind` is call/retn/send/recv,
+  or the synthetic `restart` used as a "── restarted HH:MM:SS ──" separator.
   """
 
   use Musubi.State

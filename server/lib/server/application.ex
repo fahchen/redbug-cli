@@ -9,6 +9,9 @@ defmodule Server.Application do
 
     children = [
       {Phoenix.PubSub, name: Server.PubSub},
+      Server.Config,
+      {Registry, keys: :unique, name: Server.Trace.Registry},
+      {DynamicSupervisor, strategy: :one_for_one, name: Server.Trace.Supervisor},
       ServerWeb.Endpoint
     ]
 
