@@ -65,14 +65,17 @@ Then in the TUI:
 
 ### Running the pieces separately
 
+Pin the port with `REDBUG_PORT` so both sides agree on it (otherwise the server picks a
+random free port and prints `redbug ws port: <n>`).
+
 ```sh
 # server (controller must be a distributed longname node)
 cd server
-elixir --name redbug_controller@127.0.0.1 --cookie rbtest -S mix phx.server
+REDBUG_PORT=4010 elixir --name redbug_controller@127.0.0.1 --cookie rbtest -S mix phx.server
 
 # TUI (point it at the server)
 cd tui
-REDBUG_HOST=127.0.0.1 REDBUG_PORT=<port> bun run dev
+REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 bun run dev
 ```
 
 ### Tests
@@ -148,10 +151,10 @@ no exposed distribution ports), and only one WebSocket port is exposed to your l
 
 ### Build the image
 
-Build context is the repo root:
+Build context is the repo root (swap in your own registry/app values):
 
 ```sh
-docker build -t <registry>/redbug-server:latest .
+docker build -t ghcr.io/fahchen/redbug-server:latest .
 ```
 
 Multi-stage: an `hexpm/elixir` build stage produces the release, copied onto a slim
@@ -163,23 +166,27 @@ Debian runtime with bundled ERTS. The image binds the WS endpoint to `0.0.0.0:40
 
 ```sh
 docker run -d --name redbug \
-  --network <app docker network> \
+  --network my_app \
   -e RELEASE_DISTRIBUTION=name \
-  -e RELEASE_NODE=redbug_sidecar@<addr-resolvable-in-network> \
-  -e RELEASE_COOKIE=<app cookie> \
+  -e RELEASE_NODE=redbug_sidecar@redbug \
+  -e RELEASE_COOKIE=my_app_cookie \
   -p 127.0.0.1:4010:4010 \
-  <registry>/redbug-server:latest
+  ghcr.io/fahchen/redbug-server:latest
 ```
+
+`--network my_app` joins the app's Docker network; `RELEASE_NODE`'s host part
+(`redbug` — the container name) must be resolvable there; `RELEASE_COOKIE` must match the
+app's cookie.
 
 Then from your laptop:
 
 ```sh
-ssh -N -L 4010:127.0.0.1:4010 user@host          # tunnel only the WS port
+ssh -N -L 4010:127.0.0.1:4010 deploy@example.com   # tunnel only the WS port
 REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 ./dist/redbug-tui   # or: bun run dev
 ```
 
-In the TUI, add the app node by its in-network name (e.g. `app@...`) and cookie, then
-connect.
+In the TUI, add the app node by its in-network name (e.g. `my_app@my_app`) and cookie,
+then connect.
 
 ## kamal accessory
 
@@ -188,25 +195,25 @@ Add to your app's `deploy.yml`:
 ```yaml
 accessories:
   redbug:
-    image: <registry>/redbug-server:latest
+    image: ghcr.io/fahchen/redbug-server:latest
     roles:
       - web                       # same host(s) as the app
     env:
       clear:
         RELEASE_DISTRIBUTION: name
-        RELEASE_NODE: redbug_sidecar@<addr-resolvable-in-network>
+        RELEASE_NODE: redbug_sidecar@redbug
         REDBUG_IP: 0.0.0.0
         REDBUG_PORT: 4010
       secret:
         - RELEASE_COOKIE          # same cookie as the app
     port: "127.0.0.1:4010:4010"   # publish only to host localhost
     options:
-      network: <app docker network>  # required for distribution to the app node
+      network: my_app             # required for distribution to the app node
 ```
 
 ```sh
 kamal accessory boot redbug
-ssh -N -L 4010:127.0.0.1:4010 user@host
+ssh -N -L 4010:127.0.0.1:4010 deploy@example.com
 REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 ./dist/redbug-tui
 ```
 
