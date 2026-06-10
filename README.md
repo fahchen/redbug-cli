@@ -120,20 +120,18 @@ Produces a self-contained `dist/`:
 
 ```
 dist/
-  redbug       launcher (run this)
+  server/      Elixir release with bundled ERTS — no system Erlang needed
   redbug-tui   compiled TUI binary (bun --compile)
-  server/      Elixir release with bundled ERTS — no system Erlang/Bun needed
 ```
 
-Run it:
+> Single-file packaging is being reworked: a bun `--compile` binary that embeds the
+> `server` release tarball, extracts it to a cache dir at first run, spawns the
+> controller, then renders the TUI. Until that lands, `mise run package` emits the two
+> pieces above.
 
-```sh
-./dist/redbug
-```
-
-The launcher picks a free port, starts the release as a daemon, waits for it, runs the
-TUI, and stops the server on exit. Override the cookie with `RB_COOKIE`, the controller
-node name with `REDBUG_NODE`.
+The `server` release boots as the controller node (`redbug_controller@127.0.0.1`,
+override with `CONTROLLER_NODE`); each target node's cookie is entered in the TUI when you
+add it.
 
 ## Sidecar deployment
 
@@ -239,8 +237,8 @@ REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 ./dist/redbug-tui
 | `REDBUG_PORT` | TUI / server | `4010`* | WS port (server pins it when set, else picks a free one) |
 | `REDBUG_IP` | server | `127.0.0.1` | WS bind address (`0.0.0.0` in container) |
 | `REDBUG_PORT_FILE` | server | — | If set, the chosen port is written here (used by the launcher) |
-| `RB_COOKIE` | launcher / dev | `rbtest` | Distribution cookie for the controller |
-| `REDBUG_NODE` | launcher | `redbug_controller@127.0.0.1` | Controller node name |
+| `RB_COOKIE` | dev | `rbtest` | Distribution cookie for the controller (`mise run dev`) |
+| `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
 | `RELEASE_NODE` / `RELEASE_COOKIE` / `RELEASE_DISTRIBUTION` | release | — | Standard Elixir release distribution settings |
 | `XDG_CONFIG_HOME` | server | `~/.config` | Base dir for `redbug/config.json` |
 
