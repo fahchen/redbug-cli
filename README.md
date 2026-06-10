@@ -46,26 +46,22 @@ In another terminal, start an `iex` node with the **same cookie**:
 iex --name target@127.0.0.1 --cookie rbtest
 ```
 
-Then in that shell, define some work and run it in a loop:
+Then in that shell, define a module and call it:
 
 ```elixir
-defmodule L do
-  def go do
-    :lists.seq(1, 5)
-    Process.sleep(150)
-    go()
-  end
+defmodule Demo do
+  def add(a, b), do: a + b
 end
 
-spawn(&L.go/0)
+Demo.add(1, 2)
 ```
 
 Then in the TUI:
 
 1. `n` — add a node, name `target@127.0.0.1`, cookie `rbtest`.
 2. `c` — connect.
-3. `s` — add a session, give it a trace pattern (e.g. `lists:seq/2 -> return`).
-4. `Shift+S` — start tracing; events stream in live.
+3. `s` — add a session, give it a trace pattern (e.g. `Demo.add/2 -> return`).
+4. `Shift+S` — start tracing; then call `Demo.add(1, 2)` again to see events stream in live.
 
 ### Running the pieces separately
 
