@@ -58,10 +58,17 @@ Demo.add(1, 2)
 
 Then in the TUI:
 
-1. `n` — add a node, name `target@127.0.0.1`, cookie `rbtest`.
-2. `c` — connect.
-3. `s` — add a session, give it a trace pattern (e.g. `Demo.add/2 -> return`).
-4. `Shift+S` — start tracing; then call `Demo.add(1, 2)` again to see events stream in live.
+1. **Add the node.** Press `n`. Type the node name `target@127.0.0.1` (the `--name`
+   you launched `iex` with), Enter. Type the cookie `rbtest`, Enter.
+2. **Connect.** With the node selected, press `c`. The dot turns green (`●`) when the
+   controller reaches it over distribution.
+3. **Add a session.** Press `s`. Type a label, e.g. `demo`, Enter. On the "init from"
+   picker leave `(blank)` selected, Enter.
+4. **Add a trace pattern.** Press `enter` to open the session, then `e` for the trace
+   editor. Press `a`, type `Demo.add/2 -> return`, Enter. Press `space` to enable it
+   (it must be on), then `esc` to leave the editor.
+5. **Trace.** Press `Shift+S` to start. Back in the iex target, call `Demo.add(1, 2)`
+   again — the call and its return stream into the session live.
 
 ### Running the pieces separately
 
@@ -94,7 +101,7 @@ target node, so start a target like the one above first.
 `c` connect/disconnect · `d` delete · `p` presets · `,` settings · `?` help · `q` quit
 
 **Session**
-`enter` detail · `o` sort · `/` filter · `g` group · `z` zoom · `E` open event in `$EDITOR` ·
+`enter` detail · `o` sort · `/` filter · `g` group · `l` limits · `z` zoom · `E` open event in `$EDITOR` ·
 `e` edit traces · `Shift+S`/`Shift+X` start/stop · `Ctrl+S` apply & restart ·
 `Ctrl+L` clear events · `Ctrl+W` save as preset
 

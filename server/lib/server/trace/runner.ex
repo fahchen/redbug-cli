@@ -88,8 +88,7 @@ defmodule Server.Trace.Runner do
   end
 
   def handle_call(:snapshot, _from, state) do
-    {:reply,
-     %{events: state.buffer, status: state.status, applied_sig: state.applied_sig}, state}
+    {:reply, %{events: state.buffer, status: state.status, applied_sig: state.applied_sig}, state}
   end
 
   @impl true
@@ -167,7 +166,11 @@ defmodule Server.Trace.Runner do
   end
 
   defp require_patterns([]), do: {:error, :no_enabled_rtp}
-  defp require_patterns(enabled), do: {:ok, Enum.map(enabled, &String.to_charlist(&1.text))}
+
+  defp require_patterns(enabled) do
+    {:ok,
+     Enum.map(enabled, &(&1.text |> Server.Trace.Pattern.to_redbug() |> String.to_charlist()))}
+  end
 
   defp fetch_node(node_id) do
     case Config.fetch_node(node_id) do

@@ -27,7 +27,7 @@ type FilterScope = "all" | "mfa" | "pid" | "info"
 type Filter = { scope: FilterScope; query: string }
 type GroupKey = "none" | "pid" | "mfa" | "kind"
 
-type Overlay = "none" | "sort" | "filter" | "editor"
+type Overlay = "none" | "sort" | "filter" | "editor" | "limits"
 type Focus = "list" | "detail"
 type Cols = { name: boolean; pid: boolean; mfa: boolean; info: boolean }
 
@@ -58,6 +58,7 @@ const FILTER_SCOPES: FilterScope[] = ["all", "mfa", "pid", "info"]
 const GROUP_CYCLE: GroupKey[] = ["none", "pid", "mfa", "kind"]
 
 const COL = { ts: 12, k: 1, name: 16, pid: 11, mfa: 22, info: 44 }
+const COLGAP = 2
 
 export function SessionScreen({
   nodeId,
@@ -120,6 +121,7 @@ function SessionView({
 
   const [overlay, setOverlay] = useState<Overlay>("none")
   const [sortIdx, setSortIdx] = useState(0)
+  const [limitsDraft, setLimitsDraft] = useState("")
 
   // S3 editor overlay state
   const [rtpSel, setRtpSel] = useState(0)
@@ -133,6 +135,12 @@ function SessionView({
   const { rows, count } = useMemo(
     () => processEvents(events, filter, sort, group),
     [events, filter, sort, group]
+  )
+
+  // widen the pid column to its longest value so pids are never truncated
+  const pidWidth = useMemo(
+    () => events.reduce((m, e) => Math.max(m, e.pid.length), COL.pid),
+    [events]
   )
 
   const selClamped = Math.min(sel, Math.max(0, count - 1))
@@ -160,17 +168,27 @@ function SessionView({
 
     if (overlay === "filter") {
       if (n === "escape") setOverlay("none")
+      else if (n === "tab")
+        setFilterScope(
+          (s) => FILTER_SCOPES[(FILTER_SCOPES.indexOf(s) + 1) % FILTER_SCOPES.length]
+        )
       return
     }
 
     if (overlay === "sort") {
-      if (n === "j" || n === "down") setSortIdx((i) => Math.min(i + 1, SORT_OPTS.length - 1))
+      if (n === "tab") setSortIdx((i) => (i + 1) % SORT_OPTS.length)
+      else if (n === "j" || n === "down") setSortIdx((i) => Math.min(i + 1, SORT_OPTS.length - 1))
       else if (n === "k" || n === "up") setSortIdx((i) => Math.max(i - 1, 0))
       else if (n === "escape") setOverlay("none")
       else if (n === "return") {
         setSort(SORT_OPTS[sortIdx])
         setOverlay("none")
       }
+      return
+    }
+
+    if (overlay === "limits") {
+      if (n === "escape") setOverlay("none")
       return
     }
 
@@ -260,6 +278,10 @@ function SessionView({
       case "g":
         setGroup((g) => GROUP_CYCLE[(GROUP_CYCLE.indexOf(g) + 1) % GROUP_CYCLE.length])
         break
+      case "l":
+        setLimitsDraft(`${limits.keep} ${limits.time} ${limits.msgs}`)
+        setOverlay("limits")
+        break
       case "z":
         if (selectedEvent) {
           setDetailOpen(true)
@@ -347,7 +369,7 @@ function SessionView({
           flexDirection="column"
           padding={1}
         >
-          <ColumnHeader cols={cols} />
+          <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
             <text fg={theme.dim}>No events. Shift+S to start.</text>
           ) : (
@@ -363,6 +385,7 @@ function SessionView({
                     active={row.sidx === selClamped}
                     filter={filter}
                     cols={cols}
+                    pidWidth={pidWidth}
                   />
                 )
               )
@@ -383,52 +406,88 @@ function SessionView({
 
       <box backgroundColor={theme.bg} paddingLeft={1}>
         <text fg={theme.dim}>
-          j/k move · enter detail · o sort · / filter · g group · z zoom · E editor · e traces · Shift+S/X start/stop · Ctrl+L clear · esc back
+          j/k move · enter detail · o sort · / filter · g group · l limits · z zoom · E editor · e traces · Shift+S/X start/stop · Ctrl+L clear · esc back
         </text>
       </box>
 
       {overlay === "filter" && (
         <OverlayBox>
-          <text fg={theme.title}>{`Filter (scope: ${filterScope}) — Tab cycles scope`}</text>
-          <input
-            focused
-            value={filterDraft}
-            onInput={(v: string) => setFilterDraft(v)}
-            onSubmit={() => {
-              setFilter(filterDraft.trim() === "" ? null : { scope: filterScope, query: filterDraft })
-              setOverlay("none")
-            }}
-            backgroundColor={theme.bg}
-            textColor={theme.fg}
-          />
-          <text fg={theme.dim}>{`scopes: ${FILTER_SCOPES.join(" / ")} · Enter apply · Esc cancel`}</text>
-          <FilterScopePicker scope={filterScope} onPick={setFilterScope} />
+          <text fg={theme.title}>Filter events</text>
+          <box marginTop={1}>
+            <FilterScopePicker scope={filterScope} onPick={setFilterScope} />
+          </box>
+          <box flexDirection="column" marginTop={1}>
+            <text fg={theme.dim}>{`scope: ${filterScope} · Tab cycles`}</text>
+            <input
+              focused
+              value={filterDraft}
+              onInput={(v: string) => setFilterDraft(v)}
+              onSubmit={() => {
+                setFilter(filterDraft.trim() === "" ? null : { scope: filterScope, query: filterDraft })
+                setOverlay("none")
+              }}
+              backgroundColor={theme.bg}
+              textColor={theme.fg}
+              focusedBackgroundColor={theme.selBg}
+              focusedTextColor={theme.selFg}
+            />
+          </box>
+          <text fg={theme.dim} marginTop={1}>Enter apply · Esc cancel</text>
         </OverlayBox>
       )}
 
       {overlay === "sort" && (
         <OverlayBox>
           <text fg={theme.title}>Sort by</text>
-          {SORT_OPTS.map((s, i) => (
-            <PickRow
-              key={`${s.key}-${s.dir}`}
-              label={`${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`}
-              active={i === sortIdx}
+          <box flexDirection="column" marginTop={1}>
+            {SORT_OPTS.map((s, i) => (
+              <PickRow
+                key={`${s.key}-${s.dir}`}
+                label={`${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`}
+                active={i === sortIdx}
+              />
+            ))}
+          </box>
+          <text fg={theme.dim} marginTop={1}>j/k or Tab move · Enter apply · Esc cancel</text>
+        </OverlayBox>
+      )}
+
+      {overlay === "limits" && (
+        <OverlayBox>
+          <text fg={theme.title}>Session limits</text>
+          <box flexDirection="column" marginTop={1}>
+            <text fg={theme.fg}>keep time msgs (space-separated)</text>
+            <text fg={theme.dim}>keep = TUI buffer cap · time = stop after Ns · msgs = stop after N events</text>
+            <input
+              focused
+              value={limitsDraft}
+              onInput={(v: string) => setLimitsDraft(v)}
+              onSubmit={() => {
+                const p = parseLimits(limitsDraft)
+                if (p) dispatch("updateLimits", p)
+                setOverlay("none")
+              }}
+              backgroundColor={theme.bg}
+              textColor={theme.fg}
+              focusedBackgroundColor={theme.selBg}
+              focusedTextColor={theme.selFg}
             />
-          ))}
-          <text fg={theme.dim}>j/k move · Enter apply · Esc cancel</text>
+          </box>
+          <text fg={theme.dim} marginTop={1}>Enter apply (Ctrl+S to restart if running) · Esc cancel</text>
         </OverlayBox>
       )}
 
       {overlay === "editor" && (
         <OverlayBox>
           <text fg={theme.title}>{`Traces — ${snap.name ?? ""}`}</text>
-          {traces.length === 0 ? (
-            <text fg={theme.dim}>No patterns. a to add.</text>
-          ) : (
-            traces.map((t, i) => <RtpRow key={t.id} rtp={t} active={i === rtpSel} />)
-          )}
-          <text fg={theme.dim}>j/k move · space toggle · a add · e edit · Ctrl+D del · Ctrl+W save preset · esc close</text>
+          <box flexDirection="column" marginTop={1}>
+            {traces.length === 0 ? (
+              <text fg={theme.dim}>No patterns. a to add.</text>
+            ) : (
+              traces.map((t, i) => <RtpRow key={t.id} rtp={t} active={i === rtpSel} />)
+            )}
+          </box>
+          <text fg={theme.dim} marginTop={1}>j/k move · space toggle · a add · e edit · Ctrl+D del · Ctrl+W save preset · esc close</text>
           {rtpModal.kind === "add" && (
             <TextField
               key="rtp-add"
@@ -468,34 +527,47 @@ function SessionView({
 
       {zoom && selectedEvent && (
         <box
-          border
-          borderColor={theme.title}
-          backgroundColor={theme.overlay}
-          title="Detail (zoom · esc close · E editor)"
-          titleColor={theme.title}
-          flexDirection="column"
-          padding={1}
-          flexGrow={1}
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          justifyContent="center"
+          alignItems="center"
         >
-          {detailLines(selectedEvent)
-            .slice(detailScroll)
-            .map((ln, i) => (
-              <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
-            ))}
+          <box
+            border
+            borderColor={theme.title}
+            backgroundColor={theme.overlay}
+            title="Detail (zoom · esc close · E editor)"
+            titleColor={theme.title}
+            flexDirection="column"
+            paddingTop={1}
+            paddingBottom={1}
+            paddingLeft={2}
+            paddingRight={2}
+            minWidth={70}
+          >
+            {detailLines(selectedEvent)
+              .slice(detailScroll)
+              .map((ln, i) => (
+                <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
+              ))}
+          </box>
         </box>
       )}
     </box>
   )
 }
 
-function ColumnHeader({ cols }: { cols: Cols }) {
+function ColumnHeader({ cols, pidWidth }: { cols: Cols; pidWidth: number }) {
   return (
     <box flexDirection="row">
-      <text fg={theme.dim}>{fit("ts", COL.ts)}</text>
-      <text fg={theme.dim}>{" k "}</text>
-      {cols.name && <text fg={theme.dim}>{fit("name", COL.name)}</text>}
-      {cols.pid && <text fg={theme.dim}>{fit("pid", COL.pid)}</text>}
-      {cols.mfa && <text fg={theme.dim}>{fit("mfa", COL.mfa)}</text>}
+      <text fg={theme.dim} marginRight={COLGAP}>{fit("ts", COL.ts)}</text>
+      <text fg={theme.dim} marginRight={COLGAP}>{" k "}</text>
+      {cols.name && <text fg={theme.dim} marginRight={COLGAP}>{fit("name", COL.name)}</text>}
+      {cols.pid && <text fg={theme.dim} marginRight={COLGAP}>{fit("pid", pidWidth)}</text>}
+      {cols.mfa && <text fg={theme.dim} marginRight={COLGAP}>{fit("mfa", COL.mfa)}</text>}
       {cols.info && <text fg={theme.dim}>{fit("info", COL.info)}</text>}
     </box>
   )
@@ -505,12 +577,14 @@ function EventRow({
   ev,
   active,
   filter,
-  cols
+  cols,
+  pidWidth
 }: {
   ev: TraceEvent
   active: boolean
   filter: Filter | null
   cols: Cols
+  pidWidth: number
 }) {
   if (ev.kind === "restart")
     return <text fg={theme.dim}>{`── ${ev.info} ──`}</text>
@@ -524,11 +598,11 @@ function EventRow({
 
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.dim}>{fit(ev.ts, COL.ts)}</text>
-      <text bg={bg} fg={kc}>{` ${sym} `}</text>
-      {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={fg} q={hl("all")} />}
-      {cols.pid && <Cell text={fit(ev.pid, COL.pid)} bg={bg} fg={fg} q={hl("pid")} />}
-      {cols.mfa && <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} />}
+      <text bg={bg} fg={theme.dim} marginRight={COLGAP}>{fit(ev.ts, COL.ts)}</text>
+      <text bg={bg} fg={kc} marginRight={COLGAP}>{` ${sym} `}</text>
+      {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={fg} q={hl("all")} mr />}
+      {cols.pid && <Cell text={fit(ev.pid, pidWidth)} bg={bg} fg={fg} q={hl("pid")} mr />}
+      {cols.mfa && <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} mr />}
       {cols.info && <Cell text={fit(ev.info, COL.info)} bg={bg} fg={fg} q={hl("info")} />}
     </box>
   )
@@ -538,16 +612,19 @@ function Cell({
   text,
   bg,
   fg,
-  q
+  q,
+  mr
 }: {
   text: string
   bg: string
   fg: string
   q: string
+  mr?: boolean
 }) {
-  if (!q) return <text bg={bg} fg={fg}>{text}</text>
+  const marginRight = mr ? COLGAP : 0
+  if (!q) return <text bg={bg} fg={fg} marginRight={marginRight}>{text}</text>
   return (
-    <box backgroundColor={bg} flexDirection="row">
+    <box backgroundColor={bg} flexDirection="row" marginRight={marginRight}>
       {segs(text, q).map((s, i) => (
         <text key={i} bg={s.hit ? theme.warn : bg} fg={s.hit ? theme.bg : fg}>{s.t}</text>
       ))}
@@ -642,15 +719,27 @@ function PickRow({ label, active }: { label: string; active: boolean }) {
 function OverlayBox({ children }: { children: ReactNode }) {
   return (
     <box
-      border
-      borderColor={theme.title}
-      backgroundColor={theme.overlay}
-      flexDirection="column"
-      padding={1}
-      marginLeft={2}
-      marginRight={2}
+      position="absolute"
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
+      justifyContent="center"
+      alignItems="center"
     >
-      {children}
+      <box
+        border
+        borderColor={theme.title}
+        backgroundColor={theme.overlay}
+        flexDirection="column"
+        paddingTop={1}
+        paddingBottom={1}
+        paddingLeft={2}
+        paddingRight={2}
+        minWidth={58}
+      >
+        {children}
+      </box>
     </box>
   )
 }
@@ -668,9 +757,9 @@ function TextField({
 }) {
   const [value, setValue] = useState(initial ?? "")
   return (
-    <>
-      <text fg={theme.title}>{label}</text>
-      {hint && <text fg={theme.dim}>{hint}</text>}
+    <box flexDirection="column" marginTop={1}>
+      <text fg={theme.title}>{`› ${label}`}</text>
+      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
       <input
         focused
         value={value}
@@ -678,9 +767,11 @@ function TextField({
         onSubmit={() => onSubmit(value)}
         backgroundColor={theme.bg}
         textColor={theme.fg}
+        focusedBackgroundColor={theme.selBg}
+        focusedTextColor={theme.selFg}
       />
-      <text fg={theme.dim}>Enter ok · Esc cancel</text>
-    </>
+      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
+    </box>
   )
 }
 
@@ -794,6 +885,12 @@ function segs(text: string, query: string): { t: string; hit: boolean }[] {
     i = idx + q.length
   }
   return out.length === 0 ? [{ t: text, hit: false }] : out
+}
+
+function parseLimits(s: string): { keep: number; time: number; msgs: number } | null {
+  const parts = s.trim().split(/\s+/).map(Number)
+  if (parts.length !== 3 || parts.some((x) => !Number.isFinite(x) || x < 0)) return null
+  return { keep: parts[0], time: parts[1], msgs: parts[2] }
 }
 
 function fit(s: string, n: number): string {

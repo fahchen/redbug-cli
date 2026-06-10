@@ -286,14 +286,14 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
       {modal.kind === "confirmPreset" && (
         <OverlayBox>
           <text fg={theme.fg}>{`Delete preset "${modal.name}"?`}</text>
-          <text fg={theme.dim}>y = yes · n/Esc = no</text>
+          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
         </OverlayBox>
       )}
 
       {modal.kind === "confirmTrace" && (
         <OverlayBox>
           <text fg={theme.fg}>Delete this pattern?</text>
-          <text fg={theme.dim}>y = yes · n/Esc = no</text>
+          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
         </OverlayBox>
       )}
     </box>
@@ -327,15 +327,27 @@ function TraceRow({ rtp, active }: { rtp: Rtp; active: boolean }) {
 function OverlayBox({ children }: { children: ReactNode }) {
   return (
     <box
-      border
-      borderColor={theme.title}
-      backgroundColor={theme.overlay}
-      flexDirection="column"
-      padding={1}
-      marginLeft={2}
-      marginRight={2}
+      position="absolute"
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
+      justifyContent="center"
+      alignItems="center"
     >
-      {children}
+      <box
+        border
+        borderColor={theme.title}
+        backgroundColor={theme.overlay}
+        flexDirection="column"
+        paddingTop={1}
+        paddingBottom={1}
+        paddingLeft={2}
+        paddingRight={2}
+        minWidth={58}
+      >
+        {children}
+      </box>
     </box>
   )
 }
@@ -354,8 +366,8 @@ function TextField({
   const [value, setValue] = useState(initial ?? "")
   return (
     <>
-      <text fg={theme.title}>{label}</text>
-      {hint && <text fg={theme.dim}>{hint}</text>}
+      <text fg={theme.title}>{`› ${label}`}</text>
+      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
       <input
         focused
         value={value}
@@ -363,8 +375,10 @@ function TextField({
         onSubmit={() => onSubmit(value)}
         backgroundColor={theme.bg}
         textColor={theme.fg}
+        focusedBackgroundColor={theme.selBg}
+        focusedTextColor={theme.selFg}
       />
-      <text fg={theme.dim}>Enter ok · Esc cancel</text>
+      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
     </>
   )
 }

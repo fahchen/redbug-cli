@@ -38,10 +38,8 @@ type Row =
 type Modal =
   | { kind: "none" }
   | { kind: "help" }
-  | { kind: "newNodeName" }
-  | { kind: "newNodeCookie"; name: string }
-  | { kind: "editNodeName"; id: string; cookie: string; name: string }
-  | { kind: "editNodeCookie"; id: string; name: string; cookie: string }
+  | { kind: "newNode" }
+  | { kind: "editNode"; id: string }
   | { kind: "newSessionName"; nodeId: string }
   | { kind: "newSessionPreset"; nodeId: string; name: string }
   | { kind: "confirm"; label: string; run: () => void }
@@ -154,6 +152,9 @@ function S1View({
   const [sel, setSel] = useState(0)
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
+  const [nameDraft, setNameDraft] = useState("")
+  const [cookieDraft, setCookieDraft] = useState("")
+  const [nodeField, setNodeField] = useState(0)
 
   const cur = rows[Math.min(sel, rows.length - 1)]
   const nodeContext = cur?.kind === "node" ? cur.node : cur?.session ? cur.node : null
@@ -198,11 +199,21 @@ function S1View({
         return
       }
 
-      // text-input modals: input handles typing + Enter (onSubmit); only Esc here
-      case "newNodeName":
-      case "newNodeCookie":
-      case "editNodeName":
-      case "editNodeCookie":
+      case "newNode":
+      case "editNode":
+        if (name === "escape") setModal({ kind: "none" })
+        else if (name === "tab") setNodeField((f) => (f === 0 ? 1 : 0))
+        else if (name === "return") {
+          if (nameDraft.trim() !== "" && cookieDraft.trim() !== "") {
+            if (modal.kind === "newNode")
+              dispatch("createNode", { name: nameDraft, cookie: cookieDraft })
+            else dispatch("editNode", { id: modal.id, name: nameDraft, cookie: cookieDraft })
+            setModal({ kind: "none" })
+          }
+        }
+        return
+
+      // text-input modal: input handles typing + Enter (onSubmit); only Esc here
       case "newSessionName":
         if (name === "escape") setModal({ kind: "none" })
         return
@@ -222,7 +233,10 @@ function S1View({
         setSel((i) => Math.max(i - 1, 0))
         break
       case "n":
-        setModal({ kind: "newNodeName" })
+        setNameDraft("")
+        setCookieDraft("")
+        setNodeField(0)
+        setModal({ kind: "newNode" })
         break
       case "s":
         if (nodeContext) {
@@ -231,13 +245,12 @@ function S1View({
         }
         break
       case "e":
-        if (nodeContext)
-          setModal({
-            kind: "editNodeName",
-            id: nodeContext.id,
-            name: nodeContext.name,
-            cookie: nodeContext.cookie
-          })
+        if (nodeContext) {
+          setNameDraft(nodeContext.name)
+          setCookieDraft(nodeContext.cookie)
+          setNodeField(0)
+          setModal({ kind: "editNode", id: nodeContext.id })
+        }
         break
       case "c":
         if (nodeContext)
@@ -273,7 +286,12 @@ function S1View({
         setModal({ kind: "help" })
         break
       case "q":
-        process.exit(0)
+        setModal({
+          kind: "confirm",
+          label: "Quit redbug?",
+          run: () => process.exit(0)
+        })
+        break
     }
   })
 
@@ -303,41 +321,30 @@ function S1View({
       </box>
 
       {modal.kind !== "none" && (
+        <box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          justifyContent="center"
+          alignItems="center"
+        >
         <ModalLayer
           modal={modal}
           presetList={presetList}
           presetIdx={presetIdx}
+          nameDraft={nameDraft}
+          cookieDraft={cookieDraft}
+          nodeField={nodeField}
+          onName={setNameDraft}
+          onCookie={setCookieDraft}
           onCommit={(m, payload) => {
-            switch (m) {
-              case "newNodeName":
-                setModal({ kind: "newNodeCookie", name: payload })
-                break
-              case "newNodeCookie":
-                dispatch("createNode", { name: (modal as any).name, cookie: payload })
-                setModal({ kind: "none" })
-                break
-              case "editNodeName":
-                setModal({
-                  kind: "editNodeCookie",
-                  id: (modal as any).id,
-                  name: payload,
-                  cookie: (modal as any).cookie
-                })
-                break
-              case "editNodeCookie":
-                dispatch("editNode", {
-                  id: (modal as any).id,
-                  name: (modal as any).name,
-                  cookie: payload
-                })
-                setModal({ kind: "none" })
-                break
-              case "newSessionName":
-                setModal({ kind: "newSessionPreset", nodeId: (modal as any).nodeId, name: payload })
-                break
-            }
+            if (m === "newSessionName")
+              setModal({ kind: "newSessionPreset", nodeId: (modal as any).nodeId, name: payload })
           }}
         />
+        </box>
       )}
     </box>
   )
@@ -378,94 +385,91 @@ function ModalLayer({
   modal,
   presetList,
   presetIdx,
+  nameDraft,
+  cookieDraft,
+  nodeField,
+  onName,
+  onCookie,
   onCommit
 }: {
   modal: Modal
   presetList: readonly Server.Schema.Preset[]
   presetIdx: number
+  nameDraft: string
+  cookieDraft: string
+  nodeField: number
+  onName: (v: string) => void
+  onCookie: (v: string) => void
   onCommit: (kind: Modal["kind"], value: string) => void
 }) {
-  const box = (children: ReactNode) => (
+  const box = (title: string, children: ReactNode) => (
     <box
       border
       borderColor={theme.title}
       backgroundColor={theme.overlay}
       flexDirection="column"
-      padding={1}
-      marginLeft={2}
-      marginRight={2}
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={2}
+      paddingRight={2}
+      minWidth={58}
     >
-      {children}
+      <text fg={theme.title}>{title}</text>
+      <box flexDirection="column" marginTop={1}>
+        {children}
+      </box>
     </box>
   )
 
   switch (modal.kind) {
     case "help":
       return box(
+        "redbug · help",
         <>
-          <text fg={theme.title}>redbug · help</text>
           <text fg={theme.dim}>kinds: ↓ call (cyan) · ↑ retn (green) · → send (yellow) · ← recv (purple)</text>
-          <text fg={theme.title}>Tree</text>
+          <text fg={theme.title} marginTop={1}>Tree</text>
           <text fg={theme.fg}>j/k move · enter open session · n node · s session</text>
           <text fg={theme.fg}>e edit node · c connect/disconnect · d delete</text>
           <text fg={theme.fg}>p presets · , settings · q quit</text>
-          <text fg={theme.title}>Session</text>
-          <text fg={theme.fg}>enter detail · o sort · / filter · g group · z zoom</text>
+          <text fg={theme.title} marginTop={1}>Session</text>
+          <text fg={theme.fg}>enter detail · o sort · / filter · g group · l limits · z zoom</text>
           <text fg={theme.fg}>E $EDITOR · e traces · Shift+S/X start/stop</text>
           <text fg={theme.fg}>Ctrl+S apply · Ctrl+L clear · Ctrl+W save preset</text>
-          <text fg={theme.title}>Presets / Settings</text>
+          <text fg={theme.title} marginTop={1}>Presets / Settings</text>
           <text fg={theme.fg}>j/k move · enter/tab edit · space toggle · esc back</text>
-          <text fg={theme.dim}>press any key to close</text>
+          <text fg={theme.dim} marginTop={1}>press any key to close</text>
         </>
       )
 
-    case "newNodeName":
+    case "newNode":
+    case "editNode":
       return box(
-        <TextField
-          key="newNodeName"
-          label="New node — name:"
-          hint="format: name@host (longname), e.g. myapp@127.0.0.1"
-          onSubmit={(v) => onCommit("newNodeName", v)}
-        />
-      )
-
-    case "newNodeCookie":
-      return box(
-        <TextField
-          key="newNodeCookie"
-          label={`New node "${modal.name}" — cookie:`}
-          hint="Erlang distribution cookie; must match the target node"
-          onSubmit={(v) => onCommit("newNodeCookie", v)}
-        />
-      )
-
-    case "editNodeName":
-      return box(
-        <TextField
-          key="editNodeName"
-          label="Edit node — name:"
-          hint="format: name@host (longname), e.g. myapp@127.0.0.1"
-          initial={modal.name}
-          onSubmit={(v) => onCommit("editNodeName", v)}
-        />
-      )
-
-    case "editNodeCookie":
-      return box(
-        <TextField
-          key="editNodeCookie"
-          label="Edit node — cookie:"
-          hint="Erlang distribution cookie; must match the target node"
-          initial={modal.cookie}
-          onSubmit={(v) => onCommit("editNodeCookie", v)}
-        />
+        modal.kind === "newNode" ? "New node" : "Edit node",
+        <>
+          <Field
+            label="name"
+            hint="name@host (longname), e.g. myapp@127.0.0.1"
+            value={nameDraft}
+            onInput={onName}
+            focused={nodeField === 0}
+          />
+          <Field
+            label="cookie"
+            hint="Erlang distribution cookie; must match the target"
+            value={cookieDraft}
+            onInput={onCookie}
+            focused={nodeField === 1}
+          />
+          <text fg={theme.dim} marginTop={1}>Tab switch field · Enter save · Esc cancel</text>
+        </>
       )
 
     case "newSessionName":
       return box(
+        "New session",
         <TextField
           key="newSessionName"
-          label="New session — name:"
+          label="name"
           hint="a label for this trace session"
           onSubmit={(v) => onCommit("newSessionName", v)}
         />
@@ -473,27 +477,58 @@ function ModalLayer({
 
     case "newSessionPreset":
       return box(
+        `Session "${modal.name}" — init from`,
         <>
-          <text fg={theme.title}>{`Session "${modal.name}" — init from:`}</text>
           <PickRow label="(blank)" active={presetIdx === 0} />
           {presetList.map((p, i) => (
             <PickRow key={p.id} label={p.name} active={presetIdx === i + 1} />
           ))}
-          <text fg={theme.dim}>j/k move · Enter create · Esc cancel</text>
+          <text fg={theme.dim} marginTop={1}>j/k move · Enter create · Esc cancel</text>
         </>
       )
 
     case "confirm":
       return box(
+        "Confirm",
         <>
           <text fg={theme.fg}>{modal.label}</text>
-          <text fg={theme.dim}>y = yes · n/Esc = no</text>
+          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
         </>
       )
 
     default:
       return null
   }
+}
+
+function Field({
+  label,
+  hint,
+  value,
+  onInput,
+  focused
+}: {
+  label: string
+  hint?: string
+  value: string
+  onInput: (v: string) => void
+  focused: boolean
+}) {
+  return (
+    <box flexDirection="column" marginBottom={1}>
+      <text fg={focused ? theme.title : theme.dim}>{`${focused ? "› " : "  "}${label}`}</text>
+      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
+      <input
+        focused={focused}
+        value={value}
+        onInput={onInput}
+        backgroundColor={theme.bg}
+        textColor={theme.fg}
+        focusedBackgroundColor={theme.selBg}
+        focusedTextColor={theme.selFg}
+      />
+    </box>
+  )
 }
 
 function PickRow({ label, active }: { label: string; active: boolean }) {
@@ -520,8 +555,8 @@ function TextField({
   const [value, setValue] = useState(initial ?? "")
   return (
     <>
-      <text fg={theme.title}>{label}</text>
-      {hint && <text fg={theme.dim}>{hint}</text>}
+      <text fg={theme.title}>{`› ${label}`}</text>
+      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
       <input
         focused
         value={value}
@@ -529,8 +564,10 @@ function TextField({
         onSubmit={() => onSubmit(value)}
         backgroundColor={theme.bg}
         textColor={theme.fg}
+        focusedBackgroundColor={theme.selBg}
+        focusedTextColor={theme.selFg}
       />
-      <text fg={theme.dim}>Enter ok · Esc cancel</text>
+      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
     </>
   )
 }
