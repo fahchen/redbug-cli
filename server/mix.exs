@@ -6,9 +6,20 @@ defmodule Server.MixProject do
       app: :server,
       version: "0.1.0",
       elixir: "~> 1.19",
-      start_permanent: false,
+      start_permanent: Mix.env() == :prod,
       compilers: Mix.compilers() ++ [:musubi_ts],
+      releases: releases(),
       deps: deps()
+    ]
+  end
+
+  defp releases do
+    [
+      server: [
+        include_executables_for: [:unix],
+        include_erts: true,
+        strip_beams: true
+      ]
     ]
   end
 

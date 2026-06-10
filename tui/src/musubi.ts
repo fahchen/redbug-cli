@@ -1,7 +1,9 @@
 import { Socket } from "phoenix"
 import { createMusubi } from "@musubi/react"
 
-export const SOCKET_URL = "ws://127.0.0.1:4010/socket"
+declare const Bun: { env: Record<string, string | undefined> }
+const PORT = Bun.env.REDBUG_PORT ?? "4010"
+export const SOCKET_URL = `ws://127.0.0.1:${PORT}/socket`
 
 // Phoenix's JS client looks for a WebSocket transport; in Bun/Node it is the
 // global WebSocket, so pass it explicitly rather than relying on `window`.

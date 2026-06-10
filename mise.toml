@@ -4,14 +4,35 @@ elixir = "1.19.5-otp-28"
 bun = "1.3"
 
 [tasks.dev]
-description = "Start server (4010) then TUI; cookie via RB_COOKIE (default rbtest)"
+description = "Start server (random free port) then TUI; cookie via RB_COOKIE (default rbtest)"
 dir = "server"
 run = """
 set -e
 cookie="${RB_COOKIE:-rbtest}"
+port_file="/tmp/redbug.port"
+rm -f "$port_file"
+export REDBUG_PORT_FILE="$port_file"
 elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server &
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
-until nc -z 127.0.0.1 4010 2>/dev/null; do sleep 0.3; done
-cd ../tui && bun run dev
+until [ -f "$port_file" ]; do sleep 0.2; done
+port=$(cat "$port_file")
+until nc -z 127.0.0.1 "$port" 2>/dev/null; do sleep 0.2; done
+cd ../tui && REDBUG_PORT="$port" bun run dev
+"""
+
+[tasks.package]
+description = "Build self-contained dist/: mix release (ERTS) + TUI binary + launcher"
+run = """
+set -e
+root="$(pwd)"
+cd "$root/server" && MIX_ENV=prod mix release --overwrite
+cd "$root/tui" && bun install && bun run build:bin
+rm -rf "$root/dist"
+mkdir -p "$root/dist"
+cp -R "$root/server/_build/prod/rel/server" "$root/dist/server"
+cp "$root/tui/dist/redbug-tui" "$root/dist/redbug-tui"
+cp "$root/scripts/launcher.sh" "$root/dist/redbug"
+chmod +x "$root/dist/redbug" "$root/dist/redbug-tui"
+echo "packaged -> dist/redbug (run it to launch)"
 """

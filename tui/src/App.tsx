@@ -405,15 +405,15 @@ function ModalLayer({
         <>
           <text fg={theme.title}>redbug · help</text>
           <text fg={theme.dim}>kinds: ↓ call (cyan) · ↑ retn (green) · → send (yellow) · ← recv (purple)</text>
-          <text fg={theme.title}>Tree (S1)</text>
+          <text fg={theme.title}>Tree</text>
           <text fg={theme.fg}>j/k move · enter open session · n node · s session</text>
           <text fg={theme.fg}>e edit node · c connect/disconnect · d delete</text>
           <text fg={theme.fg}>p presets · , settings · q quit</text>
-          <text fg={theme.title}>Session (S2/S3)</text>
+          <text fg={theme.title}>Session</text>
           <text fg={theme.fg}>enter detail · o sort · / filter · g group · z zoom</text>
           <text fg={theme.fg}>E $EDITOR · e traces · Shift+S/X start/stop</text>
           <text fg={theme.fg}>Ctrl+S apply · Ctrl+L clear · Ctrl+W save preset</text>
-          <text fg={theme.title}>Presets (S4) / Settings (S6)</text>
+          <text fg={theme.title}>Presets / Settings</text>
           <text fg={theme.fg}>j/k move · enter/tab edit · space toggle · esc back</text>
           <text fg={theme.dim}>press any key to close</text>
         </>
