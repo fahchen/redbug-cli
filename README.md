@@ -40,11 +40,24 @@ it, then launches the TUI pointed at that port. The controller node is
 
 ### A throwaway target to trace
 
-In another terminal, start a node that does some work, using the **same cookie**:
+In another terminal, start an `iex` node with the **same cookie**:
 
 ```sh
-elixir --name target@127.0.0.1 --cookie rbtest -e \
-  'defmodule L do def go do :lists.seq(1, 5); Process.sleep(150); go() end end; spawn(&L.go/0); Process.sleep(:infinity)'
+iex --name target@127.0.0.1 --cookie rbtest
+```
+
+Then in that shell, define some work and run it in a loop:
+
+```elixir
+defmodule L do
+  def go do
+    :lists.seq(1, 5)
+    Process.sleep(150)
+    go()
+  end
+end
+
+spawn(&L.go/0)
 ```
 
 Then in the TUI:
