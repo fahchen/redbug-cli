@@ -38,9 +38,22 @@ defmodule Server.Application do
   defp configure_port do
     port = resolve_port()
     config = Application.get_env(:server, ServerWeb.Endpoint, [])
-    http = config |> Keyword.get(:http, []) |> Keyword.put(:port, port)
+    http = config |> Keyword.get(:http, []) |> Keyword.put(:port, port) |> put_ip()
     Application.put_env(:server, ServerWeb.Endpoint, Keyword.put(config, :http, http))
     announce_port(port)
+  end
+
+  # Bind address override: default stays 127.0.0.1 (local-only); a sidecar
+  # deployment sets REDBUG_IP=0.0.0.0 so the TUI can reach it across the network.
+  defp put_ip(http) do
+    case System.get_env("REDBUG_IP") do
+      ip when is_binary(ip) and ip != "" ->
+        {:ok, tuple} = :inet.parse_address(String.to_charlist(ip))
+        Keyword.put(http, :ip, tuple)
+
+      _ ->
+        http
+    end
   end
 
   defp resolve_port do

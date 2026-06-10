@@ -1,0 +1,10 @@
+.git
+dist
+tui/node_modules
+tui/dist
+server/_build
+server/deps
+**/.DS_Store
+task_plan.md
+progress.md
+findings.md
