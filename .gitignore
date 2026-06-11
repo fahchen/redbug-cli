@@ -4,7 +4,6 @@ server/deps/
 server/*.beam
 server/erl_crash.dump
 tui/src/generated/musubi.d.ts
-tui/dist/
 dist/
 .DS_Store
 

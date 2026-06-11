@@ -32,11 +32,10 @@ mkdir -p "$root/tui/embed"
 tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
 # redbug = single file (main.tsx embeds the tarball, extracts + spawns it at runtime).
 # redbug-tui = standalone TUI (index.tsx), only needed to reach a remote sidecar server.
-cd "$root/tui" && bun install && bun run build:bin && bun run build:redbug
+# Both compile straight into the root dist/ (build scripts target ../dist).
 rm -rf "$root/dist"
 mkdir -p "$root/dist"
-cp "$root/tui/dist/redbug" "$root/dist/redbug"
-cp "$root/tui/dist/redbug-tui" "$root/dist/redbug-tui"
+cd "$root/tui" && bun install && bun run build:bin && bun run build:redbug
 chmod +x "$root/dist/redbug" "$root/dist/redbug-tui"
 echo "packaged -> dist/redbug (single file; run it to launch) + dist/redbug-tui (sidecar)"
 """
