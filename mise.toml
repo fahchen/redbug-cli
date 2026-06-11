@@ -21,21 +21,22 @@ until nc -z 127.0.0.1 "$port" 2>/dev/null; do sleep 0.2; done
 cd ../tui && REDBUG_PORT="$port" bun run dev
 """
 
-# TODO: single-file packaging is being reworked. Plan: bun `--compile` the TUI
-# with the `server` release tar.gz embedded; at runtime it extracts the release to
-# a cache dir, spawns the controller, then renders the TUI. Until that lands this
-# task just builds the two pieces into dist/.
 [tasks.package]
-description = "Build server release + TUI binary into dist/ (single-file bun wrapper pending)"
+description = "Build single-file dist/redbug (bun --compile embedding the server release) + standalone TUI for sidecar"
 run = """
 set -e
 root="$(pwd)"
+# Build the controller release (ERTS bundled) and tar it for embedding.
 cd "$root/server" && MIX_ENV=prod mix release server --overwrite
-cd "$root/tui" && bun install && bun run build:bin
+mkdir -p "$root/tui/embed"
+tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
+# redbug = single file (main.tsx embeds the tarball, extracts + spawns it at runtime).
+# redbug-tui = standalone TUI (index.tsx), only needed to reach a remote sidecar server.
+cd "$root/tui" && bun install && bun run build:bin && bun run build:redbug
 rm -rf "$root/dist"
 mkdir -p "$root/dist"
-cp -R "$root/server/_build/prod/rel/server" "$root/dist/server"
+cp "$root/tui/dist/redbug" "$root/dist/redbug"
 cp "$root/tui/dist/redbug-tui" "$root/dist/redbug-tui"
-chmod +x "$root/dist/redbug-tui"
-echo "packaged -> dist/server (release) + dist/redbug-tui"
+chmod +x "$root/dist/redbug" "$root/dist/redbug-tui"
+echo "packaged -> dist/redbug (single file; run it to launch) + dist/redbug-tui (sidecar)"
 """

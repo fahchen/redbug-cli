@@ -127,18 +127,22 @@ Produces a self-contained `dist/`:
 
 ```
 dist/
-  server/      Elixir release with bundled ERTS — no system Erlang needed
-  redbug-tui   compiled TUI binary (bun --compile)
+  redbug       single-file binary (run this) — bun --compile, embeds the server release
+  redbug-tui   standalone TUI binary — only needed to reach a remote sidecar server
 ```
 
-> Single-file packaging is being reworked: a bun `--compile` binary that embeds the
-> `server` release tarball, extracts it to a cache dir at first run, spawns the
-> controller, then renders the TUI. Until that lands, `mise run package` emits the two
-> pieces above.
+`dist/redbug` is a bun `--compile` executable with the `server` release (ERTS bundled)
+embedded as a tarball. On first run it extracts the release to a per-build cache dir
+(`~/Library/Application Support/redbug/<build>/`), spawns it as the controller node, waits
+for its WebSocket port, then renders the TUI against it. Quitting the TUI tears the
+controller down. macOS arm64 only; no system Erlang or Bun needed on the target.
 
-The `server` release boots as the controller node (`redbug_controller@127.0.0.1`,
-override with `CONTROLLER_NODE`); each target node's cookie is entered in the TUI when you
-add it.
+```sh
+./dist/redbug
+```
+
+The controller node is `redbug_controller@127.0.0.1` (override with `CONTROLLER_NODE`);
+each target node's cookie is entered in the TUI when you add it.
 
 ## Sidecar deployment
 
