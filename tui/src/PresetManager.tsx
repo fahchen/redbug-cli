@@ -1,11 +1,11 @@
 /** @jsxImportSource @opentui/react */
 import { useState } from "react"
-import type { ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import { PRESETS_ROOT, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { theme } from "./theme"
+import { Footer, Header, Overlay, TextField } from "./ui"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type Preset = Server.Schema.Preset
@@ -153,9 +153,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.title}>Presets</text>
-      </box>
+      <Header title="Presets" />
 
       <box flexDirection="row" flexGrow={1}>
         <box
@@ -169,7 +167,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           padding={1}
         >
           {presets.length === 0 ? (
-            <text fg={theme.dim}>No presets. n to add.</text>
+            <text fg={theme.dim}>No presets yet · n to add</text>
           ) : (
             presets.map((p, i) => (
               <PresetRow key={p.id} preset={p} active={i === sel} />
@@ -189,11 +187,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           padding={1}
         >
           {!cur ? (
-            <text fg={theme.dim}>Select a preset.</text>
+            <text fg={theme.dim}>Select a preset</text>
           ) : (
             <>
               {traces.length === 0 ? (
-                <text fg={theme.dim}>No patterns. enter then a to add.</text>
+                <text fg={theme.dim}>No patterns yet · enter, then a to add</text>
               ) : (
                 traces.map((t, i) => (
                   <TraceRow key={t.id} rtp={t} active={focus === "detail" && i === traceSel} />
@@ -205,16 +203,16 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         </box>
       </box>
 
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.dim}>
-          {focus === "list"
+      <Footer
+        text={
+          focus === "list"
             ? "j/k move · enter edit · n new · r rename · Ctrl+D delete · esc back"
-            : "j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · tab/esc back"}
-        </text>
-      </box>
+            : "j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · tab/esc back"
+        }
+      />
 
       {modal.kind === "newPreset" && (
-        <OverlayBox>
+        <Overlay>
           <TextField
             label="New preset — name:"
             onSubmit={(v) => {
@@ -222,11 +220,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-        </OverlayBox>
+        </Overlay>
       )}
 
       {modal.kind === "rename" && (
-        <OverlayBox>
+        <Overlay>
           <TextField
             label="Rename preset:"
             initial={modal.name}
@@ -235,11 +233,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-        </OverlayBox>
+        </Overlay>
       )}
 
       {modal.kind === "addTrace" && (
-        <OverlayBox>
+        <Overlay>
           <TextField
             label="New RTP:"
             hint="redbug spec, e.g. lists:seq/2 -> return"
@@ -248,11 +246,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-        </OverlayBox>
+        </Overlay>
       )}
 
       {modal.kind === "editTrace" && (
-        <OverlayBox>
+        <Overlay>
           <TextField
             label="Edit RTP:"
             hint="redbug spec, e.g. lists:seq/2 -> return"
@@ -266,11 +264,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-        </OverlayBox>
+        </Overlay>
       )}
 
       {modal.kind === "limits" && (
-        <OverlayBox>
+        <Overlay>
           <TextField
             label="Limits — keep time msgs (space-separated):"
             initial={modal.draft}
@@ -280,21 +278,21 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-        </OverlayBox>
+        </Overlay>
       )}
 
       {modal.kind === "confirmPreset" && (
-        <OverlayBox>
+        <Overlay>
           <text fg={theme.fg}>{`Delete preset "${modal.name}"?`}</text>
           <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
-        </OverlayBox>
+        </Overlay>
       )}
 
       {modal.kind === "confirmTrace" && (
-        <OverlayBox>
+        <Overlay>
           <text fg={theme.fg}>Delete this pattern?</text>
           <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
-        </OverlayBox>
+        </Overlay>
       )}
     </box>
   )
@@ -321,65 +319,6 @@ function TraceRow({ rtp, active }: { rtp: Rtp; active: boolean }) {
       <text bg={bg} fg={markColor}>{`${mark} `}</text>
       <text bg={bg} fg={rtp.enabled ? fg : theme.dim}>{rtp.text}</text>
     </box>
-  )
-}
-
-function OverlayBox({ children }: { children: ReactNode }) {
-  return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      right={0}
-      bottom={0}
-      justifyContent="center"
-      alignItems="center"
-    >
-      <box
-        border
-        borderColor={theme.title}
-        backgroundColor={theme.overlay}
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        minWidth={58}
-      >
-        {children}
-      </box>
-    </box>
-  )
-}
-
-function TextField({
-  label,
-  initial,
-  hint,
-  onSubmit
-}: {
-  label: string
-  initial?: string
-  hint?: string
-  onSubmit: (value: string) => void
-}) {
-  const [value, setValue] = useState(initial ?? "")
-  return (
-    <>
-      <text fg={theme.title}>{`› ${label}`}</text>
-      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
-      <input
-        focused
-        value={value}
-        onInput={(v: string) => setValue(v)}
-        onSubmit={() => onSubmit(value)}
-        backgroundColor={theme.bg}
-        textColor={theme.fg}
-        focusedBackgroundColor={theme.selBg}
-        focusedTextColor={theme.selFg}
-      />
-      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
-    </>
   )
 }
 

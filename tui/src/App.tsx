@@ -12,6 +12,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
+import { Footer, Header, Overlay, PickRow, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SettingsScreen } from "./SettingsScreen"
@@ -297,39 +298,26 @@ function S1View({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
+      <Header title="redbug · nodes ▸ sessions" />
+
       <box
         border
         borderColor={theme.border}
         backgroundColor={theme.bg}
-        title="redbug · nodes ▸ sessions"
-        titleColor={theme.title}
         flexGrow={1}
         flexDirection="column"
         padding={1}
       >
         {rows.length === 0 ? (
-          <text fg={theme.dim}>No nodes. Press n to add one.</text>
+          <text fg={theme.dim}>No nodes yet · n to add</text>
         ) : (
           rows.map((row, i) => <TreeRow key={rowKey(row)} row={row} active={i === sel} />)
         )}
       </box>
 
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.dim}>
-          j/k · enter open · n node · s session · e edit · c connect · d delete · p presets · , settings · ? help · q quit
-        </text>
-      </box>
+      <Footer text="j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · , settings · ? help · q quit" />
 
       {modal.kind !== "none" && (
-        <box
-          position="absolute"
-          top={0}
-          left={0}
-          right={0}
-          bottom={0}
-          justifyContent="center"
-          alignItems="center"
-        >
         <ModalLayer
           modal={modal}
           presetList={presetList}
@@ -344,7 +332,6 @@ function S1View({
               setModal({ kind: "newSessionPreset", nodeId: (modal as any).nodeId, name: payload })
           }}
         />
-        </box>
       )}
     </box>
   )
@@ -403,22 +390,7 @@ function ModalLayer({
   onCommit: (kind: Modal["kind"], value: string) => void
 }) {
   const box = (title: string, children: ReactNode) => (
-    <box
-      border
-      borderColor={theme.title}
-      backgroundColor={theme.overlay}
-      flexDirection="column"
-      paddingTop={1}
-      paddingBottom={1}
-      paddingLeft={2}
-      paddingRight={2}
-      minWidth={58}
-    >
-      <text fg={theme.title}>{title}</text>
-      <box flexDirection="column" marginTop={1}>
-        {children}
-      </box>
-    </box>
+    <Overlay title={title}>{children}</Overlay>
   )
 
   switch (modal.kind) {
@@ -531,43 +503,3 @@ function Field({
   )
 }
 
-function PickRow({ label, active }: { label: string; active: boolean }) {
-  const bg = active ? theme.selBg : theme.overlay
-  const fg = active ? theme.selFg : theme.fg
-  return (
-    <box backgroundColor={bg}>
-      <text bg={bg} fg={fg}>{`${active ? "›" : " "} ${label}`}</text>
-    </box>
-  )
-}
-
-function TextField({
-  label,
-  initial,
-  hint,
-  onSubmit
-}: {
-  label: string
-  initial?: string
-  hint?: string
-  onSubmit: (value: string) => void
-}) {
-  const [value, setValue] = useState(initial ?? "")
-  return (
-    <>
-      <text fg={theme.title}>{`› ${label}`}</text>
-      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
-      <input
-        focused
-        value={value}
-        onInput={(v: string) => setValue(v)}
-        onSubmit={() => onSubmit(value)}
-        backgroundColor={theme.bg}
-        textColor={theme.fg}
-        focusedBackgroundColor={theme.selBg}
-        focusedTextColor={theme.selFg}
-      />
-      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
-    </>
-  )
-}

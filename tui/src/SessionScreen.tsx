@@ -1,11 +1,11 @@
 /** @jsxImportSource @opentui/react */
 import { useMemo, useState } from "react"
-import type { ReactNode } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import { sessionRoot, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { theme, kindColor } from "./theme"
+import { Footer, Header, Overlay, PickRow, TextField } from "./ui"
 
 declare const process: { env: Record<string, string | undefined> }
 declare const Bun: {
@@ -349,12 +349,11 @@ function SessionView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
-        <text fg={theme.title}>{`${snap.name ?? ""} `}</text>
-        <text fg={running ? theme.on : theme.dim}>{`[${snap.status ?? "stopped"}]`}</text>
+      <Header title={snap.name ?? "session"}>
+        <text fg={running ? theme.on : theme.dim}>{`  [${snap.status ?? "stopped"}]`}</text>
         <text fg={theme.dim}>{`  ${headerInfo}`}</text>
         {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (Ctrl+S)"}</text>}
-      </box>
+      </Header>
 
       {!zoom && (
       <box flexDirection="row" flexGrow={1}>
@@ -371,7 +370,7 @@ function SessionView({
         >
           <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
-            <text fg={theme.dim}>No events. Shift+S to start.</text>
+            <text fg={theme.dim}>No events yet · ⇧S to start</text>
           ) : (
             rows
               .slice(0, 300)
@@ -398,20 +397,14 @@ function SessionView({
       </box>
       )}
 
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.dim}>
-          {`[${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}]`}
-        </text>
-      </box>
+      <Footer
+        text={`[${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}]`}
+      />
 
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.dim}>
-          j/k move · enter detail · o sort · / filter · g group · l limits · z zoom · E editor · e traces · Shift+S/X start/stop · Ctrl+L clear · esc back
-        </text>
-      </box>
+      <Footer text="j/k move · enter detail · o sort · / filter · g group · l limits · z zoom · ⇧E editor · e traces · ⇧S/X start/stop · ⌃L clear · esc back" />
 
       {overlay === "filter" && (
-        <OverlayBox>
+        <Overlay>
           <text fg={theme.title}>Filter events</text>
           <box marginTop={1}>
             <FilterScopePicker scope={filterScope} onPick={setFilterScope} />
@@ -433,11 +426,11 @@ function SessionView({
             />
           </box>
           <text fg={theme.dim} marginTop={1}>Enter apply · Esc cancel</text>
-        </OverlayBox>
+        </Overlay>
       )}
 
       {overlay === "sort" && (
-        <OverlayBox>
+        <Overlay>
           <text fg={theme.title}>Sort by</text>
           <box flexDirection="column" marginTop={1}>
             {SORT_OPTS.map((s, i) => (
@@ -449,11 +442,11 @@ function SessionView({
             ))}
           </box>
           <text fg={theme.dim} marginTop={1}>j/k or Tab move · Enter apply · Esc cancel</text>
-        </OverlayBox>
+        </Overlay>
       )}
 
       {overlay === "limits" && (
-        <OverlayBox>
+        <Overlay>
           <text fg={theme.title}>Session limits</text>
           <box flexDirection="column" marginTop={1}>
             <text fg={theme.fg}>keep time msgs (space-separated)</text>
@@ -474,15 +467,15 @@ function SessionView({
             />
           </box>
           <text fg={theme.dim} marginTop={1}>Enter apply (Ctrl+S to restart if running) · Esc cancel</text>
-        </OverlayBox>
+        </Overlay>
       )}
 
       {overlay === "editor" && (
-        <OverlayBox>
+        <Overlay>
           <text fg={theme.title}>{`Traces — ${snap.name ?? ""}`}</text>
           <box flexDirection="column" marginTop={1}>
             {traces.length === 0 ? (
-              <text fg={theme.dim}>No patterns. a to add.</text>
+              <text fg={theme.dim}>No patterns yet · a to add</text>
             ) : (
               traces.map((t, i) => <RtpRow key={t.id} rtp={t} active={i === rtpSel} />)
             )}
@@ -522,7 +515,7 @@ function SessionView({
               }}
             />
           )}
-        </OverlayBox>
+        </Overlay>
       )}
 
       {zoom && selectedEvent && (
@@ -702,75 +695,6 @@ function FilterScopePicker({
       {FILTER_SCOPES.map((s) => (
         <text key={s} fg={s === scope ? theme.title : theme.dim}>{`[${s}] `}</text>
       ))}
-    </box>
-  )
-}
-
-function PickRow({ label, active }: { label: string; active: boolean }) {
-  const bg = active ? theme.selBg : theme.overlay
-  const fg = active ? theme.selFg : theme.fg
-  return (
-    <box backgroundColor={bg}>
-      <text bg={bg} fg={fg}>{`${active ? "›" : " "} ${label}`}</text>
-    </box>
-  )
-}
-
-function OverlayBox({ children }: { children: ReactNode }) {
-  return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      right={0}
-      bottom={0}
-      justifyContent="center"
-      alignItems="center"
-    >
-      <box
-        border
-        borderColor={theme.title}
-        backgroundColor={theme.overlay}
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        minWidth={58}
-      >
-        {children}
-      </box>
-    </box>
-  )
-}
-
-function TextField({
-  label,
-  initial,
-  hint,
-  onSubmit
-}: {
-  label: string
-  initial?: string
-  hint?: string
-  onSubmit: (value: string) => void
-}) {
-  const [value, setValue] = useState(initial ?? "")
-  return (
-    <box flexDirection="column" marginTop={1}>
-      <text fg={theme.title}>{`› ${label}`}</text>
-      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
-      <input
-        focused
-        value={value}
-        onInput={(v: string) => setValue(v)}
-        onSubmit={() => onSubmit(value)}
-        backgroundColor={theme.bg}
-        textColor={theme.fg}
-        focusedBackgroundColor={theme.selBg}
-        focusedTextColor={theme.selFg}
-      />
-      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
     </box>
   )
 }

@@ -1,11 +1,11 @@
 /** @jsxImportSource @opentui/react */
 import { useState } from "react"
-import type { ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import { SETTINGS_ROOT, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { theme, themeNames } from "./theme"
+import { Footer, Header, Overlay, TextField } from "./ui"
 
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 type Settings = Server.Schema.Settings
@@ -97,9 +97,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.title}>Settings</text>
-      </box>
+      <Header title="Settings" />
 
       <box
         border
@@ -127,12 +125,10 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
         <text fg={theme.dim}>ts and k columns are always shown.</text>
       </box>
 
-      <box backgroundColor={theme.bg} paddingLeft={1}>
-        <text fg={theme.dim}>j/k move · space/enter toggle or cycle · esc back</text>
-      </box>
+      <Footer text="j/k move · space/enter toggle or cycle · esc back" />
 
       {limitsDraft !== null && (
-        <OverlayBox>
+        <Overlay>
           <TextField
             label="Default limits — keep time msgs (space-separated):"
             initial={limitsDraft}
@@ -142,7 +138,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
               setLimitsDraft(null)
             }}
           />
-        </OverlayBox>
+        </Overlay>
       )}
     </box>
   )
@@ -156,62 +152,6 @@ function SettingRow({ label, value, active }: { label: string; value: string; ac
       <text bg={bg} fg={theme.dim}>{fit(label, 16)}</text>
       <text bg={bg} fg={fg}>{value}</text>
     </box>
-  )
-}
-
-function OverlayBox({ children }: { children: ReactNode }) {
-  return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      right={0}
-      bottom={0}
-      justifyContent="center"
-      alignItems="center"
-    >
-      <box
-        border
-        borderColor={theme.title}
-        backgroundColor={theme.overlay}
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        minWidth={58}
-      >
-        {children}
-      </box>
-    </box>
-  )
-}
-
-function TextField({
-  label,
-  initial,
-  onSubmit
-}: {
-  label: string
-  initial?: string
-  onSubmit: (value: string) => void
-}) {
-  const [value, setValue] = useState(initial ?? "")
-  return (
-    <>
-      <text fg={theme.title}>{`› ${label}`}</text>
-      <input
-        focused
-        value={value}
-        onInput={(v: string) => setValue(v)}
-        onSubmit={() => onSubmit(value)}
-        backgroundColor={theme.bg}
-        textColor={theme.fg}
-        focusedBackgroundColor={theme.selBg}
-        focusedTextColor={theme.selFg}
-      />
-      <text fg={theme.dim} marginTop={1}>Enter ok · Esc cancel</text>
-    </>
   )
 }
 
