@@ -42,3 +42,12 @@ export const {
   useMusubiRoot,
   useMusubiSnapshot
 } = createMusubi<Musubi.Stores>()
+
+// Fire-and-forget command sender: dispatches are optimistic and the UI re-renders
+// off pushed state, so a rejected promise is swallowed rather than thrown into React.
+type Dispatchable = { dispatchCommand: (name: any, payload: any) => Promise<unknown> }
+
+export function dispatcher<S extends Dispatchable>(store: S) {
+  return (name: Parameters<S["dispatchCommand"]>[0], payload: any = {}) =>
+    void store.dispatchCommand(name as any, payload).catch(() => {})
+}

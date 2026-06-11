@@ -3,11 +3,13 @@ import { useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
-import { PRESETS_ROOT, useMusubiRoot, useMusubiSnapshot } from "./musubi"
+import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
+import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
-import { Footer, Header, Overlay, TextField } from "./ui"
+import { Footer, Header, Overlay, RootGate, TextField } from "./ui"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
+type PresetProxy = StoreProxy<"Server.Stores.PresetStore", Musubi.Stores>
 type Preset = Server.Schema.Preset
 type Rtp = Server.Schema.Rtp
 
@@ -25,21 +27,11 @@ type Modal =
 
 export function PresetManager({ onBack }: { onBack: () => void }) {
   const root = useMusubiRoot(PRESETS_ROOT)
-
-  if (root.status === "loading")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.fg}>Loading presets…</text>
-      </box>
-    )
-  if (root.status === "error")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.off}>{`Presets error: ${root.error.message}`}</text>
-      </box>
-    )
-
-  return <PresetView store={root.store} onBack={onBack} />
+  return (
+    <RootGate root={root} loading="Loading presets…" errorLabel="Presets">
+      {(store) => <PresetView store={store} onBack={onBack} />}
+    </RootGate>
+  )
 }
 
 function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void }) {
@@ -55,8 +47,13 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
   const traces = (cur?.traces ?? []) as Rtp[]
   const traceCur = traces[Math.min(traceSel, traces.length - 1)] ?? null
 
-  const dispatch = (name: Parameters<PresetsStore["dispatchCommand"]>[0], payload: any) =>
-    void store.dispatchCommand(name as any, payload).catch(() => {})
+  // createPreset is the only root command; preset-scoped mutations dispatch on
+  // the matching child proxy (store path is the routing — no preset_id payload).
+  const createPreset = dispatcher(store)
+  const presetProxyById = (id: string): PresetProxy | undefined => {
+    const i = presets.findIndex((p) => p.id === id)
+    return i >= 0 ? store.presets[i] : undefined
+  }
 
   useKeyboard((key) => {
     const n = key.name
@@ -64,7 +61,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
     if (modal.kind !== "none") {
       if (modal.kind === "confirmPreset") {
         if (n === "y") {
-          dispatch("deletePreset", { id: modal.id })
+          const p = presetProxyById(modal.id)
+          if (p) dispatcher(p)("deletePreset")
           setModal({ kind: "none" })
           setSel((i) => Math.max(0, i - 1))
         } else if (n === "n" || n === "escape") setModal({ kind: "none" })
@@ -72,7 +70,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
       }
       if (modal.kind === "confirmTrace") {
         if (n === "y") {
-          dispatch("deletePresetTrace", { preset_id: modal.presetId, trace_id: modal.traceId })
+          const p = presetProxyById(modal.presetId)
+          if (p) dispatcher(p)("deletePresetTrace", { trace_id: modal.traceId })
           setModal({ kind: "none" })
         } else if (n === "n" || n === "escape") setModal({ kind: "none" })
         return
@@ -101,8 +100,10 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           setTraceSel((i) => Math.max(i - 1, 0))
           break
         case "space":
-          if (cur && traceCur)
-            dispatch("togglePresetTrace", { preset_id: cur.id, trace_id: traceCur.id })
+          if (cur && traceCur) {
+            const p = presetProxyById(cur.id)
+            if (p) dispatcher(p)("togglePresetTrace", { trace_id: traceCur.id })
+          }
           break
         case "a":
           if (cur) setModal({ kind: "addTrace", presetId: cur.id })
@@ -112,7 +113,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
             setModal({ kind: "editTrace", presetId: cur.id, traceId: traceCur.id, text: traceCur.text })
           break
         case "l":
-          if (cur) setModal({ kind: "limits", presetId: cur.id, draft: limitsDraft(cur.limits) })
+          if (cur) setModal({ kind: "limits", presetId: cur.id, draft: formatLimits(cur.limits) })
           break
       }
       return
@@ -216,7 +217,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           <TextField
             label="New preset — name:"
             onSubmit={(v) => {
-              if (v.trim() !== "") dispatch("createPreset", { name: v })
+              if (v.trim() !== "") createPreset("createPreset", { name: v })
               setModal({ kind: "none" })
             }}
           />
@@ -229,7 +230,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
             label="Rename preset:"
             initial={modal.name}
             onSubmit={(v) => {
-              if (v.trim() !== "") dispatch("updatePreset", { id: modal.id, name: v })
+              const p = presetProxyById(modal.id)
+              if (v.trim() !== "" && p) dispatcher(p)("updatePreset", { name: v })
               setModal({ kind: "none" })
             }}
           />
@@ -242,7 +244,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
             label="New RTP:"
             hint="redbug spec, e.g. lists:seq/2 -> return"
             onSubmit={(v) => {
-              if (v.trim() !== "") dispatch("addPresetTrace", { preset_id: modal.presetId, text: v })
+              const p = presetProxyById(modal.presetId)
+              if (v.trim() !== "" && p) dispatcher(p)("addPresetTrace", { text: v })
               setModal({ kind: "none" })
             }}
           />
@@ -256,11 +259,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
             hint="redbug spec, e.g. lists:seq/2 -> return"
             initial={modal.text}
             onSubmit={(v) => {
-              dispatch("updatePresetTrace", {
-                preset_id: modal.presetId,
-                trace_id: modal.traceId,
-                text: v
-              })
+              const p = presetProxyById(modal.presetId)
+              if (p) dispatcher(p)("updatePresetTrace", { trace_id: modal.traceId, text: v })
               setModal({ kind: "none" })
             }}
           />
@@ -273,8 +273,9 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
             label="Limits — keep time msgs (space-separated):"
             initial={modal.draft}
             onSubmit={(v) => {
-              const p = parseLimits(v)
-              if (p) dispatch("updatePresetLimits", { preset_id: modal.presetId, ...p })
+              const limits = parseLimits(v)
+              const proxy = presetProxyById(modal.presetId)
+              if (limits && proxy) dispatcher(proxy)("updatePresetLimits", limits)
               setModal({ kind: "none" })
             }}
           />
@@ -322,12 +323,3 @@ function TraceRow({ rtp, active }: { rtp: Rtp; active: boolean }) {
   )
 }
 
-function limitsDraft(l: Server.Schema.Limits): string {
-  return `${l.keep} ${l.time} ${l.msgs}`
-}
-
-function parseLimits(s: string): { keep: number; time: number; msgs: number } | null {
-  const parts = s.trim().split(/\s+/).map(Number)
-  if (parts.length !== 3 || parts.some((x) => !Number.isFinite(x) || x < 0)) return null
-  return { keep: parts[0], time: parts[1], msgs: parts[2] }
-}

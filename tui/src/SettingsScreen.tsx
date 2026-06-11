@@ -3,9 +3,10 @@ import { useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
-import { SETTINGS_ROOT, useMusubiRoot, useMusubiSnapshot } from "./musubi"
+import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
+import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, themeNames } from "./theme"
-import { Footer, Header, Overlay, TextField } from "./ui"
+import { Footer, Header, Overlay, RootGate, TextField, fit } from "./ui"
 
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 type Settings = Server.Schema.Settings
@@ -18,28 +19,18 @@ declare const process: { env: Record<string, string | undefined> }
 
 export function SettingsScreen({ onBack }: { onBack: () => void }) {
   const root = useMusubiRoot(SETTINGS_ROOT)
-
-  if (root.status === "loading")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.fg}>Loading settings…</text>
-      </box>
-    )
-  if (root.status === "error")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.off}>{`Settings error: ${root.error.message}`}</text>
-      </box>
-    )
-
-  return <SettingsView store={root.store} onBack={onBack} />
+  return (
+    <RootGate root={root} loading="Loading settings…" errorLabel="Settings">
+      {(store) => <SettingsView store={store} onBack={onBack} />}
+    </RootGate>
+  )
 }
 
 function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => void }) {
   const snap = useMusubiSnapshot(store)
   const s = snap.settings as Settings | undefined
   const cols = s?.columns ?? { name: true, pid: true, mfa: true, info: true }
-  const limits = s?.default_limits ?? { keep: 500, time: 900, msgs: 10000 }
+  const limits = s?.default_limits ?? DEFAULT_LIMITS
   const curTheme = s?.theme ?? "dark"
   const curSort = s?.default_sort ?? "ts_desc"
   const editor = process.env.EDITOR || process.env.VISUAL || "vi"
@@ -49,8 +40,8 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
 
   const rowCount = 7 // theme, sort, 4 columns, limits
 
-  const dispatch = (payload: any) =>
-    void store.dispatchCommand("updateSettings" as any, payload).catch(() => {})
+  const send = dispatcher(store)
+  const dispatch = (payload: any) => send("updateSettings", payload)
 
   const cycle = (arr: string[], cur: string) => {
     const i = arr.indexOf(cur)
@@ -64,7 +55,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
       const key = COL_KEYS[sel - 2]
       dispatch({ columns: { [key]: !cols[key] } })
     } else if (sel === 6) {
-      setLimitsDraft(`${limits.keep} ${limits.time} ${limits.msgs}`)
+      setLimitsDraft(formatLimits(limits))
     }
   }
 
@@ -155,13 +146,3 @@ function SettingRow({ label, value, active }: { label: string; value: string; ac
   )
 }
 
-function fit(s: string, n: number): string {
-  if (s.length > n) return s.slice(0, Math.max(0, n - 1)) + "…"
-  return s.padEnd(n)
-}
-
-function parseLimits(s: string): { keep: number; time: number; msgs: number } | null {
-  const parts = s.trim().split(/\s+/).map(Number)
-  if (parts.length !== 3 || parts.some((x) => !Number.isFinite(x) || x < 0)) return null
-  return { keep: parts[0], time: parts[1], msgs: parts[2] }
-}

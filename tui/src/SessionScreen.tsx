@@ -3,9 +3,10 @@ import { useMemo, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
-import { sessionRoot, useMusubiRoot, useMusubiSnapshot } from "./musubi"
+import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
+import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
-import { Footer, Header, Overlay, PickRow, TextField } from "./ui"
+import { Footer, Header, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
 
 declare const process: { env: Record<string, string | undefined> }
 declare const Bun: {
@@ -72,21 +73,11 @@ export function SessionScreen({
   onBack: () => void
 }) {
   const root = useMusubiRoot(sessionRoot(nodeId, sessionId))
-
-  if (root.status === "loading")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.fg}>Loading session…</text>
-      </box>
-    )
-  if (root.status === "error")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.off}>{`Session error: ${root.error.message}`}</text>
-      </box>
-    )
-
-  return <SessionView store={root.store} settings={settings} onBack={onBack} />
+  return (
+    <RootGate root={root} loading="Loading session…" errorLabel="Session">
+      {(store) => <SessionView store={store} settings={settings} onBack={onBack} />}
+    </RootGate>
+  )
 }
 
 function SessionView({
@@ -103,7 +94,7 @@ function SessionView({
   const renderer = useRenderer()
   const traces = (snap.traces ?? []) as Rtp[]
   const events = (snap.events ?? []) as TraceEvent[]
-  const limits = snap.limits ?? { keep: 500, time: 900, msgs: 10000 }
+  const limits = snap.limits ?? DEFAULT_LIMITS
   const running = snap.status === "running"
   const dirty = snap.dirty === true
 
@@ -150,8 +141,7 @@ function SessionView({
 
   const rtpCur = traces[Math.min(rtpSel, traces.length - 1)]
 
-  const dispatch = (name: Parameters<SessionStore["dispatchCommand"]>[0], payload: any = {}) =>
-    void store.dispatchCommand(name as any, payload).catch(() => {})
+  const dispatch = dispatcher(store)
 
   const moveSel = (delta: number) => {
     setSel((i) => clamp(i + delta, 0, count - 1))
@@ -279,7 +269,7 @@ function SessionView({
         setGroup((g) => GROUP_CYCLE[(GROUP_CYCLE.indexOf(g) + 1) % GROUP_CYCLE.length])
         break
       case "l":
-        setLimitsDraft(`${limits.keep} ${limits.time} ${limits.msgs}`)
+        setLimitsDraft(formatLimits(limits))
         setOverlay("limits")
         break
       case "z":
@@ -809,17 +799,6 @@ function segs(text: string, query: string): { t: string; hit: boolean }[] {
     i = idx + q.length
   }
   return out.length === 0 ? [{ t: text, hit: false }] : out
-}
-
-function parseLimits(s: string): { keep: number; time: number; msgs: number } | null {
-  const parts = s.trim().split(/\s+/).map(Number)
-  if (parts.length !== 3 || parts.some((x) => !Number.isFinite(x) || x < 0)) return null
-  return { keep: parts[0], time: parts[1], msgs: parts[2] }
-}
-
-function fit(s: string, n: number): string {
-  if (s.length > n) return s.slice(0, Math.max(0, n - 1)) + "…"
-  return s.padEnd(n)
 }
 
 function wrap(s: string, width: number): string[] {

@@ -140,7 +140,7 @@ defmodule Server.Trace.Runner do
             |> Map.put(:target, target)
             |> Map.put(:status, "running")
             |> Map.put(:keep, session.limits.keep)
-            |> Map.put(:applied_sig, signature(enabled, session.limits))
+            |> Map.put(:applied_sig, Server.Trace.Signature.compute(session.traces, session.limits))
             |> maybe_separator(separator?)
 
           Config.set_session_status(state.session_id, "running")
@@ -222,10 +222,6 @@ defmodule Server.Trace.Runner do
 
   defp push_event(state, event) do
     %{state | buffer: Enum.take([event | state.buffer], state.keep)}
-  end
-
-  defp signature(enabled, limits) do
-    :erlang.phash2({Enum.map(enabled, & &1.text), limits.time, limits.msgs})
   end
 
   defp status_payload(state), do: %{status: state.status, applied_sig: state.applied_sig}

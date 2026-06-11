@@ -8,11 +8,12 @@ import {
   NODES_ROOT,
   PRESETS_ROOT,
   SETTINGS_ROOT,
+  dispatcher,
   useMusubiRoot,
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Footer, Header, Overlay, PickRow, TextField } from "./ui"
+import { Footer, Header, Notice, Overlay, PickRow, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SettingsScreen } from "./SettingsScreen"
@@ -22,6 +23,9 @@ declare const process: { exit(code?: number): never }
 type NodesStore = StoreProxy<"Server.Stores.NodesRoot", Musubi.Stores>
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
+
+type NodeProxy = StoreProxy<"Server.Stores.NodeStore", Musubi.Stores>
+type SessionProxy = StoreProxy<"Server.Stores.SessionItemStore", Musubi.Stores>
 
 type Node = Server.Schema.Node
 type Session = Server.Schema.Session
@@ -33,8 +37,14 @@ type Screen =
   | { name: "settings" }
 
 type Row =
-  | { kind: "node"; node: Node }
-  | { kind: "session"; node: Node; session: Session }
+  | { kind: "node"; node: Node; nodeProxy: NodeProxy }
+  | {
+      kind: "session"
+      node: Node
+      session: Session
+      nodeProxy: NodeProxy
+      sessionProxy: SessionProxy
+    }
 
 type Modal =
   | { kind: "none" }
@@ -52,21 +62,12 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "tree" })
 
   if (nodes.status === "loading" || presets.status === "loading" || settings.status === "loading")
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.fg}>Connecting to BEAM…</text>
-      </box>
-    )
+    return <Notice text="Connecting to BEAM…" />
   const err =
     (nodes.status === "error" && nodes.error) ||
     (presets.status === "error" && presets.error) ||
     (settings.status === "error" && settings.error)
-  if (err)
-    return (
-      <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
-        <text fg={theme.off}>{`Connect error: ${err.message}`}</text>
-      </box>
-    )
+  if (err) return <Notice tone="error" text={`Connect error: ${err.message}`} />
 
   return (
     <Router
@@ -123,13 +124,21 @@ function Router({
   )
 }
 
-function flatten(nodes: readonly Node[]): Row[] {
+function flatten(nodes: readonly Node[], store: NodesStore): Row[] {
   const rows: Row[] = []
-  for (const node of nodes) {
-    rows.push({ kind: "node", node })
-    for (const session of node.sessions)
-      rows.push({ kind: "session", node, session })
-  }
+  nodes.forEach((node, ni) => {
+    const nodeProxy = store.nodes[ni]
+    rows.push({ kind: "node", node, nodeProxy })
+    node.sessions.forEach((session, si) => {
+      rows.push({
+        kind: "session",
+        node,
+        session,
+        nodeProxy,
+        sessionProxy: nodeProxy.sessions[si]
+      })
+    })
+  })
   return rows
 }
 
@@ -149,7 +158,7 @@ function S1View({
   const nodesSnap = useMusubiSnapshot(nodesStore)
   const presetsSnap = useMusubiSnapshot(presetsStore)
 
-  const rows = flatten(nodesSnap.nodes ?? [])
+  const rows = flatten(nodesSnap.nodes ?? [], nodesStore)
   const [sel, setSel] = useState(0)
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
@@ -160,8 +169,13 @@ function S1View({
   const cur = rows[Math.min(sel, rows.length - 1)]
   const nodeContext = cur?.kind === "node" ? cur.node : cur?.session ? cur.node : null
 
-  const dispatch = (name: Parameters<NodesStore["dispatchCommand"]>[0], payload: any) =>
-    void nodesStore.dispatchCommand(name as any, payload).catch(() => {})
+  // createNode is the only root command; node/session mutations dispatch on the
+  // matching child proxy (the store path is the routing — no ids in payload).
+  const createNode = dispatcher(nodesStore)
+  const nodeProxyById = (id: string): NodeProxy | undefined => {
+    const i = (nodesSnap.nodes ?? []).findIndex((n) => n.id === id)
+    return i >= 0 ? nodesStore.nodes[i] : undefined
+  }
 
   // preset options for the new-session picker: "blank" + each preset
   const presetList = presetsSnap.presets ?? []
@@ -190,11 +204,9 @@ function S1View({
         else if (name === "escape") setModal({ kind: "none" })
         else if (name === "return") {
           const fromPresetId = presetIdx === 0 ? null : presetList[presetIdx - 1].id
-          dispatch("createSession", {
-            node_id: modal.nodeId,
-            name: modal.name,
-            from_preset_id: fromPresetId
-          })
+          const np = nodeProxyById(modal.nodeId)
+          if (np)
+            dispatcher(np)("createSession", { name: modal.name, from_preset_id: fromPresetId })
           setModal({ kind: "none" })
         }
         return
@@ -207,8 +219,11 @@ function S1View({
         else if (name === "return") {
           if (nameDraft.trim() !== "" && cookieDraft.trim() !== "") {
             if (modal.kind === "newNode")
-              dispatch("createNode", { name: nameDraft, cookie: cookieDraft })
-            else dispatch("editNode", { id: modal.id, name: nameDraft, cookie: cookieDraft })
+              createNode("createNode", { name: nameDraft, cookie: cookieDraft })
+            else {
+              const np = nodeProxyById(modal.id)
+              if (np) dispatcher(np)("editNode", { name: nameDraft, cookie: cookieDraft })
+            }
             setModal({ kind: "none" })
           }
         }
@@ -254,28 +269,25 @@ function S1View({
         }
         break
       case "c":
-        if (nodeContext)
-          dispatch(nodeContext.connected ? "disconnect" : "connect", {
-            node_id: nodeContext.id
-          })
+        if (cur)
+          dispatcher(cur.nodeProxy)(cur.node.connected ? "disconnect" : "connect")
         break
       case "d":
-        if (cur?.kind === "node")
+        if (cur?.kind === "node") {
+          const proxy = cur.nodeProxy
           setModal({
             kind: "confirm",
             label: `Delete node "${cur.node.name}" and all its sessions?`,
-            run: () => dispatch("deleteNode", { id: cur.node.id })
+            run: () => dispatcher(proxy)("deleteNode")
           })
-        else if (cur?.kind === "session")
+        } else if (cur?.kind === "session") {
+          const proxy = cur.sessionProxy
           setModal({
             kind: "confirm",
             label: `Delete session "${cur.session.name}"?`,
-            run: () =>
-              dispatch("deleteSession", {
-                node_id: cur.node.id,
-                session_id: cur.session.id
-              })
+            run: () => dispatcher(proxy)("deleteSession")
           })
+        }
         break
       case "p":
         onOpenPresets()

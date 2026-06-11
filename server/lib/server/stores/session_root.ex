@@ -10,11 +10,13 @@ defmodule Server.Stores.SessionRoot do
   touches `:redbug`.
 
   `dirty` means the running trace's compiled patterns/limits differ from the
-  current (edited) config — surfaced as the "unapplied" marker. Its signature
-  MUST stay in sync with `Server.Trace.Runner` `signature/2`.
+  current (edited) config — surfaced as the "unapplied" marker, computed via
+  the shared `Server.Trace.Signature`.
   """
 
   use Musubi.Store, root: true
+
+  import Server.Stores.Payload, only: [get: 2, get: 3, put_if: 4, map_trace: 3]
 
   alias Server.{Config, Trace}
 
@@ -254,7 +256,10 @@ defmodule Server.Stores.SessionRoot do
 
   defp recompute_dirty(socket) do
     a = socket.assigns
-    dirty = a.status == "running" and signature(a.traces, a.limits) != a.applied_sig
+    dirty =
+      a.status == "running" and
+        Server.Trace.Signature.compute(a.traces, a.limits) != a.applied_sig
+
     assign(socket, :dirty, dirty)
   end
 
@@ -277,26 +282,5 @@ defmodule Server.Stores.SessionRoot do
     end
   end
 
-  defp map_trace(traces, id, fun) do
-    Enum.map(traces, fn t -> if t.id == id, do: fun.(t), else: t end)
-  end
-
   defp keep(socket), do: socket.assigns.limits.keep
-
-  # Must match Server.Trace.Runner.signature/2.
-  defp signature(traces, limits) do
-    enabled = Enum.filter(traces, & &1.enabled)
-    :erlang.phash2({Enum.map(enabled, & &1.text), limits.time, limits.msgs})
-  end
-
-  defp get(payload, key, default \\ nil) do
-    Map.get(payload, key, Map.get(payload, String.to_atom(key), default))
-  end
-
-  defp put_if(map, payload, key, target) do
-    case get(payload, key) do
-      nil -> map
-      value -> Map.put(map, target, value)
-    end
-  end
 end

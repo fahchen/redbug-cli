@@ -117,3 +117,42 @@ export function truncate(s: string, n: number): string {
   if (s.length <= n) return s
   return s.slice(0, Math.max(0, n - 1)) + "…"
 }
+
+// Truncate to `n` (with ellipsis) and pad to a fixed width — for table columns.
+export function fit(s: string, n: number): string {
+  if (s.length > n) return s.slice(0, Math.max(0, n - 1)) + "…"
+  return s.padEnd(n)
+}
+
+// Full-screen single-line message (loading / error states).
+export function Notice({ text, tone = "info" }: { text: string; tone?: "info" | "error" }) {
+  return (
+    <box backgroundColor={theme.bg} flexGrow={1} padding={1}>
+      <text fg={tone === "error" ? theme.off : theme.fg}>{text}</text>
+    </box>
+  )
+}
+
+type RootState<S> =
+  | { status: "loading" }
+  | { status: "error"; error: { message: string } }
+  | { status: string; store: S }
+
+// Gate a single musubi root: render loading/error notices, else hand the store
+// to `children`. Collapses the boilerplate every screen used to repeat.
+export function RootGate<S>({
+  root,
+  loading,
+  errorLabel,
+  children
+}: {
+  root: RootState<S>
+  loading: string
+  errorLabel: string
+  children: (store: NonNullable<S>) => ReactNode
+}): ReactNode {
+  if (root.status === "loading") return <Notice text={loading} />
+  if (root.status === "error")
+    return <Notice tone="error" text={`${errorLabel} error: ${(root as { error: { message: string } }).error.message}`} />
+  return children((root as { store: S }).store as NonNullable<S>)
+}
