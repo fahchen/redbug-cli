@@ -7,74 +7,82 @@ Built on musubi (server-authoritative, JSON Patch over Phoenix ws) + opentui/Rea
 
 1. **Tree** — full-screen Node▸Session tree. Management + navigation. Root.
 2. **Session Events** — left events list / right detail pane (detail shown on `enter`).
-3. **Session/Trace Editor** — overlay, edit RTP list + limits, start/stop.
-4. **Preset Manager** — overlay, preset CRUD.
-5. **Node Editor** — overlay, node add/edit (name, cookie).
-6. **Settings** — overlay, column visibility + global prefs.
-7. **Help** — overlay (`?`), keybindings + kind legend.
+3. **Trace Editor** — overlay *inside* Session Events (`e`), edit RTP list + save-as-preset.
+4. **Preset Manager** — full screen, entered via `p` from Tree. Preset CRUD.
+5. **Node Editor** — overlay (Tree `n`/`e`), node add/edit (name, cookie).
+6. **Settings** — full screen, entered via `,` from Tree. Column visibility + global prefs.
+7. **Help** — overlay (`?` from Tree), keybindings + kind legend.
+
+Entry keys (`p` presets, `,` settings, `?` help) are wired on the **Tree only**;
+the other screens return to Tree via `esc` first.
 
 Navigation:
 ```
 S1 Tree ──enter session──> S2 Session Events ──esc──> S1
-   │ n/e/p ...                 │ enter event -> right detail pane
-   v overlays S3..S7           │ z -> zoom overlay, E -> $EDITOR
+   │ n/e (node) overlays S5    │ enter event -> right detail pane
+   │ p -> S4, , -> S6, ? -> S7 │ e -> S3 trace editor overlay · l -> limits
+   │ s -> new-session flow     │ z -> zoom overlay, ⇧E -> $EDITOR
 ```
 
 ---
 
-## Screen 1 — Tree [CONFIRMED]
-
+## Screen 1 — Tree
 Full-screen Node▸Session tree. Manage nodes/sessions; enter a session to view its events.
 
 ```
-┌─ Nodes / Sessions ──────────────────────────┐
-│ ● app@host1                                  │
-│   ├▶ sess-A   ·run    1.2k evt               │
-│   └○ sess-B   ·stop                          │
-│ ○ app@host2                                  │
-│   └○ sess-C   ·draft                         │
-│ + add node                                   │
+┌─ redbug · nodes ▸ sessions ─────────────────┐
+│ ● app@host1   (2)                            │
+│     • sess-A   [running]                     │
+│     • sess-B   [stopped]                     │
+│ ○ app@host2   (1)                            │
+│     • sess-C   [draft]                       │
 └──────────────────────────────────────────────┘
 ```
 
-- node row: status dot (● connected / ○ disconnected) + name (`app@host`).
-- session child: status (`·run` / `·stop` / `·draft`) + name + event count if any.
-- trailing `+ add node`.
+- node row: status dot (● connected / ○ disconnected) + name + `(session count)`.
+- session child: `• name [status]` (`running` / `stopped` / `draft`).
+- empty tree shows `No nodes yet · n to add` (no trailing `+ add` row).
 
 ### Keys
-| key   | action                                   |
-|-------|------------------------------------------|
-| j/k   | move                                     |
-| enter | enter session → S2 (or expand node)      |
-| n     | new node (→ S5)                          |
-| s     | new session, pick preset to init (→ S3)  |
-| e     | edit selected: node row → S5, session row → S3 |
-| c     | connect/disconnect current node          |
-| p     | preset manager (→ S4)                     |
-| ?     | help (→ S7)                              |
-| q     | quit                                     |
+| key   | action                                            |
+|-------|---------------------------------------------------|
+| j/k   | move                                              |
+| enter | enter session → S2 (session row only)             |
+| n     | new node (→ S5)                                   |
+| s     | new session on the current node (name → preset pick) |
+| e     | edit the current node → S5 (name + cookie)        |
+| c     | connect/disconnect current node                   |
+| d     | delete current node (+ its sessions) / session — inline confirm |
+| p     | preset manager (→ S4)                             |
+| ,     | settings (→ S6)                                   |
+| ?     | help (→ S7)                                        |
+| q     | quit (inline confirm)                             |
+
+Note: structural delete here is bare `d` + a confirm prompt (the confirm is the
+safeguard), not `Ctrl+D`. See [Global Conventions](#global-conventions).
 
 ### New session flow (`s`)
-Node context = selected node row, or the parent node of a selected session row.
+Node context = the current node row, or the parent node of the current session row.
+First a name prompt, then an "init from" preset picker:
 ```
-┌─ New session on app@host1 ───────────────────────┐
-│ name: |sess-D_              (auto-generated, editable) │
-│ ── init from ──                                   │
-│ ▸ (blank draft)                                   │
-│   lists-trace        2 traces                     │
-│   genserver-call     1 trace                      │
-│ enter create · esc cancel                         │
+┌─ New session ────────────────────────────────────┐
+│ name: |sess-D_                                    │
+└──────────────────────────────────────────────────┘
+┌─ Session "sess-D" — init from ───────────────────┐
+│ ▸ (blank)                                         │
+│   lists-trace                                     │
+│   genserver-call                                  │
+│ j/k move · Enter create · Esc cancel              │
 └──────────────────────────────────────────────────┘
 ```
-- name auto-generated (sess-A/B/C…), editable.
-- pick a preset → deep-clone its traces + limits; pick `(blank draft)` → empty draft.
-- when no presets exist, only `(blank draft)` is shown.
-- after create → opens S3 (Trace Editor) with the cloned content.
+- name is free text (no auto-generation).
+- pick a preset → deep-clone its traces + limits; pick `(blank)` → empty draft.
+- when no presets exist, only `(blank)` is shown.
+- after create the session is added to the tree; open it (`enter`) then `e` to edit traces.
 
 ---
 
-## Screen 2 — Session Events [CONFIRMED]
-
+## Screen 2 — Session Events
 Entered via `enter` on a session. Default: full-width events list (live stream).
 `enter` on an event reveals a fixed-width right **Detail** pane.
 
@@ -153,10 +161,10 @@ info content by kind:
   - `j/k` (or ↑/↓): scroll detail content.
   - `ctrl+j/k`: move to prev/next event (detail follows), in current filter/sort visible order.
   - `z`: zoom → full-screen overlay of detail.
-  - `E`: export event as **elixir term** to a temp file, open in `$EDITOR` (read-only inspect).
-    Available both in detail focus AND in row focus (list).
+  - `⇧E`: export event as **elixir term** to a temp file, open in `$EDITOR` (read-only inspect).
+    Available in detail focus, in row focus (list), and in zoom.
   - `esc`: close detail, back to full-width list.
-- `z` (zoom overlay) and `E` ($EDITOR) coexist: zoom = quick in-TUI fullscreen, E = external deep inspect.
+- `z` (zoom overlay) and `⇧E` ($EDITOR) coexist: zoom = quick in-TUI fullscreen, ⇧E = external deep inspect.
 
 ### Sort / Filter / Group (events list)
 - **sort**: by ts / kind / pid / mfa, asc/desc. `o` opens a floating dropdown
@@ -171,19 +179,24 @@ info content by kind:
 | key      | action                                          |
 |----------|-------------------------------------------------|
 | j/k      | move selection (list) / scroll (when detail focus) |
-| enter    | reveal/focus Detail pane for selected event     |
-| ctrl+j/k | prev/next event (detail follows), visible order |
+| enter    | reveal + focus Detail pane for selected event   |
+| ctrl+j/k | prev/next event (detail focus, detail follows)  |
 | o        | sort dropdown                                   |
 | /        | filter (scope + input)                          |
-| g        | group                                           |
+| g        | cycle group (none → pid → mfa → kind)           |
+| l        | edit session limits (overlay)                   |
 | z        | zoom detail (fullscreen overlay)                |
-| E        | open event in `$EDITOR` (elixir term)           |
-| tab      | switch focus list ↔ detail                      |
-| S        | start session                                   |
-| X        | stop session                                    |
-| e        | edit traces (→ S3)                              |
+| ⇧E       | open event in `$EDITOR` (elixir term)           |
+| tab      | focus Detail (only when detail open)            |
+| e        | open trace editor overlay (→ S3)                |
+| ⇧S       | start session                                   |
+| ⇧X       | stop session                                    |
+| Ctrl+S   | apply & restart (push staged edits to live)     |
 | Ctrl+L   | clear current session buffer                     |
 | esc      | close detail; or return to S1 (tree)            |
+
+Header shows `[status]`, current `sort/filter/group`, and `⚠ unapplied (Ctrl+S)`
+when there are staged edits. Footer mirrors this key list.
 
 ### Event lifecycle
 - events live in the **controller session's memory** (each session's musubi store holds a
@@ -192,7 +205,7 @@ info content by kind:
 - **stop does NOT clear events** (retained for offline review; stop ≠ clear).
 - **restart keeps events** and inserts a separator marker (`── restarted HH:MM:SS ──`); no history loss.
 - **manual clear**: `Ctrl+L` clears the current session's buffer (data loss → Ctrl convention).
-- buffer overflow: oldest events evicted per `keep` (PoC: stream `limit -500`).
+- buffer overflow: oldest events evicted per `keep` (via stream `limit -500`).
 - controller restart → events lost (in-memory). TUI reconnect → server-authoritative,
   store still alive on controller → reconnect restores current buffer snapshot.
 
@@ -204,21 +217,26 @@ info content by kind:
 
 ## Global Conventions
 
-### Destructive / heavy ops require Ctrl modifier
-Operations that lose data, are irreversible, or are costly use a `Ctrl+` key.
-Lightweight reversible ops use bare keys (move, select, toggle, start/stop, filter/sort, connect).
+### Destructive / heavy ops
+Heavy/irreversible ops mostly use a `Ctrl+` key; lightweight reversible ops use bare
+keys (move, select, toggle, start/stop, filter/sort, connect). The keymap is **not fully
+uniform** — tree-level structural deletes use bare `d` (the confirm prompt is the
+safeguard), while editor/preset deletes use `Ctrl+D`.
 
-| op                         | key      |
-|----------------------------|----------|
-| delete RTP                 | `Ctrl+D` |
-| delete node/session/preset | `Ctrl+D` |
-| save as preset             | `Ctrl+W` |
-| apply & restart (running)  | `Ctrl+S` |
-| clear session buffer       | `Ctrl+L` |
+| op                                  | key      | confirm?        |
+|-------------------------------------|----------|-----------------|
+| delete node / session (Tree)        | `d`      | y/n prompt      |
+| delete preset (Preset Manager list) | `Ctrl+D` | y/n prompt      |
+| delete preset trace (Preset detail) | `Ctrl+D` | y/n prompt      |
+| delete RTP (Trace editor overlay)   | `Ctrl+D` | none (immediate)|
+| save as preset (Trace editor)       | `Ctrl+W` | name prompt     |
+| apply & restart (running session)   | `Ctrl+S` | none            |
+| clear session buffer                | `Ctrl+L` | none            |
+| quit (Tree)                         | `q`      | y/n prompt      |
 
-### Tiered confirmation (by cost)
-- **Structural delete** (node / session / preset): Ctrl modifier **+** inline confirm prompt.
-- **Item-level delete** (RTP): Ctrl modifier only, no second confirm.
+### Confirmation (by cost)
+- **Structural delete** (node / session / preset) and **preset trace delete**: y/n prompt.
+- **Trace-editor RTP delete**: `Ctrl+D` only, no prompt (the Ctrl modifier is the safeguard).
 
 ### esc / quit
 - `esc` closes the topmost overlay (or detail pane) first; from S1 (tree) `esc` does nothing.
@@ -226,9 +244,10 @@ Lightweight reversible ops use bare keys (move, select, toggle, start/stop, filt
 
 ---
 
-## Screen 3 — Session/Trace Editor [CONFIRMED]
-
-Overlay. Entered from S1 (`s` new / `e` edit) or S2 (`e`). Edit RTP list + limits, control start/stop.
+## Screen 3 — Trace Editor
+Overlay rendered **inside** Session Events (S2), opened with `e`. Edits the session's
+RTP list and offers save-as-preset. Start/stop and limits are **not** in this overlay —
+they live on the S2 screen (`⇧S`/`⇧X` start/stop, `l` limits, `Ctrl+S` apply & restart).
 
 **RTP** = Redbug Trace Pattern, the string passed to `:redbug.start/2`:
 `Module:Function/Arity [when Guard] -> Actions` (e.g. `lists:seq -> return`,
@@ -269,125 +288,60 @@ on demand, or is prompted on exit.
   - do NOT affect live (take effect immediately, no marker/restart): rename, `keep` (TUI buffer cap),
     column visibility, theme, etc.
 
-### States
+### Overlay (as built)
+```
+┌─ Traces — sess-A ────────────────────────────────────────────┐
+│  [x] lists:seq/2 -> return                                    │
+│  [x] M:f/2 -> return;stack                                    │
+│  [ ] gen_server:call -> return            <- disabled, dim    │
+│ j/k move · space toggle · a add · e edit · Ctrl+D del · Ctrl+W save preset · esc close
+└────────────────────────────────────────────────────────────────┘
+```
+- `[x]`/`[ ]` = enabled / disabled (dim). Empty list shows `No patterns yet · a to add`.
+- `space` toggles the selected RTP; `a` opens an add field; `e` edits the selected RTP;
+  both are single-line TextField inputs (`enter` submits, `esc` cancels, empty discarded).
+- `Ctrl+D` deletes the selected RTP immediately (no confirm; the modifier is the safeguard).
+- `Ctrl+W` opens save-as-preset: a name field that always **creates a new** preset
+  (no overwrite picker).
+- `esc` closes the overlay back to the S2 list.
 
-**1. stopped (default)**
-```
-┌─ Session: sess-A  @ app@host1 ──────────────────────────────┐
-│ Traces:                                                      │
-│  [x] lists:seq -> return                                     │
-│  [x] M:f/2 -> return;stack                                   │
-│  [ ] gen_server:call -> return            <- disabled, dim   │
-│  + add RTP                                                   │
-│ Limits:  time 24h   msgs 1e6   keep 500                      │
-│ Status:  ○ stopped                                           │
-│ [S start]                          [Ctrl+W save as preset]   │
-└──────────────────────────────────────────────────────────────┘
- j/k move · space toggle · enter edit · a add · Ctrl+D delete · esc back
-```
+All edits auto-persist to config on commit. Editing while a session is **running** does
+not restart redbug — the change is staged; the S2 header shows `⚠ unapplied (Ctrl+S)`,
+and `Ctrl+S` (on the S2 screen) applies + restarts.
 
-**2a. running, clean**
-```
-│ Status:  ● running · 1.2k events · 02:13                     │
-│ [X stop]                           [Ctrl+W save as preset]   │
-```
+### Design decisions
+- **RTP editing = plain text** (raw redbug RTP string), not a structured wizard.
+  redbug's expressiveness (guards, `->return;stack`, wildcards) is hard to wizard;
+  users are Elixir/Erlang devs; redbug validates on start, errors echoed to Status.
+- **no explicit save**: all edits (add / edit / toggle / delete) auto-persist on commit.
+  `Ctrl+S` is NOT a save — it only means "apply & restart" for a running session.
+- **No source-preset pointer**: a session does NOT retain a reference to the preset it
+  was created from. Preset → session is a one-time clone (traces + limits). The only
+  preset op on a session is save-as-preset (`Ctrl+W`). To "revert", clone the preset again.
 
-**2b. running, dirty (staged edits)**
-```
-│ Traces:  (* = staged, live trace still on old config)        │
-│ *[x] lists:seq -> return;stack          <- changed actions   │
-│  [x] M:f/2 -> return;stack                                   │
-│ *[x] gen_server:call -> return          <- newly enabled     │
-│ *+ ets:lookup -> return                 <- newly added       │
-│ Status:  ● running · ⚠ unapplied edits · 1.4k events         │  (yellow)
-│ [Ctrl+S apply & restart]  [X stop]       [Ctrl+W save as preset] │
-```
-
-**3. draft (empty session)**
-```
-│ Session: sess-C @ app@host2  [draft]                         │
-│ Traces:  (empty — no RTP yet)                                │
-│  + add RTP                                                   │
-│ Status:  · draft                                            │
-│ [S start] dim (needs >=1 enabled RTP)   [Ctrl+W] dim         │
-```
-
-**4. inline edit RTP (enter)**
-```
-│  [x] |M:f/2 -> return;stack_              <- editing, cursor  │
-│      └ syntax: Mod:Fun/Arity [when …] -> return;stack        │
-│ enter / esc commit (auto-saved)                              │
-```
-
-**5. add new RTP (a)**
-```
-│  |_                                        <- new empty line  │
-│   └ syntax: Mod:Fun/Arity [when …] -> return;stack           │
-│ enter / esc commit (empty discarded)                         │
-```
-
-**6. apply/start failed**
-```
-│ Status:  ✗ apply failed: {badrpc, nodedown} · now stopped    │  (red)
-│ [S retry]                          [Ctrl+W save as preset]   │
-```
-
-**7. inline edit limits (enter on Limits row)**
-```
-│ Limits:  time |24h_   msgs 1e6   keep 500   <- time field    │
-│ tab next field · enter / esc commit (auto-saved)             │
-```
-
-**8. delete RTP (item-level, Ctrl+D, no second confirm)**
-Deletes immediately (Ctrl modifier is the safeguard).
-
-**8b. save as preset (Ctrl+W) — overwrite or new**
-```
-┌─ Save as preset ─────────────────────────────────┐
-│ name: |_                                          │
-│ ── existing (select to overwrite) ──              │
-│   lists-trace        2 traces                     │
-│   genserver-call     1 trace                      │
-│ type new name = create · select existing = overwrite │
-│ enter save · esc cancel                           │
-└────────────────────────────────────────────────────┘
-```
-- typing a new name → create new preset.
-- selecting (or typing a name matching) an existing preset → overwrite.
-- overwrite is a data change → second confirm:
-```
-┌─ Overwrite preset? ──────────────────────────────┐
-│ "lists-trace" will be replaced by this session's traces. │
-│  [y] overwrite   [n/esc] cancel                   │
-└────────────────────────────────────────────────────┘
-```
-
-**9. exit while running with unapplied-to-live edits → prompt**
-```
-┌─ Unapplied to live trace ─────────────────────┐
-│ sess-A has 3 config changes not yet applied.  │
-│  [Ctrl+S]  Apply & restart now                │
-│  [enter]   Leave running (apply later)        │
-│  [esc]     Cancel (stay on editor)            │
-└────────────────────────────────────────────────┘
-```
-- edits are already saved to config; this only concerns pushing them to the live trace.
-- Apply & restart: restart redbug with the new config.
-- Leave running: keep the live trace on the old config; the `*`/`⚠` markers persist until applied.
+### redbug cannot hot-add patterns (verified)
+`redbug.start/2` is a singleton session; patterns compiled at start, no add API
+(already-running → `redbug_already_started`). Changing patterns = stop + start.
+But restart is cheap: event buffer is client-side (musubi stream), so restart only
+causes a ~tens-of-ms capture gap + resets redbug's own msgs/time counters; buffer persists.
 
 ### Constraints
 - one running session per node; starting another warns/stops the other.
 - RTP not validated client-side; redbug validates, failures shown in Status.
 - start requires >=1 enabled RTP.
 - limits: `keep` is TUI-side buffer cap (stream limit); `time`/`msgs` are redbug-side.
-- **start auto-connects**: if the node is disconnected, `S` first connects
-  (`⟳ connecting…`) then starts redbug; connect failure → start fails (state 6).
-  `X` stop does NOT disconnect (connection reused); disconnect is manual via `c`.
+- **start auto-connects**: if the node is disconnected, `⇧S` first connects then starts
+  redbug; connect failure → start fails. `⇧X` stop does NOT disconnect (connection reused);
+  disconnect is manual via `c` on the Tree.
+
+### Deferred (designed, not yet implemented)
+Per-row staged `*` markers, inline limits-in-editor, inline session rename, apply-failed
+state, save-as-preset overwrite + confirm, and the exit-while-unapplied prompt are in the
+original design but not implemented. The dirty signal is the single S2 header marker.
 
 ---
 
-## Screen 4 — Preset Manager [CONFIRMED]
-
+## Screen 4 — Preset Manager
 Overlay, entered via `p` from any screen. A preset is a reusable, node-agnostic
 trace template storing **traces (RTP list) + limits** (time/msgs/keep).
 
@@ -409,9 +363,11 @@ trace template storing **traces (RTP list) + limits** (time/msgs/keep).
 │   ets-ops            3 traces                     │
 │   message-flow       send + recv                 │
 │ + new preset                                     │
-│ enter view/edit · n new · Ctrl+D delete · esc back │
+│ j/k move · enter edit · n new · r rename · Ctrl+D delete · esc back │
 └──────────────────────────────────────────────────┘
 ```
+- `enter`/`tab` opens the detail pane (focus right); `r` renames inline; `Ctrl+D`
+  deletes the preset (y/n confirm). The list is a two-pane layout (presets left, traces right).
 
 **2. view/edit a preset (enter)**
 ```
@@ -422,13 +378,14 @@ trace template storing **traces (RTP list) + limits** (time/msgs/keep).
 │  [x] lists:map -> return;stack                    │
 │  + add RTP                                        │
 │ Limits:  time 24h   msgs 1e6   keep 500           │
-│ space toggle · enter edit RTP · a add · Ctrl+D del │
-│ esc back (edits auto-saved)                        │
+│ j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · tab/esc back │
 └──────────────────────────────────────────────────┘
 ```
-- reuses S3's Traces + Limits editing UI, but **no start/stop** (preset is a template).
-- edits auto-persist on commit (no Ctrl+S; no staged/restart concept — preset isn't live).
-- **rename inline**: `enter` on the `name:` row → inline rename (`enter`/`esc` commit).
+- detail-pane (focus right): `space` toggle trace, `a` add RTP, `e` edit RTP,
+  `l` edit limits (modal), `Ctrl+D` delete trace (**y/n confirm** — unlike the session
+  trace editor, which deletes immediately), `tab`/`esc` back to list.
+- **no start/stop** (preset is a template); edits auto-persist on commit (no staged/restart).
+- **rename**: `r` on the list (focus left) → inline rename modal (`enter`/`esc` commit).
 
 **3. new preset (n)**
 ```
@@ -450,72 +407,74 @@ trace template storing **traces (RTP list) + limits** (time/msgs/keep).
 
 ---
 
-## Screen 5 — Node Editor [CONFIRMED]
-
+## Screen 5 — Node Editor
 Overlay, entered from S1 `n` (new) / `e` (edit node). Add/edit a connection target.
 
 ```
-┌─ Node ───────────────────────────────────────────┐
-│ name:    |app@host_                               │
-│ cookie:  ••••••                                   │
-│ tab next field · enter save · esc cancel          │
+┌─ New node ────────────────────────────────────────┐
+│ › name    name@host (longname), e.g. myapp@…      │
+│   |myapp@127.0.0.1_                               │
+│   cookie  Erlang distribution cookie; must match  │
+│   |______                                         │
+│ Tab switch field · Enter save · Esc cancel        │
 └──────────────────────────────────────────────────┘
 ```
+Both `name` and `cookie` are required (Enter is a no-op until both are non-empty).
 
 Fields:
-- **name**: Erlang node name `app@host` (longname). Show a format hint while typing
-  (`name@host`); no hard client-side validation — connection errors are reported on connect.
-- **cookie**: distributed cookie. Masked on input (`••••`).
+- **name**: Erlang node name `app@host` (longname). A format hint is shown beneath the
+  field; no hard client-side validation — connection errors are reported on connect.
+- **cookie**: distributed cookie. Shown in plain text (not masked).
 
 ### Decisions
 - **cookie stored plaintext** in `~/.redbug/config.json`. cookie == RCE, so the config
   file should be `0600` (owner-only) even though stored in clear.
 - **name validation**: none up front; errors surface on connect
   (`✗ nodedown` / bad cookie / etc.). Input shows a `name@host` hint only.
-- **delete node cascades to its sessions** (structural → second confirm).
+- **delete node cascades to its sessions** (Tree `d` → y/n confirm).
 
 ### Connect feedback (on `c` / save)
 ```
 │ Status: ⟳ connecting…  /  ✓ connected  /  ✗ nodedown / bad cookie │
 ```
 
-### Delete node (Ctrl+D, structural → second confirm)
+### Delete node (Tree `d`, structural → y/n confirm)
 ```
-┌─ Delete node? ───────────────────────────────────┐
-│ "app@host1" and its 2 sessions will be removed.   │
-│  [y] confirm   [n/esc] cancel                     │
+┌─ Confirm ─────────────────────────────────────────┐
+│ Delete node "app@host1" and all its sessions?     │
+│  [y] yes   [n/esc] no                             │
 └──────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Screen 6 — Settings [CONFIRMED]
-
-Overlay, global entry key `,` (from any screen). Global preferences, persisted to config.
+## Screen 6 — Settings
+Full-screen, entered with `,` from the **Tree only**. Global preferences, persisted to config.
 
 ```
 ┌─ Settings ───────────────────────────────────────┐
-│ Columns (event list):                             │
-│   ts      [x] (locked)                            │
-│   k       [x] (locked)                            │
-│   name    [x]                                     │
-│   pid     [x]                                     │
-│   mfa     [x]                                     │
-│   info    [x]                                     │
-│ ── Defaults ──                                    │
-│   default sort     ts ↓                           │
-│   default limits   time 24h  msgs 1e6  keep 500   │
-│   editor ($EDITOR) nvim          (env, read-only) │
-│   theme            Tokyo Night ▸ (see Themes)     │
-│ space toggle · enter edit value · esc back (auto-saves) │
+│ theme            dark                             │
+│ default sort     ts_desc                          │
+│ col · name       [x]                              │
+│ col · pid        [x]                              │
+│ col · mfa        [x]                              │
+│ col · info       [x]                              │
+│ default limits   keep 500 · time 30s · msgs 1000  │
+│ $EDITOR          nvim (read-only · set via env)   │
+│ ts and k columns are always shown.                │
+│ j/k move · space/enter/right/l toggle or cycle · esc back │
 └──────────────────────────────────────────────────┘
 ```
+Rows in order: theme, default sort, the four toggleable columns, default limits, and a
+read-only `$EDITOR` line. The selected row is acted on by `space` / `enter` / `→` / `l`:
+theme and sort **cycle** through their option lists, columns **toggle**, default limits
+opens a text field. Edits auto-save.
 
 ### Decisions
-- entry: **global key `,`** (vim-style), from any screen.
+- entry: `,` from the **Tree** (not a global-from-any-screen key).
 - columns: name/pid/mfa/info toggleable; ts/k locked (cannot hide).
 - **global default limits + sort**: stored here, applied to new sessions (editable per session).
-- `$EDITOR`: read-only display of the env var (used by S2 `E`).
+- `$EDITOR`: read-only display of the env var (used by S2 `⇧E`).
 - **theme** selectable (see Themes below).
 
 ### Themes
@@ -536,30 +495,24 @@ Kanagawa, Monokai, …) can be added later by dropping in more token maps.
 
 ---
 
-## Screen 7 — Help [CONFIRMED]
-
-Overlay, global key `?`. Keybinding reference (grouped by screen) + kind legend +
-conventions. Reference only; `j/k` scrolls if it overflows. `esc` closes.
+## Screen 7 — Help
+Overlay opened with `?` from the **Tree**. Keybinding reference + kind legend.
+Reference only; **press any key to close** (it dismisses on the next keypress).
 
 ```
-┌─ Help ───────────────────────────────────────────────────┐
-│ Event kinds:                                              │
-│   ↓ call (cyan)    ↑ retn (green)                         │
-│   → send (yellow)  ← recv (purple)                        │
-│ ── Global ──                                              │
-│   ?  help     ,  settings     q  quit     esc  back/close │
-│ ── Tree (S1) ──                                          │
-│   j/k move · enter open session · n new node · s new session │
-│   e edit · c connect/disconnect · p presets · Ctrl+D delete │
-│ ── Session Events (S2) ──                                │
-│   j/k move/scroll · enter detail · ctrl+j/k prev/next     │
-│   o sort · / filter · g group · tab focus                │
-│   z zoom · E $EDITOR · S start · X stop · e edit traces   │
-│   Ctrl+L clear buffer                                     │
-│ ── Trace Editor (S3) ──                                  │
-│   space toggle · enter edit · a add · Ctrl+D del RTP      │
-│   S start · X stop · Ctrl+S apply&restart · Ctrl+W preset │
-│ ── Conventions ──                                        │
-│   Ctrl+ = destructive/heavy op                           │
+┌─ redbug · help ──────────────────────────────────────────┐
+│ kinds: ↓ call (cyan) · ↑ retn (green) · → send (yellow) · ← recv (purple) │
+│ Tree                                                      │
+│   j/k move · enter open session · n node · s session     │
+│   e edit node · c connect/disconnect · d delete          │
+│   p presets · , settings · q quit                        │
+│ Session                                                   │
+│   enter detail · o sort · / filter · g group · l limits · z zoom │
+│   ⇧E $EDITOR · e traces · ⇧S/⇧X start/stop               │
+│   Ctrl+S apply · Ctrl+L clear · Ctrl+W save preset        │
+│ Presets / Settings                                        │
+│   j/k move · enter/tab edit · space toggle · esc back     │
+│ press any key to close                                    │
 └────────────────────────────────────────────────────────────┘
 ```
+Help is a single static overlay (no `j/k` scroll); it mirrors the keymaps above.
