@@ -37,7 +37,8 @@ defmodule Server.MixProject do
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.1"},
       {:bandit, "~> 1.0"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:nimble_parsec, "~> 1.4"}
     ]
   end
 end
