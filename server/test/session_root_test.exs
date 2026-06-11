@@ -38,6 +38,10 @@ defmodule Server.Stores.SessionRootTest do
     assert Testing.render(s).status == "stopped"
 
     Testing.dispatch_command(s, :startTrace, %{})
+
+    # Drive the trace ourselves instead of waiting on the target's own loop:
+    # repeated rpc calls execute lists:seq/2 on the target, which redbug traces.
+    driver = drive_target_calls()
     Process.sleep(1500)
 
     assert Testing.render(s).status == "running"
@@ -64,5 +68,19 @@ defmodule Server.Stores.SessionRootTest do
     Testing.dispatch_command(s, :clearEvents, %{})
     Process.sleep(200)
     assert Trace.snapshot(sid).events == []
+
+    Process.exit(driver, :kill)
+  end
+
+  # Spawns a loop that rpc-invokes :lists.seq/2 on the target so the trace has
+  # deterministic traffic to capture, independent of the target's own workload.
+  defp drive_target_calls do
+    spawn(fn ->
+      Stream.repeatedly(fn ->
+        :rpc.call(String.to_atom(@target), :lists, :seq, [1, 5])
+        Process.sleep(50)
+      end)
+      |> Stream.run()
+    end)
   end
 end

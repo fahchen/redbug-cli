@@ -20,6 +20,10 @@ defmodule Server.Trace.PatternTest do
       assert Pattern.to_redbug("Demo.add") == "'Elixir.Demo':add"
     end
 
+    test "drops a dangling separator dot (no function)" do
+      assert Pattern.to_redbug("Demo.") == "'Elixir.Demo'"
+    end
+
     test "leaves args, guards and actions untouched" do
       assert Pattern.to_redbug("Demo.add(1, X) -> return") == "'Elixir.Demo':add(1, X) -> return"
     end

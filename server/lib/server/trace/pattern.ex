@@ -50,7 +50,9 @@ defmodule Server.Trace.Pattern do
     trimmed = String.trim_leading(text)
 
     case head(trimmed) do
-      {:ok, [head], rest, _ctx, _line, _offset} -> head <> rest
+      # A dangling separator dot (e.g. `Foo.` with no function) is left unparsed;
+      # drop it so the head never trails an invalid `.`.
+      {:ok, [head], rest, _ctx, _line, _offset} -> String.trim_trailing(head <> rest, ".")
       _ -> trimmed
     end
   end

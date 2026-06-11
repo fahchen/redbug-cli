@@ -1,7 +1,6 @@
 .git
 dist
 tui/node_modules
-tui/dist
 server/_build
 server/deps
 **/.DS_Store
