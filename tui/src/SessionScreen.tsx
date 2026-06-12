@@ -7,15 +7,8 @@ import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./mus
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
 import { Footer, Header, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
-
-declare const process: { env: Record<string, string | undefined> }
-declare const Bun: {
-  write(path: string, data: string): Promise<number>
-  spawnSync(
-    cmd: string[],
-    opts?: { stdin?: string; stdout?: string; stderr?: string }
-  ): unknown
-}
+import { ConsoleTab } from "./ConsoleTab"
+import { editInEditor } from "./editor"
 
 type SessionStore = StoreProxy<"Server.Stores.SessionRoot", Musubi.Stores>
 type Rtp = Server.Schema.Rtp
@@ -75,20 +68,33 @@ export function SessionScreen({
   const root = useMusubiRoot(sessionRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading session…" errorLabel="Session">
-      {(store) => <SessionView store={store} settings={settings} onBack={onBack} />}
+      {(store) => (
+        <SessionView
+          store={store}
+          nodeId={nodeId}
+          sessionId={sessionId}
+          settings={settings}
+          onBack={onBack}
+        />
+      )}
     </RootGate>
   )
 }
 
 function SessionView({
   store,
+  nodeId,
+  sessionId,
   settings,
   onBack
 }: {
   store: SessionStore
+  nodeId: string
+  sessionId: string
   settings?: Server.Schema.Settings
   onBack: () => void
 }) {
+  const [tab, setTab] = useState<"events" | "console">("events")
   const snap = useMusubiSnapshot(store)
   const cols = settings?.columns ?? ALL_COLS
   const renderer = useRenderer()
@@ -155,6 +161,10 @@ function SessionView({
 
   useKeyboard((key) => {
     const n = key.name
+
+    // ConsoleTab registers its own keyboard handler; both stay mounted, so bail
+    // here to avoid double-handling keys while the console tab is active.
+    if (tab === "console") return
 
     if (overlay === "filter") {
       if (n === "escape") setOverlay("none")
@@ -291,6 +301,9 @@ function SessionView({
       case "x":
         if (key.shift) dispatch("stopTrace")
         break
+      case "]":
+        setTab("console")
+        break
     }
   })
 
@@ -345,6 +358,23 @@ function SessionView({
         {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (Ctrl+S)"}</text>}
       </Header>
 
+      <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
+        <text fg={theme.dim}>{"‹ "}</text>
+        <text fg={tab === "events" ? theme.title : theme.dim}>Events</text>
+        <text fg={theme.dim}>{" │ "}</text>
+        <text fg={tab === "console" ? theme.title : theme.dim}>Console</text>
+        <text fg={theme.dim}>{" ›  ([/] switch)"}</text>
+      </box>
+
+      {tab === "console" ? (
+        <ConsoleTab
+          nodeId={nodeId}
+          sessionId={sessionId}
+          onSwitchToEvents={() => setTab("events")}
+          onBack={onBack}
+        />
+      ) : (
+      <>
       {!zoom && (
       <box flexDirection="row" flexGrow={1}>
         <box
@@ -538,6 +568,8 @@ function SessionView({
               ))}
           </box>
         </box>
+      )}
+      </>
       )}
     </box>
   )
@@ -816,16 +848,11 @@ async function openInEditor(
   renderer: { suspend: () => void; resume: () => void },
   ev: TraceEvent
 ): Promise<void> {
-  const editor = process.env.EDITOR || process.env.VISUAL || "vi"
-  const dir = process.env.TMPDIR || "/tmp"
-  const path = `${dir.replace(/\/$/, "")}/redbug-event-${ev.id}.exs`
-  await Bun.write(path, elixirTerm(ev))
-  renderer.suspend()
-  try {
-    Bun.spawnSync([editor, path], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
-  } finally {
-    renderer.resume()
-  }
+  await editInEditor(renderer, {
+    file: `redbug-event-${ev.id}.exs`,
+    seed: elixirTerm(ev),
+    readBack: false
+  })
 }
 
 function elixirTerm(ev: TraceEvent): string {

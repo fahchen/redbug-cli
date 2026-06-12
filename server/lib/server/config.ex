@@ -57,6 +57,8 @@ defmodule Server.Config do
 
   def presets, do: lookup(:presets, [])
 
+  def snippets, do: lookup(:snippets, [])
+
   def settings, do: lookup(:settings, @default_settings)
 
   @doc "Raw persisted node (no runtime merge), or nil."
@@ -87,6 +89,10 @@ defmodule Server.Config do
   def update_preset(id, attrs), do: GenServer.call(__MODULE__, {:update_preset, id, attrs})
   def delete_preset(id), do: GenServer.call(__MODULE__, {:delete_preset, id})
 
+  def add_snippet(attrs), do: GenServer.call(__MODULE__, {:add_snippet, attrs})
+  def update_snippet(id, attrs), do: GenServer.call(__MODULE__, {:update_snippet, id, attrs})
+  def delete_snippet(id), do: GenServer.call(__MODULE__, {:delete_snippet, id})
+
   def update_settings(attrs), do: GenServer.call(__MODULE__, {:update_settings, attrs})
 
   # --- remote-node side-effects (run inside the GenServer) ---
@@ -110,6 +116,7 @@ defmodule Server.Config do
     config = load()
     :ets.insert(@table, {:nodes, config.nodes})
     :ets.insert(@table, {:presets, config.presets})
+    :ets.insert(@table, {:snippets, config.snippets})
     :ets.insert(@table, {:settings, config.settings})
     :ets.insert(@table, {:connected, MapSet.new()})
     :ets.insert(@table, {:session_status, %{}})
@@ -207,6 +214,27 @@ defmodule Server.Config do
     {:reply, :ok, state}
   end
 
+  def handle_call({:add_snippet, attrs}, _from, state) do
+    snippet = %{
+      id: gen_id(),
+      name: Map.get(attrs, :name, "snippet"),
+      code: Map.get(attrs, :code, "")
+    }
+
+    put_snippets(lookup(:snippets, []) ++ [snippet])
+    {:reply, {:ok, snippet.id}, state}
+  end
+
+  def handle_call({:update_snippet, id, attrs}, _from, state) do
+    put_snippets(update_in_list(lookup(:snippets, []), id, &Map.merge(&1, attrs)))
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:delete_snippet, id}, _from, state) do
+    put_snippets(Enum.reject(lookup(:snippets, []), &(&1.id == id)))
+    {:reply, :ok, state}
+  end
+
   def handle_call({:update_settings, attrs}, _from, state) do
     :ets.insert(@table, {:settings, deep_merge(settings(), attrs)})
     persist_and_broadcast()
@@ -266,9 +294,21 @@ defmodule Server.Config do
     persist_and_broadcast()
   end
 
+  defp put_snippets(snippets) do
+    :ets.insert(@table, {:snippets, snippets})
+    persist_and_broadcast()
+  end
+
   defp add_connected(id) do
-    :ets.insert(@table, {:connected, MapSet.put(lookup(:connected, MapSet.new()), id)})
-    broadcast()
+    connected = lookup(:connected, MapSet.new())
+
+    # connect_node/1 runs on every console execution; only write + fan out a
+    # {:config_updated} when membership actually changes, else each run triggers
+    # a global re-render of every subscribed store.
+    unless MapSet.member?(connected, id) do
+      :ets.insert(@table, {:connected, MapSet.put(connected, id)})
+      broadcast()
+    end
   end
 
   defp drop_connected(id) do
@@ -277,7 +317,12 @@ defmodule Server.Config do
   end
 
   defp persist_and_broadcast do
-    save(%{nodes: lookup(:nodes, []), presets: lookup(:presets, []), settings: settings()})
+    save(%{
+      nodes: lookup(:nodes, []),
+      presets: lookup(:presets, []),
+      snippets: lookup(:snippets, []),
+      settings: settings()
+    })
     broadcast()
   end
 
@@ -357,7 +402,8 @@ defmodule Server.Config do
     File.chmod(path(), 0o600)
   end
 
-  defp default_config, do: %{nodes: [], presets: [], settings: @default_settings}
+  defp default_config,
+    do: %{nodes: [], presets: [], snippets: [], settings: @default_settings}
 
   # --- JSON <-> internal (explicit, atom-safe) ---
 
@@ -365,7 +411,16 @@ defmodule Server.Config do
     %{
       nodes: json |> Map.get("nodes", []) |> Enum.map(&node_from_json/1),
       presets: json |> Map.get("presets", []) |> Enum.map(&preset_from_json/1),
+      snippets: json |> Map.get("snippets", []) |> Enum.map(&snippet_from_json/1),
       settings: json |> Map.get("settings") |> settings_from_json()
+    }
+  end
+
+  defp snippet_from_json(j) do
+    %{
+      id: Map.get(j, "id", gen_id()),
+      name: Map.get(j, "name", "snippet"),
+      code: Map.get(j, "code", "")
     }
   end
 

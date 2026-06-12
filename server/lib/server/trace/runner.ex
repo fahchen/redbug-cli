@@ -239,8 +239,8 @@ defmodule Server.Trace.Runner do
       pid: "",
       name: "",
       mfa: "",
-      info: "restarted " <> now_hms(),
-      ts: now_hms()
+      info: "restarted " <> Server.Time.hms(),
+      ts: Server.Time.hms()
     }
   end
 
@@ -279,11 +279,6 @@ defmodule Server.Trace.Runner do
   end
 
   defp fmt_ts(other), do: inspect(other)
-
-  defp now_hms do
-    {_, {h, m, s}} = :calendar.local_time()
-    :io_lib.format("~2..0b:~2..0b:~2..0b", [h, m, s]) |> to_string()
-  end
 
   defp event_id, do: Integer.to_string(System.unique_integer([:monotonic, :positive]))
 end

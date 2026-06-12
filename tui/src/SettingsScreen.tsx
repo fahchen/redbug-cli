@@ -5,6 +5,7 @@ import type { StoreProxy } from "@musubi/react"
 
 import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
+import { editorName } from "./editor"
 import { theme, themeNames } from "./theme"
 import { Footer, Header, Overlay, RootGate, TextField, fit } from "./ui"
 
@@ -14,8 +15,6 @@ type Settings = Server.Schema.Settings
 type ColKey = "name" | "pid" | "mfa" | "info"
 const COL_KEYS: ColKey[] = ["name", "pid", "mfa", "info"]
 const SORT_VALUES = ["ts_desc", "ts_asc", "kind_asc", "kind_desc", "pid_asc", "mfa_asc"]
-
-declare const process: { env: Record<string, string | undefined> }
 
 export function SettingsScreen({ onBack }: { onBack: () => void }) {
   const root = useMusubiRoot(SETTINGS_ROOT)
@@ -33,7 +32,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
   const limits = s?.default_limits ?? DEFAULT_LIMITS
   const curTheme = s?.theme ?? "dark"
   const curSort = s?.default_sort ?? "ts_desc"
-  const editor = process.env.EDITOR || process.env.VISUAL || "vi"
+  const editor = editorName()
 
   const [sel, setSel] = useState(0)
   const [limitsDraft, setLimitsDraft] = useState<string | null>(null)

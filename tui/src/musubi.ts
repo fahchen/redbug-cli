@@ -35,6 +35,19 @@ export const sessionRoot = (nodeId: string, sessionId: string) =>
     params: { node_id: nodeId, session_id: sessionId }
   }) as const
 
+export const consoleRoot = (nodeId: string, sessionId: string) =>
+  ({
+    module: "Server.Stores.ConsoleRoot",
+    id: `console:${sessionId}`,
+    params: { node_id: nodeId, session_id: sessionId }
+  }) as const
+
+export const SNIPPETS_ROOT = {
+  module: "Server.Stores.SnippetsRoot",
+  id: "snippets",
+  params: {}
+} as const
+
 export const {
   connect,
   MusubiProvider,

@@ -12,8 +12,13 @@ Built on musubi (server-authoritative, JSON Patch over Phoenix ws) + opentui/Rea
 5. **Node Editor** — overlay (Tree `n`/`e`), node add/edit (name, cookie).
 6. **Settings** — full screen, entered via `,` from Tree. Column visibility + global prefs.
 7. **Help** — overlay (`?` from Tree), keybindings + kind legend.
+8. **Console** — a **tab inside Session Events** (`Events │ Console`), per-session
+   **code runner** (not a REPL): a server-persisted execution history; each entry is a whole
+   `$EDITOR`-composed block (blank or seeded from S9) run on the node, force-stoppable.
+9. **Snippet Manager** — full screen, entered from Tree. CRUD of a **global**, reusable
+   code-snippet library (node-agnostic, like Presets). Bodies edited in `$EDITOR`.
 
-Entry keys (`p` presets, `,` settings, `?` help) are wired on the **Tree only**;
+Entry keys (`p` presets, `x` snippets, `,` settings, `?` help) are wired on the **Tree only**;
 the other screens return to Tree via `esc` first.
 
 Navigation:
@@ -22,6 +27,7 @@ S1 Tree ──enter session──> S2 Session Events ──esc──> S1
    │ n/e (node) overlays S5    │ enter event -> right detail pane
    │ p -> S4, , -> S6, ? -> S7 │ e -> S3 trace editor overlay · l -> limits
    │ s -> new-session flow     │ z -> zoom overlay, ⇧E -> $EDITOR
+                               │ [ / ] -> switch Events ⇄ Console tab (S8)
 ```
 
 ---
@@ -54,6 +60,7 @@ Full-screen Node▸Session tree. Manage nodes/sessions; enter a session to view 
 | c     | connect/disconnect current node                   |
 | d     | delete current node (+ its sessions) / session — inline confirm |
 | p     | preset manager (→ S4)                             |
+| x     | snippet manager (→ S9)                            |
 | ,     | settings (→ S6)                                   |
 | ?     | help (→ S7)                                        |
 | q     | quit (inline confirm)                             |
@@ -83,11 +90,14 @@ First a name prompt, then an "init from" preset picker:
 ---
 
 ## Screen 2 — Session Events
-Entered via `enter` on a session. Default: full-width events list (live stream).
+Entered via `enter` on a session. The screen has a **tab strip** —
+`‹ Events │ Console ›` — switched with `[` / `]`. **Events** (default) is the live
+trace stream below; **Console** is the per-session code runner (see [Screen 8](#screen-8--console-events-tab)).
 `enter` on an event reveals a fixed-width right **Detail** pane.
 
-Default (no detail):
+Events tab, default (no detail):
 ```
+┌ ‹ Events │ Console › ─────────────────────────────────────────┐
 ┌─ sess-A @ app@host1 [sort:ts↓ filter:- group:-] ──────────────┐
 │ ts           k name        pid       mfa            info      │
 │ 10:02:01.234 ↓ gen_server  <0.42.0>  lists:seq/2    [1, 5]    │
@@ -193,6 +203,7 @@ info content by kind:
 | ⇧X       | stop session                                    |
 | Ctrl+S   | apply & restart (push staged edits to live)     |
 | Ctrl+L   | clear current session buffer                     |
+| [ / ]    | switch tab (Events ↔ Console)                    |
 | esc      | close detail; or return to S1 (tree)            |
 
 Header shows `[status]`, current `sort/filter/group`, and `⚠ unapplied (Ctrl+S)`
@@ -218,10 +229,11 @@ when there are staged edits. Footer mirrors this key list.
 ## Global Conventions
 
 ### Destructive / heavy ops
-Heavy/irreversible ops mostly use a `Ctrl+` key; lightweight reversible ops use bare
-keys (move, select, toggle, start/stop, filter/sort, connect). The keymap is **not fully
-uniform** — tree-level structural deletes use bare `d` (the confirm prompt is the
-safeguard), while editor/preset deletes use `Ctrl+D`.
+Two safeguard styles: a **y/n confirm prompt**, or a **`Ctrl+` modifier**. Prefer a bare
+key + confirm; reserve `Ctrl+` for ops where a prompt would be too much friction (the
+modifier is then the only safeguard). The keymap is **not fully uniform** for historical
+reasons — tree/snippet structural deletes and the Console's `s`/`c` use bare keys + confirm,
+while the older trace-editor / preset deletes still use `Ctrl+D`.
 
 | op                                  | key      | confirm?        |
 |-------------------------------------|----------|-----------------|
@@ -232,11 +244,19 @@ safeguard), while editor/preset deletes use `Ctrl+D`.
 | save as preset (Trace editor)       | `Ctrl+W` | name prompt     |
 | apply & restart (running session)   | `Ctrl+S` | none            |
 | clear session buffer                | `Ctrl+L` | none            |
+| delete snippet (Snippet Manager)    | `d`      | y/n prompt      |
+| stop / kill running execution (Console) | `s`  | y/n prompt      |
+| clear console history (Console)     | `c`      | y/n prompt      |
 | quit (Tree)                         | `q`      | y/n prompt      |
 
 ### Confirmation (by cost)
-- **Structural delete** (node / session / preset) and **preset trace delete**: y/n prompt.
+- **Structural delete** (node / session / preset / snippet) and **preset trace delete**: y/n prompt.
 - **Trace-editor RTP delete**: `Ctrl+D` only, no prompt (the Ctrl modifier is the safeguard).
+- **Kill a running remote execution** (Console `s`): y/n prompt — irreversible
+  (side effects already ran, result lost). The auto-`@timeout` kill is unprompted (it is
+  the safety bound, not a user action).
+- **Clear console history** (Console `c`): y/n prompt — it is **server-persisted**
+  data, unlike the volatile trace event buffer (whose `Ctrl+L` is unprompted).
 
 ### esc / quit
 - `esc` closes the topmost overlay (or detail pane) first; from S1 (tree) `esc` does nothing.
@@ -505,14 +525,199 @@ Reference only; **press any key to close** (it dismisses on the next keypress).
 │ Tree                                                      │
 │   j/k move · enter open session · n node · s session     │
 │   e edit node · c connect/disconnect · d delete          │
-│   p presets · , settings · q quit                        │
+│   p presets · x snippets · , settings · q quit           │
 │ Session                                                   │
 │   enter detail · o sort · / filter · g group · l limits · z zoom │
 │   ⇧E $EDITOR · e traces · ⇧S/⇧X start/stop               │
 │   Ctrl+S apply · Ctrl+L clear · Ctrl+W save preset        │
-│ Presets / Settings                                        │
+│   [ / ] switch Events ⇄ Console tab                        │
+│ Console (tab)                                             │
+│   n new · e edit · v view · Enter rerun · s stop · c clear │
+│ Presets / Snippets / Settings                             │
 │   j/k move · enter/tab edit · space toggle · esc back     │
 │ press any key to close                                    │
 └────────────────────────────────────────────────────────────┘
 ```
 Help is a single static overlay (no `j/k` scroll); it mirrors the keymaps above.
+
+---
+
+## Screen 8 — Console (events tab)
+
+The **Console** tab of Session Events (S2): a per-session **code runner** against the
+session's target node. Switched into with `]` (back to Events with `[`).
+
+**Not a line-by-line REPL.** For ad-hoc interactive eval the user already has a remote
+iex (`iex --remsh app@host`); duplicating that adds nothing. The Console's value is a
+**server-persisted execution history** bound to this session (survives ws reconnect),
+where each entry is a *whole code block run as one piece* — composed in `$EDITOR` from
+scratch or seeded from the global snippet library (S9), and **force-stoppable** mid-run.
+Running on the live node is real remote code execution, gated only by the cookie the user
+already holds (cookie == RCE; redbug already grants equivalent access).
+
+```
+┌ ‹ Events │ Console › ──────────────────────────────────────────┐
+│ ● app@host1 · ⚠ live node — runs with target privileges        │
+├─ history ──────────────────────┬─ detail ──────────────────────┤
+│ ▸ 10:02:03 ⟳ sup-tree          │ :supervisor.which_children(..) │
+│   10:02:01 ✓ proc-count        │                                │
+│   10:01:40 ✗ ets-info          ├─ result ──────────────────────┤
+│   10:01:05 ✓ (adhoc)           │ ⟳ running…  (s stop)           │
+│                                │                                │
+│ n new · e edit · v view        │                                │
+└─────────────────────────────────┴───────────────────────────────┘
+ n new · e edit · v view · Enter rerun · s stop · c clear · [ Events
+```
+
+### Model: execution = one history entry
+The run unit is an **execution**: `%{id, name, code, status, result, output, ts,
+duration_ms}`, `status ∈ "running" | "ok" | "error" | "stopped" | "timeout"`. History is an
+append-only, server-authoritative, capped log; selecting a row shows its code + result in
+the detail pane, and `v` opens the full **code + output** in `$EDITOR` (read-only) for
+entries too long for the pane. There is **no separate working set** — the only persistent
+list is the history; new executions are composed fresh each time.
+
+**Starting an execution** (all `$EDITOR`-composed, run whole on save+exit):
+- `n` **new** → a *start-from* picker: `blank` or a snippet from the global library (S9).
+  Pick → `$EDITOR` opens (empty, or seeded with the snippet body) → save+exit → run.
+- `e` **edit→rerun** a selected history entry → `$EDITOR` seeded with its code →
+  save+exit → run as a **new** execution (a fork; the original entry is untouched).
+- `v` **view** a selected entry's code + captured output in `$EDITOR`, read-only.
+- `Enter` **rerun** a selected history entry verbatim as a new execution.
+- a snippet's name (or `(adhoc)` for blank) rides along as the execution `name`.
+
+**Stopping an execution**: `s` on a `running` entry **(y/n confirm)** force-kills the
+remote worker (see mechanism) → status `stopped`. The confirm guards against an accidental
+kill: the killed worker's side effects already ran and can't be rolled back, and the result
+is lost. `@timeout` (~15s) auto-kills (no confirm — it is the bound) → status `timeout`.
+
+### Keys
+Bare keys throughout — destructive ones (`s`, `c`) carry a y/n confirm instead of a `Ctrl`
+modifier (the prompt is the safeguard, matching the Tree's bare-`d` delete).
+
+| key   | action                                                  |
+|-------|---------------------------------------------------------|
+| j/k   | move selection in the history log                       |
+| n     | new execution → start-from picker (blank / snippet) → `$EDITOR` |
+| e     | edit the selected entry's code in `$EDITOR` → run as new |
+| v     | view the selected entry's code + output in `$EDITOR` (read-only) |
+| Enter | rerun the selected entry verbatim (new execution)       |
+| s     | stop the selected `running` execution (force-kill — y/n confirm) |
+| c     | clear history (y/n confirm — server-persisted data)     |
+| [     | back to Events tab                                      |
+| esc   | return to S1 (tree)                                     |
+
+`run` / `Enter rerun` are **not** confirmed: a new run is already deliberate (compose +
+save in `$EDITOR`, under the persistent ⚠ live-node banner), and a rerun replays code the
+user already vetted on the first run — no more dangerous than that first run, which was
+itself unconfirmed. Friction sits on `$EDITOR` compose, not on a per-run prompt.
+
+### Snippets are seeds, not links (clone-only)
+The reusable library is **global** and lives in the [Snippet Manager](#screen-9--snippet-manager)
+(S9). The console only **consumes** it: the `n` picker copies a snippet body into the
+`$EDITOR` buffer (a copy — no back-reference, mirroring preset → session). Edits here never
+touch the library; to persist a refinement, edit it in S9.
+
+### Run mechanism (spawn + monitor → killable)
+- `Server.Remote.Console` — GenServer, `restart: :transient`, registered
+  `{:via, Registry, {Server.Remote.Registry, session_id}}` (twin of `Trace.Runner`). Owns
+  the history (capped, server-authoritative) and a map of in-flight runs
+  `%{exec_id => %{pid, mon_ref, timer}}`. Lazily started under a `DynamicSupervisor`.
+- on `run` the code is first normalized through `Server.Code.Format` (see
+  [Formatting](#code-formatting)); the formatted source is what gets stored on the entry and
+  sent to the worker (unparseable source runs raw — format never blocks a run).
+- `run`: `Config.connect_node` (auto-connect like trace start), then **spawn a remote
+  worker** (not a blocking `:rpc.call`, so it stays killable) and `Process.monitor` it:
+  ```elixir
+  pid = Node.spawn(target, __MODULE__, :worker, [self(), exec_id, code])
+  ref = Process.monitor(pid)   # DOWN fires on crash, kill, or net split
+  # worker (runs on target): group_leader → StringIO;
+  #   Code.eval_string(user_src, [user_src: code], file: "remote") in try/rescue/catch;
+  #   send(console, {:done, exec_id, {:ok|:error, inspect|format}, captured_io})
+  ```
+  the snippet source is a **bound variable** (never string-interpolated → no injection).
+- `stopExecution{id}`: `Process.exit(pid, :kill)` — the `exit/2` signal propagates over
+  distribution and kills the remote worker; the `DOWN` marks the entry `stopped`.
+- `@timeout` (~15s) arms a per-run timer; on fire, same kill path → `timeout`.
+- **Erlang fallback**: a pure-Erlang target (no `Code`/`StringIO`) makes the worker fail
+  `:undef`; the worker falls back to `:erl_scan` → `:erl_parse` → `:erl_eval` (stdlib).
+- each state change (start → running, done, stopped, timeout) updates the entry and
+  broadcasts `{:console_run, entry}` on `Server.Remote.topic(session_id)`.
+
+### Stores
+`Server.Stores.ConsoleRoot` (root, mounted `node_id`/`session_id`) — mirrors `SessionRoot`:
+subscribes `config` + `Remote.topic`, seeds `stream(:history)` from `Remote.snapshot/1`.
+Fields: `name, connected`, library `snippets` (read-only, for the start-from picker),
+`stream(:history)`. Commands: `run{code, name}`, `stopExecution{id}`, `clearHistory`,
+`connect`. Library CRUD stays in S9 / `SnippetsRoot`. In the TUI the Console tab mounts this
+root independently of `SessionRoot` (each tab owns its root).
+
+### Constraints / safety
+- requires a reachable node; run auto-connects, connect failure → error entry.
+- `s` (confirm) and `@timeout` both force-kill the remote worker, so a runaway run is bounded
+  (the spawn+monitor design makes the worker killable — unlike a blocking `:rpc.call`).
+- result + captured output are truncated (`inspect limit`, byte cap) to keep history light.
+
+---
+
+## Screen 9 — Snippet Manager
+
+Full screen, entered from the Tree (parallel to Preset Manager). CRUD for a **global**,
+node-agnostic library of named code snippets — reusable across any node/session, exactly
+like Presets are for traces. Persisted in `config.json` (top-level `:snippets`, 0600).
+
+```
+┌─ Snippets ──────────────────────────────────────────────────┐
+│ ▸ proc-count      Process.list() |> length()                │
+│   ets-tables      :ets.all() |> Enum.map(&:ets.info(&1, …))  │
+│   sup-tree        :supervisor.which_children(MyApp.Sup)      │
+│ + new snippet                                                │
+│ j/k · enter edit · n new · r rename · f format · d del · esc │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Model
+- a **snippet** = `%{id, name, code}`. The body is free-text Elixir (or Erlang) source.
+- node-agnostic: a snippet references no node/session; the Console clones a copy to run.
+- **clone-only** relationship with the console: editing/running in the console never
+  touches the library; library edits never touch any past console execution.
+- **auto-formatted on save** (`Server.Code.Format`, see [Formatting](#code-formatting)):
+  the body is normalized server-side; unparseable source is stored raw (best-effort).
+
+### Keys
+Bare keys throughout (delete carries a y/n confirm, matching the Tree's bare-`d` delete).
+
+| key   | action                                            |
+|-------|---------------------------------------------------|
+| j/k   | move selection                                    |
+| enter | edit selected snippet body in `$EDITOR`           |
+| n     | new snippet (name → `$EDITOR` body)               |
+| r     | rename selected snippet                           |
+| f     | reformat selected snippet body                     |
+| d     | delete selected snippet (y/n confirm — structural)|
+| esc   | back to Tree                                       |
+
+### Stores
+`Server.Stores.SnippetsRoot` (root) + `Server.Stores.SnippetStore` child — mirrors
+`PresetsRoot`/`PresetStore`. Root command `createSnippet{name}`; child commands
+`updateSnippet{name,code}`, `deleteSnippet`. `Server.Config` gains `:snippets` with
+`add_snippet/update_snippet/delete_snippet` and JSON (de)serialization alongside presets.
+
+### Entry key
+Reached from the Tree via `x` (see [Screen 1](#screen-1--tree)); the Console's
+`n` start-from picker reads the same global list to seed an execution from.
+
+---
+
+## Code formatting
+
+Snippet bodies (S9) and console code (S8) are normalized by a shared `Server.Code.Format`
+helper, run **on the controller node** (pure formatting, no eval → safe):
+- **Elixir** (default): `Code.format_string!/2`.
+- **Erlang** (source parses as Erlang forms): `:erl_scan` → `:erl_parse` →
+  `:erl_prettypr` (stdlib).
+- **best-effort**: source that parses as neither is left **raw** — formatting never raises
+  out and never blocks a save (S9) or a run (S8).
+
+Applied: on snippet save and on the S9 `f` reformat key; on every console `run` before the
+code is stored on the execution entry and shipped to the worker.

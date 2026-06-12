@@ -13,6 +13,8 @@ defmodule Server.Application do
       Server.Config,
       {Registry, keys: :unique, name: Server.Trace.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Server.Trace.Supervisor},
+      {Registry, keys: :unique, name: Server.Remote.Registry},
+      {DynamicSupervisor, strategy: :one_for_one, name: Server.Remote.Supervisor},
       ServerWeb.Endpoint
     ]
 

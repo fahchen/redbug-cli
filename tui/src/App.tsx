@@ -16,6 +16,7 @@ import { theme, setTheme } from "./theme"
 import { Footer, Header, Notice, Overlay, PickRow, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
+import { SnippetManager } from "./SnippetManager"
 import { SettingsScreen } from "./SettingsScreen"
 
 declare const process: { exit(code?: number): never }
@@ -34,6 +35,7 @@ type Screen =
   | { name: "tree" }
   | { name: "session"; nodeId: string; sessionId: string }
   | { name: "presets" }
+  | { name: "snippets" }
   | { name: "settings" }
 
 type Row =
@@ -110,6 +112,9 @@ function Router({
   if (screen.name === "presets")
     return <PresetManager onBack={() => setScreen({ name: "tree" })} />
 
+  if (screen.name === "snippets")
+    return <SnippetManager onBack={() => setScreen({ name: "tree" })} />
+
   if (screen.name === "settings")
     return <SettingsScreen onBack={() => setScreen({ name: "tree" })} />
 
@@ -119,6 +124,7 @@ function Router({
       presetsStore={presetsStore}
       onOpenSession={(nodeId, sessionId) => setScreen({ name: "session", nodeId, sessionId })}
       onOpenPresets={() => setScreen({ name: "presets" })}
+      onOpenSnippets={() => setScreen({ name: "snippets" })}
       onOpenSettings={() => setScreen({ name: "settings" })}
     />
   )
@@ -147,12 +153,14 @@ function S1View({
   presetsStore,
   onOpenSession,
   onOpenPresets,
+  onOpenSnippets,
   onOpenSettings
 }: {
   nodesStore: NodesStore
   presetsStore: PresetsStore
   onOpenSession: (nodeId: string, sessionId: string) => void
   onOpenPresets: () => void
+  onOpenSnippets: () => void
   onOpenSettings: () => void
 }) {
   const nodesSnap = useMusubiSnapshot(nodesStore)
@@ -292,6 +300,9 @@ function S1View({
       case "p":
         onOpenPresets()
         break
+      case "x":
+        onOpenSnippets()
+        break
       case ",":
         onOpenSettings()
         break
@@ -327,7 +338,7 @@ function S1View({
         )}
       </box>
 
-      <Footer text="j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · , settings · ? help · q quit" />
+      <Footer text="j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · x snippets · , settings · ? help · q quit" />
 
       {modal.kind !== "none" && (
         <ModalLayer
@@ -414,12 +425,14 @@ function ModalLayer({
           <text fg={theme.title} marginTop={1}>Tree</text>
           <text fg={theme.fg}>j/k move · enter open session · n node · s session</text>
           <text fg={theme.fg}>e edit node · c connect/disconnect · d delete</text>
-          <text fg={theme.fg}>p presets · , settings · q quit</text>
-          <text fg={theme.title} marginTop={1}>Session</text>
+          <text fg={theme.fg}>p presets · x snippets · , settings · q quit</text>
+          <text fg={theme.title} marginTop={1}>Session · [/] switch Events/Console</text>
           <text fg={theme.fg}>enter detail · o sort · / filter · g group · l limits · z zoom</text>
           <text fg={theme.fg}>E $EDITOR · e traces · Shift+S/X start/stop</text>
           <text fg={theme.fg}>Ctrl+S apply · Ctrl+L clear · Ctrl+W save preset</text>
-          <text fg={theme.title} marginTop={1}>Presets / Settings</text>
+          <text fg={theme.title} marginTop={1}>Console</text>
+          <text fg={theme.fg}>n new · e edit · v view · Enter rerun · s stop · c clear</text>
+          <text fg={theme.title} marginTop={1}>Snippets / Presets / Settings</text>
           <text fg={theme.fg}>j/k move · enter/tab edit · space toggle · esc back</text>
           <text fg={theme.dim} marginTop={1}>press any key to close</text>
         </>
