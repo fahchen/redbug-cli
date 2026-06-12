@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { Footer, Overlay, PickRow, RootGate } from "./ui"
+import { Footer, HelpOverlay, Overlay, PickRow, RootGate } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -63,6 +63,7 @@ export function ConsoleTab({
 
 type Modal =
   | { kind: "none" }
+  | { kind: "help" }
   | { kind: "pickSnippet" }
   | { kind: "confirmStop"; id: string }
   | { kind: "confirmClear" }
@@ -100,6 +101,11 @@ function ConsoleView({
 
   useKeyboard((key) => {
     const n = key.name
+
+    if (modal.kind === "help") {
+      setModal({ kind: "none" })
+      return
+    }
 
     if (modal.kind === "pickSnippet") {
       const max = snippets.length // 0 = blank, 1..N = snippets
@@ -164,6 +170,9 @@ function ConsoleView({
       case "c":
         if (history.length > 0) setModal({ kind: "confirmClear" })
         break
+      case "?":
+        setModal({ kind: "help" })
+        break
     }
   })
 
@@ -206,7 +215,33 @@ function ConsoleView({
         </box>
       </box>
 
-      <Footer text="n new · e edit · v view · Enter rerun · s stop · c clear · [ Events · esc back" />
+      <Footer text="n new · e edit · v view · Enter rerun · s stop · c clear · [ Events · ? help · esc back" />
+
+      {modal.kind === "help" && (
+        <HelpOverlay
+          title="session · console"
+          sections={[
+            {
+              lines: [
+                ["j / k", "move"],
+                ["n", "new execution (pick snippet, compose)"],
+                ["e", "edit + rerun selected"],
+                ["v", "view full code + output in $EDITOR"],
+                ["enter", "rerun selected"],
+                ["s", "force-stop running execution"],
+                ["c", "clear history"]
+              ]
+            },
+            {
+              title: "tabs",
+              lines: [
+                ["[", "switch to Events"],
+                ["esc", "back"]
+              ]
+            }
+          ]}
+        />
+      )}
 
       {modal.kind === "pickSnippet" && (
         <Overlay title="New execution — start from">

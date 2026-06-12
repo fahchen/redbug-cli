@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
-import { Footer, Header, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
+import { Footer, Header, HelpOverlay, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 
@@ -21,7 +21,7 @@ type FilterScope = "all" | "mfa" | "pid" | "info"
 type Filter = { scope: FilterScope; query: string }
 type GroupKey = "none" | "pid" | "mfa" | "kind"
 
-type Overlay = "none" | "sort" | "filter" | "editor" | "limits"
+type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help"
 type Focus = "list" | "detail"
 type Cols = { name: boolean; pid: boolean; mfa: boolean; info: boolean }
 
@@ -192,6 +192,11 @@ function SessionView({
       return
     }
 
+    if (overlay === "help") {
+      setOverlay("none")
+      return
+    }
+
     if (overlay === "editor") {
       handleEditorKeys(key)
       return
@@ -303,6 +308,9 @@ function SessionView({
         break
       case "]":
         setTab("console")
+        break
+      case "?":
+        setOverlay("help")
         break
     }
   })
@@ -421,7 +429,43 @@ function SessionView({
         text={`[${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}]`}
       />
 
-      <Footer text="j/k move · enter detail · o sort · / filter · g group · l limits · z zoom · ⇧E editor · e traces · ⇧S/X start/stop · ⌃L clear · esc back" />
+      <Footer text="j/k move · enter detail · o sort · / filter · g group · l limits · z zoom · ⇧E editor · e traces · ⇧S/X start/stop · ⌃L clear · ? help · esc back" />
+
+      {overlay === "help" && (
+        <HelpOverlay
+          title="session · events"
+          sections={[
+            {
+              lines: [
+                ["j / k", "move"],
+                ["enter", "open detail"],
+                ["z", "zoom detail"],
+                ["o", "sort"],
+                ["/", "filter"],
+                ["g", "cycle grouping"],
+                ["l", "limits"],
+                ["⇧E", "export event to $EDITOR"]
+              ]
+            },
+            {
+              title: "traces",
+              lines: [
+                ["e", "edit traces (RTPs)"],
+                ["⇧S / ⇧X", "start / stop trace"],
+                ["⌃S", "apply (restart)"],
+                ["⌃L", "clear events"]
+              ]
+            },
+            {
+              title: "tabs",
+              lines: [
+                ["]", "switch to Console"],
+                ["esc", "back"]
+              ]
+            }
+          ]}
+        />
+      )}
 
       {overlay === "filter" && (
         <Overlay>

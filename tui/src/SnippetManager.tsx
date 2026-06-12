@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { SNIPPETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { Footer, Header, Overlay, RootGate, TextField } from "./ui"
+import { Footer, Header, HelpOverlay, Overlay, RootGate, TextField } from "./ui"
 
 type SnippetsStore = StoreProxy<"Server.Stores.SnippetsRoot", Musubi.Stores>
 type SnippetProxy = StoreProxy<"Server.Stores.SnippetStore", Musubi.Stores>
@@ -14,6 +14,7 @@ type Snippet = Server.Schema.Snippet
 
 type Modal =
   | { kind: "none" }
+  | { kind: "help" }
   | { kind: "newSnippet" }
   | { kind: "rename"; id: string; name: string }
   | { kind: "confirmDelete"; id: string; name: string }
@@ -69,6 +70,10 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       } else if (n === "n" || n === "escape") setModal({ kind: "none" })
       return
     }
+    if (modal.kind === "help") {
+      setModal({ kind: "none" })
+      return
+    }
     if (modal.kind !== "none") {
       if (n === "escape") setModal({ kind: "none" })
       return
@@ -103,6 +108,9 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
         break
       case "d":
         if (cur) setModal({ kind: "confirmDelete", id: cur.id, name: cur.name })
+        break
+      case "?":
+        setModal({ kind: "help" })
         break
     }
   })
@@ -152,7 +160,26 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
         </box>
       </box>
 
-      <Footer text="j/k move · enter edit · n new · r rename · f format · d del · esc back" />
+      <Footer text="j/k move · enter edit · n new · r rename · f format · d del · ? help · esc back" />
+
+      {modal.kind === "help" && (
+        <HelpOverlay
+          title="snippets"
+          sections={[
+            {
+              lines: [
+                ["j / k", "move"],
+                ["enter", "edit code in $EDITOR"],
+                ["n", "new snippet"],
+                ["r", "rename"],
+                ["f", "format code"],
+                ["d", "delete"],
+                ["esc", "back"]
+              ]
+            }
+          ]}
+        />
+      )}
 
       {modal.kind === "newSnippet" && (
         <Overlay>

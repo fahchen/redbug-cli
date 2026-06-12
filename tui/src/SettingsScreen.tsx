@@ -7,7 +7,7 @@ import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./m
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { editorName } from "./editor"
 import { theme, themeNames } from "./theme"
-import { Footer, Header, Overlay, RootGate, TextField, fit } from "./ui"
+import { Footer, Header, HelpOverlay, Overlay, RootGate, TextField, fit } from "./ui"
 
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 type Settings = Server.Schema.Settings
@@ -36,6 +36,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
 
   const [sel, setSel] = useState(0)
   const [limitsDraft, setLimitsDraft] = useState<string | null>(null)
+  const [help, setHelp] = useState(false)
 
   const rowCount = 7 // theme, sort, 4 columns, limits
 
@@ -60,8 +61,16 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
 
   useKeyboard((key) => {
     const n = key.name
+    if (help) {
+      setHelp(false)
+      return
+    }
     if (limitsDraft !== null) {
       if (n === "escape") setLimitsDraft(null)
+      return
+    }
+    if (n === "?") {
+      setHelp(true)
       return
     }
     switch (n) {
@@ -115,7 +124,27 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
         <text fg={theme.dim}>ts and k columns are always shown.</text>
       </box>
 
-      <Footer text="j/k move · space/enter toggle or cycle · esc back" />
+      <Footer text="j/k move · space/enter toggle or cycle · ? help · esc back" />
+
+      {help && (
+        <HelpOverlay
+          title="settings"
+          sections={[
+            {
+              lines: [
+                ["j / k", "move"],
+                ["space / enter / l", "toggle or cycle value"],
+                ["esc", "back"]
+              ]
+            },
+            {
+              lines: [
+                ["$EDITOR", "read-only; set via the env var"]
+              ]
+            }
+          ]}
+        />
+      )}
 
       {limitsDraft !== null && (
         <Overlay>

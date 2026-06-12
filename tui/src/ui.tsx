@@ -72,6 +72,31 @@ export function Overlay({
   )
 }
 
+// Per-page help overlay: one or more sections of `key  description` lines.
+export type HelpSection = { title?: string; lines: [string, string][] }
+
+export function HelpOverlay({ title, sections }: { title: string; sections: HelpSection[] }) {
+  const keyWidth = Math.max(
+    ...sections.flatMap((sec) => sec.lines.map(([k]) => k.length))
+  )
+  return (
+    <Overlay title={title}>
+      {sections.map((sec, i) => (
+        <box key={i} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
+          {sec.title && <text fg={theme.dim}>{sec.title}</text>}
+          {sec.lines.map(([k, desc], j) => (
+            <box key={j} flexDirection="row">
+              <text fg={theme.title}>{k.padEnd(keyWidth)}</text>
+              <text fg={theme.fg}>{`  ${desc}`}</text>
+            </box>
+          ))}
+        </box>
+      ))}
+      <text fg={theme.dim} marginTop={1}>press ? or Esc to close</text>
+    </Overlay>
+  )
+}
+
 export function PickRow({ label, active }: { label: string; active: boolean }) {
   const bg = active ? theme.selBg : theme.overlay
   const fg = active ? theme.selFg : theme.fg

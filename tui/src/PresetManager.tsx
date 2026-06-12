@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
-import { Footer, Header, Overlay, RootGate, TextField } from "./ui"
+import { Footer, Header, HelpOverlay, Overlay, RootGate, TextField } from "./ui"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type PresetProxy = StoreProxy<"Server.Stores.PresetStore", Musubi.Stores>
@@ -17,6 +17,7 @@ type Focus = "list" | "detail"
 
 type Modal =
   | { kind: "none" }
+  | { kind: "help" }
   | { kind: "newPreset" }
   | { kind: "rename"; id: string; name: string }
   | { kind: "addTrace"; presetId: string }
@@ -59,6 +60,10 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
     const n = key.name
 
     if (modal.kind !== "none") {
+      if (modal.kind === "help") {
+        setModal({ kind: "none" })
+        return
+      }
       if (modal.kind === "confirmPreset") {
         if (n === "y") {
           const p = presetProxyById(modal.id)
@@ -77,6 +82,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         return
       }
       if (n === "escape") setModal({ kind: "none" })
+      return
+    }
+
+    if (n === "?") {
+      setModal({ kind: "help" })
       return
     }
 
@@ -207,10 +217,40 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
       <Footer
         text={
           focus === "list"
-            ? "j/k move · enter edit · n new · r rename · Ctrl+D delete · esc back"
-            : "j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · tab/esc back"
+            ? "j/k move · enter edit · n new · r rename · Ctrl+D delete · ? help · esc back"
+            : "j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · ? help · tab/esc back"
         }
       />
+
+      {modal.kind === "help" && (
+        <HelpOverlay
+          title="presets"
+          sections={[
+            {
+              title: "list",
+              lines: [
+                ["j / k", "move"],
+                ["enter / tab", "edit (focus traces)"],
+                ["n", "new preset"],
+                ["r", "rename"],
+                ["⌃D", "delete preset"]
+              ]
+            },
+            {
+              title: "traces (detail focus)",
+              lines: [
+                ["j / k", "move"],
+                ["space", "toggle pattern"],
+                ["a", "add pattern"],
+                ["e", "edit pattern"],
+                ["l", "limits"],
+                ["⌃D", "delete pattern"],
+                ["tab / esc", "back to list"]
+              ]
+            }
+          ]}
+        />
+      )}
 
       {modal.kind === "newPreset" && (
         <Overlay>

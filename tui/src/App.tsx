@@ -13,7 +13,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Footer, Header, Notice, Overlay, PickRow, TextField } from "./ui"
+import { Footer, Header, HelpOverlay, Notice, Overlay, PickRow, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -418,24 +418,32 @@ function ModalLayer({
 
   switch (modal.kind) {
     case "help":
-      return box(
-        "redbug · help",
-        <>
-          <text fg={theme.dim}>kinds: ↓ call (cyan) · ↑ retn (green) · → send (yellow) · ← recv (purple)</text>
-          <text fg={theme.title} marginTop={1}>Tree</text>
-          <text fg={theme.fg}>j/k move · enter open session · n node · s session</text>
-          <text fg={theme.fg}>e edit node · c connect/disconnect · d delete</text>
-          <text fg={theme.fg}>p presets · x snippets · , settings · q quit</text>
-          <text fg={theme.title} marginTop={1}>Session · [/] switch Events/Console</text>
-          <text fg={theme.fg}>enter detail · o sort · / filter · g group · l limits · z zoom</text>
-          <text fg={theme.fg}>E $EDITOR · e traces · Shift+S/X start/stop</text>
-          <text fg={theme.fg}>Ctrl+S apply · Ctrl+L clear · Ctrl+W save preset</text>
-          <text fg={theme.title} marginTop={1}>Console</text>
-          <text fg={theme.fg}>n new · e edit · v view · Enter rerun · s stop · c clear</text>
-          <text fg={theme.title} marginTop={1}>Snippets / Presets / Settings</text>
-          <text fg={theme.fg}>j/k move · enter/tab edit · space toggle · esc back</text>
-          <text fg={theme.dim} marginTop={1}>press any key to close</text>
-        </>
+      return (
+        <HelpOverlay
+          title="redbug · nodes ▸ sessions"
+          sections={[
+            {
+              lines: [
+                ["j / k", "move"],
+                ["enter", "open session"],
+                ["n", "new node"],
+                ["s", "new session"],
+                ["e", "edit node"],
+                ["c", "connect / disconnect"],
+                ["d", "delete"]
+              ]
+            },
+            {
+              title: "go to",
+              lines: [
+                ["p", "presets"],
+                ["x", "snippets"],
+                [",", "settings"],
+                ["q", "quit"]
+              ]
+            }
+          ]}
+        />
       )
 
     case "newNode":
