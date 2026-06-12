@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
-import { Footer, Header, HelpOverlay, Overlay, RootGate, TextField } from "./ui"
+import { Header, HelpOverlay, HintFooter, Overlay, RootGate, TextField } from "./ui"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type PresetProxy = StoreProxy<"Server.Stores.PresetStore", Musubi.Stores>
@@ -91,11 +91,6 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
     }
 
     if (focus === "detail") {
-      if (key.ctrl && n === "d") {
-        if (cur && traceCur)
-          setModal({ kind: "confirmTrace", presetId: cur.id, traceId: traceCur.id })
-        return
-      }
       switch (n) {
         case "escape":
         case "tab":
@@ -115,7 +110,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
             if (p) dispatcher(p)("togglePresetTrace", { trace_id: traceCur.id })
           }
           break
-        case "a":
+        case "n":
           if (cur) setModal({ kind: "addTrace", presetId: cur.id })
           break
         case "e":
@@ -125,15 +120,15 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         case "l":
           if (cur) setModal({ kind: "limits", presetId: cur.id, draft: formatLimits(cur.limits) })
           break
+        case "d":
+          if (cur && traceCur)
+            setModal({ kind: "confirmTrace", presetId: cur.id, traceId: traceCur.id })
+          break
       }
       return
     }
 
     // list focus
-    if (key.ctrl && n === "d") {
-      if (cur) setModal({ kind: "confirmPreset", id: cur.id, name: cur.name })
-      return
-    }
     switch (n) {
       case "escape":
         onBack()
@@ -158,6 +153,9 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         break
       case "r":
         if (cur) setModal({ kind: "rename", id: cur.id, name: cur.name })
+        break
+      case "d":
+        if (cur) setModal({ kind: "confirmPreset", id: cur.id, name: cur.name })
         break
     }
   })
@@ -214,11 +212,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         </box>
       </box>
 
-      <Footer
+      <HintFooter
         text={
           focus === "list"
-            ? "j/k move · enter edit · n new · r rename · Ctrl+D delete · ? help · esc back"
-            : "j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · ? help · tab/esc back"
+            ? "j/k move · enter edit · n new · r rename · d delete · ? help · esc back"
+            : "j/k move · space toggle · n add · e edit · l limits · d del · ? help · tab/esc back"
         }
       />
 
@@ -233,7 +231,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
                 ["enter / tab", "edit (focus traces)"],
                 ["n", "new preset"],
                 ["r", "rename"],
-                ["⌃D", "delete preset"]
+                ["d", "delete preset"]
               ]
             },
             {
@@ -241,10 +239,10 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               lines: [
                 ["j / k", "move"],
                 ["space", "toggle pattern"],
-                ["a", "add pattern"],
+                ["n", "add pattern"],
                 ["e", "edit pattern"],
                 ["l", "limits"],
-                ["⌃D", "delete pattern"],
+                ["d", "delete pattern"],
                 ["tab / esc", "back to list"]
               ]
             }

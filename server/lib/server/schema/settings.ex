@@ -16,5 +16,6 @@ defmodule Server.Schema.Settings do
     field(:default_sort, String.t())
     field(:default_limits, Limits.t())
     field(:theme, String.t())
+    field(:show_hints, boolean())
   end
 end

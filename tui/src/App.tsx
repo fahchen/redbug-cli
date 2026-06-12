@@ -13,7 +13,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Footer, Header, HelpOverlay, Notice, Overlay, PickRow, TextField } from "./ui"
+import { Header, HelpOverlay, HintFooter, HintProvider, Notice, Overlay, PickRow, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -99,35 +99,43 @@ function Router({
   const settings = settingsSnap.settings as Server.Schema.Settings | undefined
   setTheme(settings?.theme ?? "dark")
 
-  if (screen.name === "session")
+  return (
+    <HintProvider show={settings?.show_hints ?? true}>
+      {renderScreen()}
+    </HintProvider>
+  )
+
+  function renderScreen(): ReactNode {
+    if (screen.name === "session")
+      return (
+        <SessionScreen
+          nodeId={screen.nodeId}
+          sessionId={screen.sessionId}
+          settings={settings}
+          onBack={() => setScreen({ name: "tree" })}
+        />
+      )
+
+    if (screen.name === "presets")
+      return <PresetManager onBack={() => setScreen({ name: "tree" })} />
+
+    if (screen.name === "snippets")
+      return <SnippetManager onBack={() => setScreen({ name: "tree" })} />
+
+    if (screen.name === "settings")
+      return <SettingsScreen onBack={() => setScreen({ name: "tree" })} />
+
     return (
-      <SessionScreen
-        nodeId={screen.nodeId}
-        sessionId={screen.sessionId}
-        settings={settings}
-        onBack={() => setScreen({ name: "tree" })}
+      <S1View
+        nodesStore={nodesStore}
+        presetsStore={presetsStore}
+        onOpenSession={(nodeId, sessionId) => setScreen({ name: "session", nodeId, sessionId })}
+        onOpenPresets={() => setScreen({ name: "presets" })}
+        onOpenSnippets={() => setScreen({ name: "snippets" })}
+        onOpenSettings={() => setScreen({ name: "settings" })}
       />
     )
-
-  if (screen.name === "presets")
-    return <PresetManager onBack={() => setScreen({ name: "tree" })} />
-
-  if (screen.name === "snippets")
-    return <SnippetManager onBack={() => setScreen({ name: "tree" })} />
-
-  if (screen.name === "settings")
-    return <SettingsScreen onBack={() => setScreen({ name: "tree" })} />
-
-  return (
-    <S1View
-      nodesStore={nodesStore}
-      presetsStore={presetsStore}
-      onOpenSession={(nodeId, sessionId) => setScreen({ name: "session", nodeId, sessionId })}
-      onOpenPresets={() => setScreen({ name: "presets" })}
-      onOpenSnippets={() => setScreen({ name: "snippets" })}
-      onOpenSettings={() => setScreen({ name: "settings" })}
-    />
-  )
+  }
 }
 
 function flatten(nodes: readonly Node[], store: NodesStore): Row[] {
@@ -300,7 +308,7 @@ function S1View({
       case "p":
         onOpenPresets()
         break
-      case "x":
+      case "l":
         onOpenSnippets()
         break
       case ",":
@@ -338,7 +346,7 @@ function S1View({
         )}
       </box>
 
-      <Footer text="j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · x snippets · , settings · ? help · q quit" />
+      <HintFooter text="j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · l library · , settings · ? help · q quit" />
 
       {modal.kind !== "none" && (
         <ModalLayer
@@ -437,7 +445,7 @@ function ModalLayer({
               title: "go to",
               lines: [
                 ["p", "presets"],
-                ["x", "snippets"],
+                ["l", "snippet library"],
                 [",", "settings"],
                 ["q", "quit"]
               ]

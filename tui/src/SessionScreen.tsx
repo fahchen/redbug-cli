@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
-import { Footer, Header, HelpOverlay, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
+import { Footer, Header, HelpOverlay, HintFooter, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 
@@ -206,7 +206,7 @@ function SessionView({
       if (n === "escape" || n === "z") setZoom(false)
       else if (n === "j" || n === "down") setDetailScroll((s) => s + 1)
       else if (n === "k" || n === "up") setDetailScroll((s) => Math.max(0, s - 1))
-      else if (key.shift && n === "e") exportSelected()
+      else if (n === "v") exportSelected()
       return
     }
 
@@ -232,8 +232,8 @@ function SessionView({
         case "z":
           if (selectedEvent) setZoom(true)
           break
-        case "e":
-          if (key.shift) exportSelected()
+        case "v":
+          exportSelected()
           break
       }
       return
@@ -293,12 +293,12 @@ function SessionView({
           setZoom(true)
         }
         break
-      case "e":
-        if (key.shift) exportSelected()
-        else {
-          setRtpSel(0)
-          setOverlay("editor")
-        }
+      case "t":
+        setRtpSel(0)
+        setOverlay("editor")
+        break
+      case "v":
+        exportSelected()
         break
       case "s":
         if (key.shift) dispatch("startTrace")
@@ -321,10 +321,6 @@ function SessionView({
       if (n === "escape") setRtpModal({ kind: "none" })
       return
     }
-    if (key.ctrl && n === "d") {
-      if (rtpCur) dispatch("deleteTrace", { trace_id: rtpCur.id })
-      return
-    }
     if (key.ctrl && n === "w") {
       setRtpModal({ kind: "savePreset" })
       return
@@ -344,11 +340,14 @@ function SessionView({
       case "space":
         if (rtpCur) dispatch("toggleTrace", { trace_id: rtpCur.id })
         break
-      case "a":
+      case "n":
         setRtpModal({ kind: "add" })
         break
       case "e":
         if (rtpCur) setRtpModal({ kind: "edit", id: rtpCur.id, text: rtpCur.text })
+        break
+      case "d":
+        if (rtpCur) dispatch("deleteTrace", { trace_id: rtpCur.id })
         break
     }
   }
@@ -429,7 +428,7 @@ function SessionView({
         text={`[${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}]`}
       />
 
-      <Footer text="j/k move · enter detail · o sort · / filter · g group · l limits · z zoom · ⇧E editor · e traces · ⇧S/X start/stop · ⌃L clear · ? help · esc back" />
+      <HintFooter text="j/k move · enter detail · v view · o sort · / filter · g group · l limits · z zoom · t traces · ⇧S/X start/stop · ⌃L clear · ? help · esc back" />
 
       {overlay === "help" && (
         <HelpOverlay
@@ -439,18 +438,18 @@ function SessionView({
               lines: [
                 ["j / k", "move"],
                 ["enter", "open detail"],
+                ["v", "view event in $EDITOR"],
                 ["z", "zoom detail"],
                 ["o", "sort"],
                 ["/", "filter"],
                 ["g", "cycle grouping"],
-                ["l", "limits"],
-                ["⇧E", "export event to $EDITOR"]
+                ["l", "limits"]
               ]
             },
             {
               title: "traces",
               lines: [
-                ["e", "edit traces (RTPs)"],
+                ["t", "edit traces (RTPs)"],
                 ["⇧S / ⇧X", "start / stop trace"],
                 ["⌃S", "apply (restart)"],
                 ["⌃L", "clear events"]
@@ -544,7 +543,7 @@ function SessionView({
               traces.map((t, i) => <RtpRow key={t.id} rtp={t} active={i === rtpSel} />)
             )}
           </box>
-          <text fg={theme.dim} marginTop={1}>j/k move · space toggle · a add · e edit · Ctrl+D del · Ctrl+W save preset · esc close</text>
+          <text fg={theme.dim} marginTop={1}>j/k move · space toggle · n add · e edit · d del · Ctrl+W save preset · esc close</text>
           {rtpModal.kind === "add" && (
             <TextField
               key="rtp-add"
@@ -596,7 +595,7 @@ function SessionView({
             border
             borderColor={theme.title}
             backgroundColor={theme.overlay}
-            title="Detail (zoom · esc close · E editor)"
+            title="Detail (zoom · esc close · v view)"
             titleColor={theme.title}
             flexDirection="column"
             paddingTop={1}
@@ -705,7 +704,7 @@ function DetailPane({
       border
       borderColor={focused ? theme.title : theme.border}
       backgroundColor={theme.bg}
-      title="Detail (z zoom · E editor)"
+      title="Detail (z zoom · v view)"
       titleColor={theme.title}
       width={46}
       flexDirection="column"

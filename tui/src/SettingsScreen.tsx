@@ -7,7 +7,7 @@ import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./m
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { editorName } from "./editor"
 import { theme, themeNames } from "./theme"
-import { Footer, Header, HelpOverlay, Overlay, RootGate, TextField, fit } from "./ui"
+import { Header, HelpOverlay, HintFooter, Overlay, RootGate, TextField, fit } from "./ui"
 
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 type Settings = Server.Schema.Settings
@@ -32,13 +32,14 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
   const limits = s?.default_limits ?? DEFAULT_LIMITS
   const curTheme = s?.theme ?? "dark"
   const curSort = s?.default_sort ?? "ts_desc"
+  const showHints = s?.show_hints ?? true
   const editor = editorName()
 
   const [sel, setSel] = useState(0)
   const [limitsDraft, setLimitsDraft] = useState<string | null>(null)
   const [help, setHelp] = useState(false)
 
-  const rowCount = 7 // theme, sort, 4 columns, limits
+  const rowCount = 8 // theme, sort, 4 columns, limits, show hints
 
   const send = dispatcher(store)
   const dispatch = (payload: any) => send("updateSettings", payload)
@@ -56,6 +57,8 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
       dispatch({ columns: { [key]: !cols[key] } })
     } else if (sel === 6) {
       setLimitsDraft(formatLimits(limits))
+    } else if (sel === 7) {
+      dispatch({ show_hints: !showHints })
     }
   }
 
@@ -117,6 +120,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
           value={`keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}
           active={sel === 6}
         />
+        <SettingRow label="show hints" value={showHints ? "[x]" : "[ ]"} active={sel === 7} />
         <box flexDirection="row">
           <text fg={theme.dim}>{fit("$EDITOR", 16)}</text>
           <text fg={theme.dim}>{`${editor} (read-only · set via env)`}</text>
@@ -124,7 +128,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
         <text fg={theme.dim}>ts and k columns are always shown.</text>
       </box>
 
-      <Footer text="j/k move · space/enter toggle or cycle · ? help · esc back" />
+      <HintFooter text="j/k move · space/enter toggle or cycle · ? help · esc back" />
 
       {help && (
         <HelpOverlay

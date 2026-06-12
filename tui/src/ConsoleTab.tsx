@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { Footer, HelpOverlay, Overlay, PickRow, RootGate } from "./ui"
+import { HelpOverlay, HintFooter, Overlay, PickRow, RootGate } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -161,7 +161,7 @@ function ConsoleView({
       case "v":
         if (cur) void viewExec(renderer, cur)
         break
-      case "return":
+      case "r":
         if (cur) dispatch("run", { code: cur.code, name: cur.name || null })
         break
       case "s":
@@ -215,7 +215,7 @@ function ConsoleView({
         </box>
       </box>
 
-      <Footer text="n new · e edit · v view · Enter rerun · s stop · c clear · [ Events · ? help · esc back" />
+      <HintFooter text="n new · e edit · v view · r run · s stop · c clear · [ Events · ? help · esc back" />
 
       {modal.kind === "help" && (
         <HelpOverlay
@@ -225,9 +225,9 @@ function ConsoleView({
               lines: [
                 ["j / k", "move"],
                 ["n", "new execution (pick snippet, compose)"],
-                ["e", "edit + rerun selected"],
+                ["e", "edit + run selected"],
                 ["v", "view full code + output in $EDITOR"],
-                ["enter", "rerun selected"],
+                ["r", "run selected as-is"],
                 ["s", "force-stop running execution"],
                 ["c", "clear history"]
               ]

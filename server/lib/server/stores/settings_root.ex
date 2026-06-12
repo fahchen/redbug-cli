@@ -15,6 +15,7 @@ defmodule Server.Stores.SettingsRoot do
       field(:default_sort, String.t() | nil)
       field(:columns, map() | nil)
       field(:default_limits, map() | nil)
+      field(:show_hints, boolean() | nil)
     end
   end
 
@@ -66,6 +67,7 @@ defmodule Server.Stores.SettingsRoot do
       "default_sort" -> :default_sort
       "default_limits" -> :default_limits
       "theme" -> :theme
+      "show_hints" -> :show_hints
       _ -> nil
     end
   end

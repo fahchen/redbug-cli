@@ -27,7 +27,8 @@ defmodule Server.Config do
     columns: %{name: true, pid: true, mfa: true, info: true},
     default_sort: "ts_desc",
     default_limits: %{keep: 500, time: 900, msgs: 10_000},
-    theme: "dark"
+    theme: "dark",
+    show_hints: true
   }
 
   # --- lifecycle ---
@@ -483,7 +484,8 @@ defmodule Server.Config do
       },
       default_sort: Map.get(j, "default_sort", @default_settings.default_sort),
       default_limits: j |> Map.get("default_limits") |> limits_from_json(),
-      theme: Map.get(j, "theme", @default_settings.theme)
+      theme: Map.get(j, "theme", @default_settings.theme),
+      show_hints: Map.get(j, "show_hints", @default_settings.show_hints)
     }
   end
 

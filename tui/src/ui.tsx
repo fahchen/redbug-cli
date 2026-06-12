@@ -1,9 +1,24 @@
 /** @jsxImportSource @opentui/react */
-import { useState } from "react"
+import { createContext, useContext, useState } from "react"
 import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
 
 import { theme } from "./theme"
+
+// Whether keybind hint footers are shown (driven by the `show_hints` setting).
+// Defaults to true so screens render hints even without an enclosing provider.
+const HintContext = createContext(true)
+
+export function HintProvider({ show, children }: { show: boolean; children: ReactNode }) {
+  return <HintContext.Provider value={show}>{children}</HintContext.Provider>
+}
+
+// Keybind hint line. Hidden when `show_hints` is off. Status/info footers should
+// use Footer directly so they stay visible regardless of the setting.
+export function HintFooter({ text }: { text: string }) {
+  if (!useContext(HintContext)) return null
+  return <Footer text={text} />
+}
 
 // Top title bar shared by every screen. `children` carry per-screen status/info
 // chips that sit to the right of the title.
