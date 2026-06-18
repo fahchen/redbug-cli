@@ -139,8 +139,11 @@ defmodule Server.Config do
   @impl true
   def init(_opts) do
     :ets.new(@table, [:named_table, :protected, read_concurrency: true])
-    # public: the kernel's connect path reads this via Server.Epmd; it's an in-VM
-    # dial table (ip:port only, no secrets), so writers beyond Config are harmless.
+    # public is required: the kernel's distribution/connect machinery reads this
+    # via Server.Epmd from processes outside Config. It holds only ip:port dial
+    # targets (no secrets), and only Config writes it — but a rogue writer could
+    # redirect where distribution dials, so treat write access as trusted-local
+    # (same trust boundary as the WS channel).
     :ets.new(@endpoints, [:named_table, :public, read_concurrency: true])
 
     # REDBUG_NODES → dial-endpoint table (read by Server.Epmd on connect) + the
@@ -489,16 +492,26 @@ defmodule Server.Config do
           case parse_env_entry(entry) do
             {:ok, name, endpoint, cookie} ->
               nd = %{id: "env:" <> name, name: name, cookie: cookie}
-              {defs ++ [nd], Map.put(eps, String.to_atom(name), endpoint)}
+              {[nd | defs], Map.put(eps, String.to_atom(name), endpoint)}
 
             :error ->
-              Logger.warning("REDBUG_NODES: ignoring malformed entry #{inspect(entry)}")
+              Logger.warning("REDBUG_NODES: ignoring malformed entry #{inspect(redact_entry(entry))}")
               {defs, eps}
           end
         end)
+        |> then(fn {defs, eps} -> {Enum.reverse(defs), eps} end)
 
       _ ->
         {[], %{}}
+    end
+  end
+
+  # An entry's 3rd `|` field is the cookie (a credential); never log it. Keep
+  # only name@host + dial for diagnostics, mask anything from the cookie on.
+  defp redact_entry(entry) do
+    case String.split(entry, "|") do
+      [a, b | [_ | _]] -> Enum.join([a, b, "***"], "|")
+      _ -> entry
     end
   end
 
@@ -522,7 +535,8 @@ defmodule Server.Config do
   defp parse_dial(dial) do
     with [ip, port] <- dial |> String.trim() |> String.split(":"),
          {:ok, addr} <- :inet.parse_address(String.to_charlist(ip)),
-         {p, ""} <- Integer.parse(port) do
+         {p, ""} <- Integer.parse(port),
+         true <- p in 1..65535 do
       {:ok, {addr, p}}
     else
       _ -> :error

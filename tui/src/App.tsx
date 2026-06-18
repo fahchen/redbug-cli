@@ -355,7 +355,7 @@ function S1View({
       <HintFooter
         text={
           envMode
-            ? "env nodes (read-only) · j/k move · enter open · s session · c connect · p presets · l library · , settings · ? help · q quit"
+            ? "env nodes (read-only) · j/k move · enter open · s session · c connect · d delete session · p presets · l library · , settings · ? help · q quit"
             : "j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · l library · , settings · ? help · q quit"
         }
       />

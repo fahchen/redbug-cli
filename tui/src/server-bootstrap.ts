@@ -17,7 +17,9 @@ export type EmbeddedServer = { port: number; stop: () => void }
 // up at release boot (RELEASE_DISTRIBUTION=none); Server.Application then
 // self-distributes after the code is available.
 function shimEnv(): Record<string, string> {
-  if (!process.env.REDBUG_NODES) return {}
+  // Whitespace-only counts as unset: enabling the shim with zero parsed nodes
+  // would disable normal epmd connects for nothing.
+  if (!process.env.REDBUG_NODES?.trim()) return {}
   const shim = "-start_epmd false -epmd_module Elixir.Server.Epmd"
   const existing = process.env.ERL_FLAGS
   return {

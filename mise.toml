@@ -15,7 +15,10 @@ export REDBUG_PORT_FILE="$port_file"
 # REDBUG_NODES → bypass epmd with the connect-only shim (see Server.Epmd). The
 # shim module is only loaded once the app starts, so distribution must NOT come
 # up at boot via --name; the app self-distributes (CONTROLLER_NODE) afterwards.
-if [ -n "$REDBUG_NODES" ]; then
+# Trim first: a whitespace-only value parses to zero nodes, so don't let it flip
+# the server into shim boot and disable normal epmd connects.
+redbug_nodes_trimmed=$(printf '%s' "$REDBUG_NODES" | tr -d '[:space:]')
+if [ -n "$redbug_nodes_trimmed" ]; then
   export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
   export CONTROLLER_NODE="redbug_controller@127.0.0.1"
   export CONTROLLER_COOKIE="$cookie"
