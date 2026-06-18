@@ -22,7 +22,7 @@ defmodule Server.Stores.NodeStore do
     field(:name, String.t())
     field(:cookie, String.t())
     field(:connected, boolean())
-    field(:source, String.t())
+    field(:source, :config | :env)
     field(:sessions, list(SessionItemStore.state()))
   end
 
