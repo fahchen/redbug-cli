@@ -22,6 +22,7 @@ defmodule Server.Stores.NodeStore do
     field(:name, String.t())
     field(:cookie, String.t())
     field(:connected, boolean())
+    field(:source, String.t())
     field(:sessions, list(SessionItemStore.state()))
   end
 
@@ -69,6 +70,7 @@ defmodule Server.Stores.NodeStore do
       name: n.name,
       cookie: n.cookie,
       connected: n.connected,
+      source: Map.get(n, :source, "config"),
       sessions:
         for s <- n.sessions do
           child(SessionItemStore, id: s.id, session: s, node_id: n.id)
@@ -78,19 +80,25 @@ defmodule Server.Stores.NodeStore do
 
   @impl true
   def handle_command(:editNode, payload, socket) do
-    attrs =
-      %{}
-      |> put_if(payload, "name", :name)
-      |> put_if(payload, "cookie", :cookie)
+    unless env?(socket) do
+      attrs =
+        %{}
+        |> put_if(payload, "name", :name)
+        |> put_if(payload, "cookie", :cookie)
 
-    Config.update_node(socket.assigns.node.id, attrs)
+      Config.update_node(socket.assigns.node.id, attrs)
+    end
+
     {:noreply, socket}
   end
 
   def handle_command(:deleteNode, _payload, socket) do
-    node = socket.assigns.node
-    Enum.each(node.sessions, &Server.Trace.terminate(&1.id))
-    Config.delete_node(node.id)
+    unless env?(socket) do
+      node = socket.assigns.node
+      Enum.each(node.sessions, &Server.Trace.terminate(&1.id))
+      Config.delete_node(node.id)
+    end
+
     {:noreply, socket}
   end
 
@@ -119,6 +127,8 @@ defmodule Server.Stores.NodeStore do
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
 
   # --- helpers ---
+
+  defp env?(socket), do: Map.get(socket.assigns.node, :source) == "env"
 
   defp clone_from_preset(nil), do: {[], Config.settings().default_limits}
 

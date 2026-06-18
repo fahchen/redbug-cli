@@ -12,7 +12,17 @@ cookie="${RB_COOKIE:-rbtest}"
 port_file="/tmp/redbug.port"
 rm -f "$port_file"
 export REDBUG_PORT_FILE="$port_file"
-elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server &
+# REDBUG_NODES → bypass epmd with the connect-only shim (see Server.Epmd). The
+# shim module is only loaded once the app starts, so distribution must NOT come
+# up at boot via --name; the app self-distributes (CONTROLLER_NODE) afterwards.
+if [ -n "$REDBUG_NODES" ]; then
+  export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
+  export CONTROLLER_NODE="redbug_controller@127.0.0.1"
+  export CONTROLLER_COOKIE="$cookie"
+  elixir -S mix phx.server &
+else
+  elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server &
+fi
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
 until [ -f "$port_file" ]; do sleep 0.2; done
@@ -22,7 +32,7 @@ cd ../tui && REDBUG_PORT="$port" bun run dev
 """
 
 [tasks.package]
-description = "Build single-file dist/redbug (bun --compile embedding the server release) + standalone TUI for sidecar"
+description = "Build single-file dist/redbug (bun --compile embedding the server release) + standalone TUI"
 run = """
 set -e
 root="$(pwd)"
@@ -31,11 +41,11 @@ cd "$root/server" && MIX_ENV=prod mix release server --overwrite
 mkdir -p "$root/tui/embed"
 tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
 # redbug = single file (main.tsx embeds the tarball, extracts + spawns it at runtime).
-# redbug-tui = standalone TUI (index.tsx), only needed to reach a remote sidecar server.
+# redbug-tui = standalone TUI (index.tsx), only needed to attach to a separately-running server (REDBUG_HOST/REDBUG_PORT).
 # Both compile straight into the root dist/ (build scripts target ../dist).
 rm -rf "$root/dist"
 mkdir -p "$root/dist"
 cd "$root/tui" && bun install && bun run build:bin && bun run build:redbug
 chmod +x "$root/dist/redbug" "$root/dist/redbug-tui"
-echo "packaged -> dist/redbug (single file; run it to launch) + dist/redbug-tui (sidecar)"
+echo "packaged -> dist/redbug (single file; run it to launch) + dist/redbug-tui (standalone TUI)"
 """

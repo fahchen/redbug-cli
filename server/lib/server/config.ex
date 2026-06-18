@@ -20,6 +20,7 @@ defmodule Server.Config do
   require Logger
 
   @table :redbug_config
+  @endpoints :redbug_endpoints
   @topic "config"
   @pubsub Server.PubSub
 
@@ -39,12 +40,12 @@ defmodule Server.Config do
 
   # --- reads (hit ETS directly) ---
 
-  @doc "All target nodes (persisted config), each merged with runtime `connected`/session `status`."
+  @doc "All target nodes (config or env), each merged with runtime `connected`/session `status`."
   def nodes do
     connected = lookup(:connected, MapSet.new())
     statuses = lookup(:session_status, %{})
 
-    for node <- lookup(:nodes, []) do
+    for node <- nodes_raw() do
       sessions =
         for s <- node.sessions do
           Map.put(s, :status, Map.get(statuses, s.id, "stopped"))
@@ -56,14 +57,39 @@ defmodule Server.Config do
     end
   end
 
+  @doc "True when nodes come from `REDBUG_NODES` (read-only env mode, the whole list)."
+  def env_mode?, do: lookup(:env_nodes, []) != []
+
+  # Raw nodes with no runtime merge. In env mode this is the injected list
+  # (sessions pulled from the persisted `:env_sessions` map by node name, so a
+  # node that drops out of REDBUG_NODES auto-hides while keeping its sessions);
+  # otherwise the persisted config nodes.
+  defp nodes_raw do
+    if env_mode?() do
+      by_name = lookup(:env_sessions, %{})
+
+      for nd <- lookup(:env_nodes, []) do
+        %{
+          id: nd.id,
+          name: nd.name,
+          cookie: nd.cookie,
+          source: "env",
+          sessions: Map.get(by_name, nd.name, [])
+        }
+      end
+    else
+      for node <- lookup(:nodes, []), do: Map.put(node, :source, "config")
+    end
+  end
+
   def presets, do: lookup(:presets, [])
 
   def snippets, do: lookup(:snippets, [])
 
   def settings, do: lookup(:settings, @default_settings)
 
-  @doc "Raw persisted node (no runtime merge), or nil."
-  def fetch_node(node_id), do: Enum.find(lookup(:nodes, []), &(&1.id == node_id))
+  @doc "Raw node (config or env, no runtime merge), or nil."
+  def fetch_node(node_id), do: Enum.find(nodes_raw(), &(&1.id == node_id))
 
   def cookie(node_id) do
     case fetch_node(node_id) do
@@ -113,12 +139,22 @@ defmodule Server.Config do
   @impl true
   def init(_opts) do
     :ets.new(@table, [:named_table, :protected, read_concurrency: true])
+    # public: the kernel's connect path reads this via Server.Epmd; it's an in-VM
+    # dial table (ip:port only, no secrets), so writers beyond Config are harmless.
+    :ets.new(@endpoints, [:named_table, :public, read_concurrency: true])
+
+    # REDBUG_NODES → dial-endpoint table (read by Server.Epmd on connect) + the
+    # read-only node defs surfaced in the tree.
+    {env_nodes, endpoints} = parse_env_nodes()
+    for {key, endpoint} <- endpoints, do: :ets.insert(@endpoints, {key, endpoint})
 
     config = load()
     :ets.insert(@table, {:nodes, config.nodes})
     :ets.insert(@table, {:presets, config.presets})
     :ets.insert(@table, {:snippets, config.snippets})
     :ets.insert(@table, {:settings, config.settings})
+    :ets.insert(@table, {:env_sessions, config.env_sessions})
+    :ets.insert(@table, {:env_nodes, env_nodes})
     :ets.insert(@table, {:connected, MapSet.new()})
     :ets.insert(@table, {:session_status, %{}})
 
@@ -139,20 +175,27 @@ defmodule Server.Config do
   end
 
   def handle_call({:update_node, id, attrs}, _from, state) do
-    nodes =
-      update_in_list(lookup(:nodes, []), id, fn node ->
-        node
-        |> maybe_put(:name, attrs)
-        |> maybe_put(:cookie, attrs)
-      end)
+    # env nodes are read-only; only config nodes can be edited.
+    unless env_id?(id) do
+      nodes =
+        update_in_list(lookup(:nodes, []), id, fn node ->
+          node
+          |> maybe_put(:name, attrs)
+          |> maybe_put(:cookie, attrs)
+        end)
 
-    put_nodes(nodes)
+      put_nodes(nodes)
+    end
+
     {:reply, :ok, state}
   end
 
   def handle_call({:delete_node, id}, _from, state) do
-    put_nodes(Enum.reject(lookup(:nodes, []), &(&1.id == id)))
-    drop_connected(id)
+    unless env_id?(id) do
+      put_nodes(Enum.reject(lookup(:nodes, []), &(&1.id == id)))
+      drop_connected(id)
+    end
+
     {:reply, :ok, state}
   end
 
@@ -164,32 +207,44 @@ defmodule Server.Config do
       limits: Map.get(attrs, :limits, settings().default_limits)
     }
 
-    nodes =
-      update_in_list(lookup(:nodes, []), node_id, fn node ->
-        %{node | sessions: node.sessions ++ [session]}
-      end)
+    if env_id?(node_id) do
+      update_env_sessions(env_name(node_id), &(&1 ++ [session]))
+    else
+      put_nodes(
+        update_in_list(lookup(:nodes, []), node_id, fn node ->
+          %{node | sessions: node.sessions ++ [session]}
+        end)
+      )
+    end
 
-    put_nodes(nodes)
     {:reply, {:ok, session.id}, state}
   end
 
   def handle_call({:update_session, node_id, id, attrs}, _from, state) do
-    nodes =
-      update_in_list(lookup(:nodes, []), node_id, fn node ->
-        %{node | sessions: update_in_list(node.sessions, id, &Map.merge(&1, attrs))}
-      end)
+    if env_id?(node_id) do
+      update_env_sessions(env_name(node_id), &update_in_list(&1, id, fn s -> Map.merge(s, attrs) end))
+    else
+      put_nodes(
+        update_in_list(lookup(:nodes, []), node_id, fn node ->
+          %{node | sessions: update_in_list(node.sessions, id, &Map.merge(&1, attrs))}
+        end)
+      )
+    end
 
-    put_nodes(nodes)
     {:reply, :ok, state}
   end
 
   def handle_call({:delete_session, node_id, id}, _from, state) do
-    nodes =
-      update_in_list(lookup(:nodes, []), node_id, fn node ->
-        %{node | sessions: Enum.reject(node.sessions, &(&1.id == id))}
-      end)
+    if env_id?(node_id) do
+      update_env_sessions(env_name(node_id), &Enum.reject(&1, fn s -> s.id == id end))
+    else
+      put_nodes(
+        update_in_list(lookup(:nodes, []), node_id, fn node ->
+          %{node | sessions: Enum.reject(node.sessions, &(&1.id == id))}
+        end)
+      )
+    end
 
-    put_nodes(nodes)
     {:reply, :ok, state}
   end
 
@@ -300,6 +355,18 @@ defmodule Server.Config do
     persist_and_broadcast()
   end
 
+  # Sessions under env nodes live in a name-keyed map (env nodes themselves are
+  # rebuilt from REDBUG_NODES each boot, so their sessions persist separately and
+  # survive the node dropping out / coming back).
+  defp update_env_sessions(name, fun) do
+    map = lookup(:env_sessions, %{})
+    :ets.insert(@table, {:env_sessions, Map.put(map, name, fun.(Map.get(map, name, [])))})
+    persist_and_broadcast()
+  end
+
+  defp env_id?(id), do: is_binary(id) and String.starts_with?(id, "env:")
+  defp env_name("env:" <> name), do: name
+
   defp add_connected(id) do
     connected = lookup(:connected, MapSet.new())
 
@@ -322,7 +389,8 @@ defmodule Server.Config do
       nodes: lookup(:nodes, []),
       presets: lookup(:presets, []),
       snippets: lookup(:snippets, []),
-      settings: settings()
+      settings: settings(),
+      env_sessions: lookup(:env_sessions, %{})
     })
     broadcast()
   end
@@ -404,7 +472,78 @@ defmodule Server.Config do
   end
 
   defp default_config,
-    do: %{nodes: [], presets: [], snippets: [], settings: @default_settings}
+    do: %{nodes: [], presets: [], snippets: [], settings: @default_settings, env_sessions: %{}}
+
+  # --- REDBUG_NODES parsing ---
+
+  # "name@host|dial_ip:port|cookie, …" → ({env_nodes, endpoints}).
+  # endpoints maps the node atom to its `{ip_tuple, port}` dial target.
+  defp parse_env_nodes do
+    case System.get_env("REDBUG_NODES") do
+      raw when is_binary(raw) and raw != "" ->
+        raw
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.reduce({[], %{}}, fn entry, {defs, eps} ->
+          case parse_env_entry(entry) do
+            {:ok, name, endpoint, cookie} ->
+              nd = %{id: "env:" <> name, name: name, cookie: cookie}
+              {defs ++ [nd], Map.put(eps, String.to_atom(name), endpoint)}
+
+            :error ->
+              Logger.warning("REDBUG_NODES: ignoring malformed entry #{inspect(entry)}")
+              {defs, eps}
+          end
+        end)
+
+      _ ->
+        {[], %{}}
+    end
+  end
+
+  defp parse_env_entry(entry) do
+    case String.split(entry, "|") do
+      [name, dial | rest] ->
+        name = String.trim(name)
+
+        with true <- String.contains?(name, "@"),
+             {:ok, endpoint} <- parse_dial(dial) do
+          {:ok, name, endpoint, rest |> List.first() |> normalize_cookie()}
+        else
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp parse_dial(dial) do
+    with [ip, port] <- dial |> String.trim() |> String.split(":"),
+         {:ok, addr} <- :inet.parse_address(String.to_charlist(ip)),
+         {p, ""} <- Integer.parse(port) do
+      {:ok, {addr, p}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp normalize_cookie(cookie) when is_binary(cookie) do
+    case String.trim(cookie) do
+      "" -> default_cookie()
+      c -> c
+    end
+  end
+
+  defp normalize_cookie(_), do: default_cookie()
+
+  defp default_cookie do
+    case Node.get_cookie() do
+      :nocookie -> ""
+      c -> Atom.to_string(c)
+    end
+  end
 
   # --- JSON <-> internal (explicit, atom-safe) ---
 
@@ -413,9 +552,16 @@ defmodule Server.Config do
       nodes: json |> Map.get("nodes", []) |> Enum.map(&node_from_json/1),
       presets: json |> Map.get("presets", []) |> Enum.map(&preset_from_json/1),
       snippets: json |> Map.get("snippets", []) |> Enum.map(&snippet_from_json/1),
-      settings: json |> Map.get("settings") |> settings_from_json()
+      settings: json |> Map.get("settings") |> settings_from_json(),
+      env_sessions: json |> Map.get("env_sessions", %{}) |> env_sessions_from_json()
     }
   end
+
+  defp env_sessions_from_json(map) when is_map(map) do
+    Map.new(map, fn {name, sessions} -> {name, Enum.map(sessions, &session_from_json/1)} end)
+  end
+
+  defp env_sessions_from_json(_), do: %{}
 
   defp snippet_from_json(j) do
     %{

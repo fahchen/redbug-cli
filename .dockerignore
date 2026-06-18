@@ -1,9 +1,0 @@
-.git
-dist
-tui/node_modules
-server/_build
-server/deps
-**/.DS_Store
-task_plan.md
-progress.md
-findings.md

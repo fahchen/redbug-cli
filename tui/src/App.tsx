@@ -175,6 +175,9 @@ function S1View({
   const presetsSnap = useMusubiSnapshot(presetsStore)
 
   const rows = flatten(nodesSnap.nodes ?? [], nodesStore)
+  // env mode is mutually exclusive: if any node is env-injected, all are, and the
+  // node list is read-only (only new sessions allowed under them).
+  const envMode = (nodesSnap.nodes ?? []).some((n) => n.source === "env")
   const [sel, setSel] = useState(0)
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
@@ -265,10 +268,12 @@ function S1View({
         setSel((i) => Math.max(i - 1, 0))
         break
       case "n":
-        setNameDraft("")
-        setCookieDraft("")
-        setNodeField(0)
-        setModal({ kind: "newNode" })
+        if (!envMode) {
+          setNameDraft("")
+          setCookieDraft("")
+          setNodeField(0)
+          setModal({ kind: "newNode" })
+        }
         break
       case "s":
         if (nodeContext) {
@@ -277,7 +282,8 @@ function S1View({
         }
         break
       case "e":
-        if (nodeContext) {
+        // env nodes are read-only
+        if (nodeContext && nodeContext.source !== "env") {
           setNameDraft(nodeContext.name)
           setCookieDraft(nodeContext.cookie)
           setNodeField(0)
@@ -289,7 +295,7 @@ function S1View({
           dispatcher(cur.nodeProxy)(cur.node.connected ? "disconnect" : "connect")
         break
       case "d":
-        if (cur?.kind === "node") {
+        if (cur?.kind === "node" && cur.node.source !== "env") {
           const proxy = cur.nodeProxy
           setModal({
             kind: "confirm",
@@ -346,7 +352,13 @@ function S1View({
         )}
       </box>
 
-      <HintFooter text="j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · l library · , settings · ? help · q quit" />
+      <HintFooter
+        text={
+          envMode
+            ? "env nodes (read-only) · j/k move · enter open · s session · c connect · p presets · l library · , settings · ? help · q quit"
+            : "j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · l library · , settings · ? help · q quit"
+        }
+      />
 
       {modal.kind !== "none" && (
         <ModalLayer
@@ -385,6 +397,7 @@ function TreeRow({ row, active }: { row: Row; active: boolean }) {
         <text bg={bg} fg={dotColor}>{`${dot} `}</text>
         <text bg={bg} fg={fg}>{n.name}</text>
         <text bg={bg} fg={theme.dim}>{`  (${n.sessions.length})`}</text>
+        {n.source === "env" && <text bg={bg} fg={theme.dim}>{"  env"}</text>}
       </box>
     )
   }

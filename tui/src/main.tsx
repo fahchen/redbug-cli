@@ -1,5 +1,5 @@
 // Entry point for the single-file build (bun --compile). It boots the embedded
-// controller, points the TUI at it, then loads the TUI. The standalone sidecar
+// controller, points the TUI at it, then loads the TUI. The standalone TUI
 // build uses index.tsx directly and never touches the embedded server.
 import { bootEmbeddedServer } from "./server-bootstrap"
 
