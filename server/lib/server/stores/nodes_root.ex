@@ -46,7 +46,11 @@ defmodule Server.Stores.NodesRoot do
 
   @impl true
   def handle_command(:createNode, payload, socket) do
-    Config.add_node(%{name: get(payload, "name", ""), cookie: get(payload, "cookie", "")})
+    # env-injected nodes are the whole list in env mode; manual creation is off.
+    unless Config.env_mode?() do
+      Config.add_node(%{name: get(payload, "name", ""), cookie: get(payload, "cookie", "")})
+    end
+
     {:noreply, socket}
   end
 

@@ -11,6 +11,23 @@ import serverTarball from "../embed/server.tar.gz" with { type: "file" }
 
 export type EmbeddedServer = { port: number; stop: () => void }
 
+// With REDBUG_NODES set, boot the controller with the connect-only epmd shim
+// (Server.Epmd) so distribution skips epmd/DNS and dials endpoints directly.
+// The shim module only loads once the app starts, so distribution must not come
+// up at release boot (RELEASE_DISTRIBUTION=none); Server.Application then
+// self-distributes after the code is available.
+function shimEnv(): Record<string, string> {
+  // Whitespace-only counts as unset: enabling the shim with zero parsed nodes
+  // would disable normal epmd connects for nothing.
+  if (!process.env.REDBUG_NODES?.trim()) return {}
+  const shim = "-start_epmd false -epmd_module Elixir.Server.Epmd"
+  const existing = process.env.ERL_FLAGS
+  return {
+    ERL_FLAGS: existing ? `${shim} ${existing}` : shim,
+    RELEASE_DISTRIBUTION: "none"
+  }
+}
+
 // Boot the embedded controller: extract the release once, spawn it, wait until its
 // WebSocket port is accepting connections, then hand the port back to the TUI.
 export async function bootEmbeddedServer(): Promise<EmbeddedServer> {
@@ -26,7 +43,7 @@ export async function bootEmbeddedServer(): Promise<EmbeddedServer> {
     stdin: "ignore",
     stdout: "ignore",
     stderr: "ignore",
-    env: { ...process.env, REDBUG_PORT_FILE: portFile }
+    env: { ...process.env, REDBUG_PORT_FILE: portFile, ...shimEnv() }
   })
 
   const port = await waitForReady(portFile)
