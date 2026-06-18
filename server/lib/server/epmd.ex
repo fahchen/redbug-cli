@@ -29,13 +29,20 @@ defmodule Server.Epmd do
 
   def names(_host), do: {:error, :address}
 
+  # The 4th element is hs_data.other_version, the legacy epmd-era protocol
+  # version. Modern distribution (OTP 23+) negotiates the real version in-band
+  # via DFLAGS — dist_util never reads other_version — so this field is
+  # vestigial and a fixed 5 is safe. (There is no runtime accessor for it;
+  # `:erlang.system_info(:dist_high)` does not exist.) Verified handshaking
+  # across an OTP 28 → OTP 27 gap with this value.
+  @dist_proto_version 5
+
   @doc """
   Resolve `name@host` to its pinned `{ip, port}` from the endpoint table.
-  `5` is the distribution protocol version (OTP 23+).
   """
   def address_please(name, host, _family) do
     case lookup(:"#{name}@#{host}") do
-      {ip, port} -> {:ok, ip, port, 5}
+      {ip, port} -> {:ok, ip, port, @dist_proto_version}
       nil -> {:error, :nxdomain}
     end
   end
