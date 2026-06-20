@@ -18,13 +18,16 @@ export REDBUG_PORT_FILE="$port_file"
 # Trim first: a whitespace-only value parses to zero nodes, so don't let it flip
 # the server into shim boot and disable normal epmd connects.
 redbug_nodes_trimmed=$(printf '%s' "$REDBUG_NODES" | tr -d '[:space:]')
+# Server shares this terminal with the TUI, so silence its stdout/stderr into a
+# log file (tail it when debugging) instead of corrupting the TUI screen.
+log_file="${REDBUG_SERVER_LOG:-/tmp/redbug-server.log}"
 if [ -n "$redbug_nodes_trimmed" ]; then
   export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
   export CONTROLLER_NODE="redbug_controller@127.0.0.1"
   export CONTROLLER_COOKIE="$cookie"
-  elixir -S mix phx.server &
+  elixir -S mix phx.server >"$log_file" 2>&1 &
 else
-  elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server &
+  elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server >"$log_file" 2>&1 &
 fi
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
