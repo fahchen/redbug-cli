@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
-import { Footer, Header, HelpOverlay, HintFooter, Overlay, PickRow, RootGate, TextField, fit } from "./ui"
+import { Header, HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TextField, fit } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 
@@ -360,17 +360,19 @@ function SessionView({
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
       <Header title={snap.name ?? "session"}>
-        <text fg={running ? theme.on : theme.dim}>{`  [${snap.status ?? "stopped"}]`}</text>
         <text fg={theme.dim}>{`  ${headerInfo}`}</text>
-        {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (Ctrl+S)"}</text>}
+        {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (⌃S)"}</text>}
       </Header>
 
       <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
-        <text fg={theme.dim}>{"‹ "}</text>
-        <text fg={tab === "events" ? theme.title : theme.dim}>Events</text>
-        <text fg={theme.dim}>{" │ "}</text>
-        <text fg={tab === "console" ? theme.title : theme.dim}>Console</text>
-        <text fg={theme.dim}>{" ›  ([/] switch)"}</text>
+        <text fg={tab === "events" ? theme.title : theme.dim}>
+          {tab === "events" ? "● Events" : "○ Events"}
+        </text>
+        <text fg={theme.dim}>{"   "}</text>
+        <text fg={tab === "console" ? theme.title : theme.dim}>
+          {tab === "console" ? "● Console" : "○ Console"}
+        </text>
+        <text fg={theme.dim}>{"   [/] switch"}</text>
       </box>
 
       {tab === "console" ? (
@@ -424,11 +426,11 @@ function SessionView({
       </box>
       )}
 
-      <Footer
-        text={`[${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}]`}
+      <StatusBar
+        statusText={`${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}`}
+        tone={running ? "on" : "dim"}
+        hints="j/k move · enter detail · t traces · ⇧S/X run/stop · ? help · esc back"
       />
-
-      <HintFooter text="j/k move · enter detail · v view · o sort · / filter · g group · l limits · z zoom · t traces · ⇧S/X start/stop · ⌃L clear · ? help · esc back" />
 
       {overlay === "help" && (
         <HelpOverlay

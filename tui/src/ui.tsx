@@ -3,7 +3,7 @@ import { createContext, useContext, useState } from "react"
 import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
 
-import { theme } from "./theme"
+import { theme, type Theme } from "./theme"
 
 // Whether keybind hint footers are shown (driven by the `show_hints` setting).
 // Defaults to true so screens render hints even without an enclosing provider.
@@ -13,11 +13,39 @@ export function HintProvider({ show, children }: { show: boolean; children: Reac
   return <HintContext.Provider value={show}>{children}</HintContext.Provider>
 }
 
-// Keybind hint line. Hidden when `show_hints` is off. Status/info footers should
-// use Footer directly so they stay visible regardless of the setting.
-export function HintFooter({ text }: { text: string }) {
-  if (!useContext(HintContext)) return null
-  return <Footer text={text} />
+// Single bottom statusline shared by every screen. The status segment (left) is
+// always shown; the keybind hints (right) are gated by `show_hints` and
+// truncated so the row never wraps. Sits on the overlay tone so it reads as a
+// statusline distinct from page content. Keep `hints` short — the full keymap
+// lives in each screen's `?` overlay.
+export function StatusBar({
+  statusText,
+  tone = "dim",
+  hints
+}: {
+  statusText?: string
+  tone?: keyof Theme
+  hints?: string
+}) {
+  const showHints = useContext(HintContext)
+  const { width } = useTerminalDimensions()
+  const left = statusText ?? ""
+  const budget = Math.max(0, width - left.length - 4)
+  const hintText = showHints && hints ? truncate(hints, budget) : ""
+  return (
+    <box backgroundColor={theme.overlay} paddingLeft={1} paddingRight={1} flexDirection="row">
+      {left !== "" && (
+        <text bg={theme.overlay} fg={theme[tone]}>
+          {left}
+        </text>
+      )}
+      {hintText !== "" && (
+        <text bg={theme.overlay} fg={theme.dim}>
+          {(left !== "" ? "   " : "") + hintText}
+        </text>
+      )}
+    </box>
+  )
 }
 
 // Top title bar shared by every screen. `children` carry per-screen status/info
@@ -27,17 +55,6 @@ export function Header({ title, children }: { title: string; children?: ReactNod
     <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
       <text fg={theme.title}>{title}</text>
       {children}
-    </box>
-  )
-}
-
-// Single dim keybind/status line, truncated to the terminal width so it never
-// wraps and breaks the layout on narrow terminals.
-export function Footer({ text }: { text: string }) {
-  const { width } = useTerminalDimensions()
-  return (
-    <box backgroundColor={theme.bg} paddingLeft={1}>
-      <text fg={theme.dim}>{truncate(text, Math.max(0, width - 2))}</text>
     </box>
   )
 }

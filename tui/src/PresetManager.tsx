@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
-import { Header, HelpOverlay, HintFooter, Overlay, RootGate, TextField } from "./ui"
+import { Header, HelpOverlay, Overlay, RootGate, StatusBar, TextField } from "./ui"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type PresetProxy = StoreProxy<"Server.Stores.PresetStore", Musubi.Stores>
@@ -212,11 +212,12 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         </box>
       </box>
 
-      <HintFooter
-        text={
+      <StatusBar
+        statusText={`${presets.length} presets`}
+        hints={
           focus === "list"
-            ? "j/k move · enter edit · n new · r rename · d delete · ? help · esc back"
-            : "j/k move · space toggle · n add · e edit · l limits · d del · ? help · tab/esc back"
+            ? "j/k move · enter edit · n new · ? help · esc back"
+            : "j/k move · space toggle · n add · ? help · tab/esc back"
         }
       />
 

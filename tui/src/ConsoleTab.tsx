@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { HelpOverlay, HintFooter, Overlay, PickRow, RootGate } from "./ui"
+import { HelpOverlay, Overlay, PickRow, RootGate, StatusBar } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -215,7 +215,10 @@ function ConsoleView({
         </box>
       </box>
 
-      <HintFooter text="n new · e edit · v view · r run · s stop · c clear · [ Events · ? help · esc back" />
+      <StatusBar
+        statusText={`${history.length} runs`}
+        hints="j/k move · n new · r run · s stop · ? help · esc back"
+      />
 
       {modal.kind === "help" && (
         <HelpOverlay

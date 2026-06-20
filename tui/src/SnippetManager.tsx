@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { SNIPPETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { Header, HelpOverlay, HintFooter, Overlay, RootGate, TextField } from "./ui"
+import { Header, HelpOverlay, Overlay, RootGate, StatusBar, TextField } from "./ui"
 
 type SnippetsStore = StoreProxy<"Server.Stores.SnippetsRoot", Musubi.Stores>
 type SnippetProxy = StoreProxy<"Server.Stores.SnippetStore", Musubi.Stores>
@@ -160,7 +160,10 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
         </box>
       </box>
 
-      <HintFooter text="j/k move · e edit · n new · r rename · f format · d del · ? help · esc back" />
+      <StatusBar
+        statusText={`${snippets.length} snippets`}
+        hints="j/k move · e edit · n new · ? help · esc back"
+      />
 
       {modal.kind === "help" && (
         <HelpOverlay

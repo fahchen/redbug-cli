@@ -7,7 +7,7 @@ import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./m
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { editorName } from "./editor"
 import { theme, themeNames } from "./theme"
-import { Header, HelpOverlay, HintFooter, Overlay, RootGate, TextField, fit } from "./ui"
+import { Header, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit } from "./ui"
 
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 type Settings = Server.Schema.Settings
@@ -128,7 +128,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
         <text fg={theme.dim}>ts and k columns are always shown.</text>
       </box>
 
-      <HintFooter text="j/k move · space/enter toggle or cycle · ? help · esc back" />
+      <StatusBar hints="j/k move · space toggle · ? help · esc back" />
 
       {help && (
         <HelpOverlay

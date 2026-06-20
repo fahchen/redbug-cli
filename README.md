@@ -96,17 +96,22 @@ target node, so start a target like the one above first.
 
 ## Keybindings
 
+Every screen carries a slim hint statusline at the bottom; press `?` on any screen
+for the full per-page keymap. Toggle the hints off via Settings → `show hints`.
+
 **Tree**
 `j/k` move · `enter` open session · `n` node · `s` session · `e` edit node ·
-`c` connect/disconnect · `d` delete · `p` presets · `,` settings · `?` help · `q` quit
+`c` connect/disconnect · `d` delete · `p` presets · `l` library · `,` settings · `?` help · `q` quit
 
-**Session**
-`enter` detail · `o` sort · `/` filter · `g` group · `l` limits · `z` zoom · `E` open event in `$EDITOR` ·
-`e` edit traces · `Shift+S`/`Shift+X` start/stop · `Ctrl+S` apply & restart ·
-`Ctrl+L` clear events · `Ctrl+W` save as preset
+**Session · Events**
+`enter` detail · `v` view event in `$EDITOR` · `z` zoom · `o` sort · `/` filter · `g` group · `l` limits ·
+`t` edit traces · `Shift+S`/`Shift+X` start/stop · `Ctrl+S` apply (restart) · `Ctrl+L` clear · `]` Console
 
-**Presets / Settings**
-`j/k` move · `enter`/`tab` edit · `space` toggle · `esc` back
+**Session · Console**
+`n` new · `e` edit · `v` view · `r` run · `s` stop · `c` clear · `[` Events
+
+**Presets / Snippets / Settings**
+`j/k` move · `enter`/`tab` edit · `space` toggle · `n` new · `esc` back
 
 **Event kinds**
 `↓` call · `↑` return · `→` send · `←` receive

@@ -13,7 +13,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Header, HelpOverlay, HintFooter, HintProvider, Notice, Overlay, PickRow, TextField } from "./ui"
+import { Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, StatusBar, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -178,6 +178,8 @@ function S1View({
   // env mode is mutually exclusive: if any node is env-injected, all are, and the
   // node list is read-only (only new sessions allowed under them).
   const envMode = (nodesSnap.nodes ?? []).some((n) => n.source === "env")
+  const nodeList = nodesSnap.nodes ?? []
+  const connCount = nodeList.filter((n) => n.connected).length
   const [sel, setSel] = useState(0)
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
@@ -352,11 +354,12 @@ function S1View({
         )}
       </box>
 
-      <HintFooter
-        text={
+      <StatusBar
+        statusText={`${connCount}/${nodeList.length} connected`}
+        hints={
           envMode
-            ? "env nodes (read-only) · j/k move · enter open · s session · c connect · d delete session · p presets · l library · , settings · ? help · q quit"
-            : "j/k move · enter open · n node · s session · e edit · c connect · d delete · p presets · l library · , settings · ? help · q quit"
+            ? "j/k move · enter open · s session · c connect · env read-only · ? help · q quit"
+            : "j/k move · enter open · n node · c connect · ? help · q quit"
         }
       />
 
