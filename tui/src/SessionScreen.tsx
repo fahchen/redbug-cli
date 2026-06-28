@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
-import { Header, HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TextField, fit } from "./ui"
+import { ErrorDetailOverlay, Flash, Header, HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TextField, fit } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 
@@ -21,7 +21,7 @@ type FilterScope = "all" | "mfa" | "pid" | "info"
 type Filter = { scope: FilterScope; query: string }
 type GroupKey = "none" | "pid" | "mfa" | "kind"
 
-type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help"
+type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help" | "errorDetail"
 type Focus = "list" | "detail"
 type Cols = { name: boolean; pid: boolean; mfa: boolean; info: boolean }
 
@@ -98,11 +98,12 @@ function SessionView({
   const snap = useMusubiSnapshot(store)
   const cols = settings?.columns ?? ALL_COLS
   const renderer = useRenderer()
-  const traces = (snap.traces ?? []) as Rtp[]
-  const events = (snap.events ?? []) as TraceEvent[]
-  const limits = snap.limits ?? DEFAULT_LIMITS
-  const running = snap.status === "running"
-  const dirty = snap.dirty === true
+  const traces = (snap?.traces ?? []) as Rtp[]
+  const events = (snap?.events ?? []) as TraceEvent[]
+  const limits = snap?.limits ?? DEFAULT_LIMITS
+  const running = snap?.status === "running"
+  const dirty = snap?.dirty === true
+  const error = snap?.error ?? null
 
   const [sort, setSort] = useState<Sort>(() => parseSort(settings?.default_sort))
   const [filter, setFilter] = useState<Filter | null>(null)
@@ -194,6 +195,11 @@ function SessionView({
 
     if (overlay === "help") {
       setOverlay("none")
+      return
+    }
+
+    if (overlay === "errorDetail") {
+      if (n === "escape" || n === "e") setOverlay("none")
       return
     }
 
@@ -309,6 +315,12 @@ function SessionView({
       case "]":
         setTab("console")
         break
+      case "e":
+        if (error?.detail) setOverlay("errorDetail")
+        break
+      case "d":
+        if (error) dispatch("dismissError")
+        break
       case "?":
         setOverlay("help")
         break
@@ -359,7 +371,7 @@ function SessionView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title={snap.name ?? "session"}>
+      <Header title={snap?.name ?? "session"}>
         <text fg={theme.dim}>{`  ${headerInfo}`}</text>
         {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (⌃S)"}</text>}
       </Header>
@@ -426,11 +438,17 @@ function SessionView({
       </box>
       )}
 
+      {error && <Flash error={error} />}
+
       <StatusBar
-        statusText={`${snap.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}`}
+        statusText={`${snap?.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}`}
         tone={running ? "on" : "dim"}
         hints="j/k move · enter detail · t traces · ⇧S/X run/stop · ? help · esc back"
       />
+
+      {overlay === "errorDetail" && error && (
+        <ErrorDetailOverlay body={error.detail ?? error.message} />
+      )}
 
       {overlay === "help" && (
         <HelpOverlay
@@ -445,7 +463,8 @@ function SessionView({
                 ["o", "sort"],
                 ["/", "filter"],
                 ["g", "cycle grouping"],
-                ["l", "limits"]
+                ["l", "limits"],
+                ["e / d", "error detail / dismiss"]
               ]
             },
             {
@@ -537,7 +556,7 @@ function SessionView({
 
       {overlay === "editor" && (
         <Overlay>
-          <text fg={theme.title}>{`Traces — ${snap.name ?? ""}`}</text>
+          <text fg={theme.title}>{`Traces — ${snap?.name ?? ""}`}</text>
           <box flexDirection="column" marginTop={1}>
             {traces.length === 0 ? (
               <text fg={theme.dim}>No patterns yet · a to add</text>

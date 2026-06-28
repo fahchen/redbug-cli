@@ -13,7 +13,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, StatusBar, TextField } from "./ui"
+import { Flash, Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, StatusBar, TextField } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -69,7 +69,10 @@ export function App() {
     (nodes.status === "error" && nodes.error) ||
     (presets.status === "error" && presets.error) ||
     (settings.status === "error" && settings.error)
-  if (err) return <Notice tone="error" text={`Connect error: ${err.message}`} />
+  // The root socket carries all state, so a drop leaves nothing to interact
+  // with — keep a full-screen notice, but signal that musubi keeps retrying so
+  // it doesn't read as a dead end.
+  if (err) return <Notice tone="error" text={`Lost connection to BEAM — retrying…  (${err.message})`} />
 
   return (
     <Router
@@ -96,7 +99,7 @@ function Router({
   setScreen: (s: Screen) => void
 }) {
   const settingsSnap = useMusubiSnapshot(settingsStore)
-  const settings = settingsSnap.settings as Server.Schema.Settings | undefined
+  const settings = settingsSnap?.settings as Server.Schema.Settings | undefined
   setTheme(settings?.theme ?? "dark")
 
   return (
@@ -174,11 +177,11 @@ function S1View({
   const nodesSnap = useMusubiSnapshot(nodesStore)
   const presetsSnap = useMusubiSnapshot(presetsStore)
 
-  const rows = flatten(nodesSnap.nodes ?? [], nodesStore)
+  const rows = flatten(nodesSnap?.nodes ?? [], nodesStore)
   // env mode is mutually exclusive: if any node is env-injected, all are, and the
   // node list is read-only (only new sessions allowed under them).
-  const envMode = (nodesSnap.nodes ?? []).some((n) => n.source === "env")
-  const nodeList = nodesSnap.nodes ?? []
+  const envMode = (nodesSnap?.nodes ?? []).some((n) => n.source === "env")
+  const nodeList = nodesSnap?.nodes ?? []
   const connCount = nodeList.filter((n) => n.connected).length
   const [sel, setSel] = useState(0)
   const [modal, setModal] = useState<Modal>({ kind: "none" })
@@ -189,17 +192,21 @@ function S1View({
 
   const cur = rows[Math.min(sel, rows.length - 1)]
   const nodeContext = cur?.kind === "node" ? cur.node : cur?.session ? cur.node : null
+  // `error` lives on the NodeStore child state (node-scoped); `Node` is aliased
+  // to Schema.Node which omits it, so reach it via intersection.
+  const nodeError =
+    (nodeContext as (Node & { error?: Server.Schema.AppError | null }) | null)?.error ?? null
 
   // createNode is the only root command; node/session mutations dispatch on the
   // matching child proxy (the store path is the routing — no ids in payload).
   const createNode = dispatcher(nodesStore)
   const nodeProxyById = (id: string): NodeProxy | undefined => {
-    const i = (nodesSnap.nodes ?? []).findIndex((n) => n.id === id)
+    const i = (nodesSnap?.nodes ?? []).findIndex((n) => n.id === id)
     return i >= 0 ? nodesStore.nodes[i] : undefined
   }
 
   // preset options for the new-session picker: "blank" + each preset
-  const presetList = presetsSnap.presets ?? []
+  const presetList = presetsSnap?.presets ?? []
 
   useKeyboard((key) => {
     const name = key.name
@@ -353,6 +360,8 @@ function S1View({
           rows.map((row, i) => <TreeRow key={rowKey(row)} row={row} active={i === sel} />)
         )}
       </box>
+
+      {nodeError && <Flash error={nodeError} hint="c retry" />}
 
       <StatusBar
         statusText={`${connCount}/${nodeList.length} connected`}

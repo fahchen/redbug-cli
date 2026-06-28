@@ -170,6 +170,53 @@ export function TextField({
   )
 }
 
+// Sticky one-line error banner (vim/emacs minibuffer style), sits just above
+// the StatusBar. Glyph + semantic color carry the meaning — no side-stripe
+// border (banned). Stays until the next action clears it server-side or the
+// user dismisses it. `error.detail` (long redbug/exception text) opens via `e`.
+// ponytail: error-only for now; add a `warn` level + ⚠ glyph when a producer exists.
+export function Flash({
+  error,
+  hint
+}: {
+  error: { message: string; detail?: string | null }
+  hint?: string
+}) {
+  const { width } = useTerminalDimensions()
+  const tail = hint ?? (error.detail ? "e detail · d dismiss" : "d dismiss")
+  const suffix = tail === "" ? "" : `  · ${tail}`
+  const budget = Math.max(0, width - 4 - suffix.length)
+  return (
+    <box backgroundColor={theme.overlay} paddingLeft={1} paddingRight={1} flexDirection="row">
+      <text bg={theme.overlay} fg={theme.err}>{`✗ ${truncate(error.message, budget)}`}</text>
+      <text bg={theme.overlay} fg={theme.dim}>{suffix}</text>
+    </box>
+  )
+}
+
+// Full-text error overlay for long redbug/exception output that the Flash line
+// truncates. Reuses Overlay; wraps the body so it never overflows the box.
+export function ErrorDetailOverlay({ title = "Error", body }: { title?: string; body: string }) {
+  const lines = body.split("\n").flatMap((l) => wrapText(l, 72))
+  return (
+    <Overlay title={title} minWidth={76}>
+      <box flexDirection="column">
+        {lines.map((l, i) => (
+          <text key={i} fg={theme.fg}>{l}</text>
+        ))}
+      </box>
+      <text fg={theme.dim} marginTop={1}>press e or Esc to close</text>
+    </Overlay>
+  )
+}
+
+function wrapText(s: string, width: number): string[] {
+  if (s.length <= width) return [s === "" ? " " : s]
+  const out: string[] = []
+  for (let i = 0; i < s.length; i += width) out.push(s.slice(i, i + width))
+  return out
+}
+
 export function truncate(s: string, n: number): string {
   if (s.length <= n) return s
   return s.slice(0, Math.max(0, n - 1)) + "…"
