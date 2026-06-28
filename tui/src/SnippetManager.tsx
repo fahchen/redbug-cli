@@ -30,7 +30,7 @@ export function SnippetManager({ onBack }: { onBack: () => void }) {
 
 function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => void }) {
   const snap = useMusubiSnapshot(store)
-  const snippets = (snap.snippets ?? []) as Snippet[]
+  const snippets = (snap?.snippets ?? []) as Snippet[]
   const renderer = useRenderer()
 
   const [sel, setSel] = useState(0)

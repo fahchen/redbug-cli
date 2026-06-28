@@ -37,7 +37,7 @@ export function PresetManager({ onBack }: { onBack: () => void }) {
 
 function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void }) {
   const snap = useMusubiSnapshot(store)
-  const presets = (snap.presets ?? []) as Preset[]
+  const presets = (snap?.presets ?? []) as Preset[]
 
   const [sel, setSel] = useState(0)
   const [focus, setFocus] = useState<Focus>("list")

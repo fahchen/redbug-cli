@@ -78,8 +78,8 @@ function ConsoleView({
   onBack: () => void
 }) {
   const snap = useMusubiSnapshot(store)
-  const history = (snap.history ?? []) as Exec[]
-  const snippets = (snap.snippets ?? []) as Snippet[]
+  const history = (snap?.history ?? []) as Exec[]
+  const snippets = (snap?.snippets ?? []) as Snippet[]
   const renderer = useRenderer()
   const dispatch = dispatcher(store)
 

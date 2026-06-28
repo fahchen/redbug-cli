@@ -27,7 +27,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
 
 function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => void }) {
   const snap = useMusubiSnapshot(store)
-  const s = snap.settings as Settings | undefined
+  const s = snap?.settings as Settings | undefined
   const cols = s?.columns ?? { name: true, pid: true, mfa: true, info: true }
   const limits = s?.default_limits ?? DEFAULT_LIMITS
   const curTheme = s?.theme ?? "dark"
