@@ -26,6 +26,7 @@ defmodule Server.Stores.SessionRoot do
     field(:name, String.t())
     field(:status, String.t())
     field(:dirty, boolean())
+    field(:error, Server.Schema.AppError.t() | nil)
     field(:traces, list(Server.Schema.Rtp.t()))
     field(:limits, Server.Schema.Limits.t())
     stream(:events, Server.Schema.TraceEvent.t(), item_key: & &1.id, limit: 2000)
@@ -84,6 +85,11 @@ defmodule Server.Stores.SessionRoot do
     end
   end
 
+  command :dismissError do
+    payload do
+    end
+  end
+
   command :saveAsPreset do
     payload do
       field(:name, String.t())
@@ -122,6 +128,7 @@ defmodule Server.Stores.SessionRoot do
       name: a.name,
       status: a.status,
       dirty: a.dirty,
+      error: Map.get(a, :error),
       traces: a.traces,
       limits: a.limits,
       events: stream(:events)
@@ -196,23 +203,27 @@ defmodule Server.Stores.SessionRoot do
   end
 
   def handle_command(:startTrace, _payload, socket) do
-    Trace.start(socket.assigns.node_id, socket.assigns.session_id)
-    {:noreply, socket}
+    result = Trace.start(socket.assigns.node_id, socket.assigns.session_id)
+    {:noreply, put_error(socket, result)}
   end
 
   def handle_command(:stopTrace, _payload, socket) do
     Trace.stop(socket.assigns.session_id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :error, nil)}
   end
 
   def handle_command(:applyRestart, _payload, socket) do
-    Trace.apply_restart(socket.assigns.session_id)
-    {:noreply, socket}
+    result = Trace.apply_restart(socket.assigns.session_id)
+    {:noreply, put_error(socket, result)}
   end
 
   def handle_command(:clearEvents, _payload, socket) do
     Trace.clear(socket.assigns.session_id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :error, nil)}
+  end
+
+  def handle_command(:dismissError, _payload, socket) do
+    {:noreply, assign(socket, :error, nil)}
   end
 
   def handle_command(:saveAsPreset, payload, socket) do
@@ -229,6 +240,9 @@ defmodule Server.Stores.SessionRoot do
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
 
   # --- helpers ---
+
+  defp put_error(socket, :ok), do: assign(socket, :error, nil)
+  defp put_error(socket, {:error, reason}), do: assign(socket, :error, Server.Errors.humanize(reason))
 
   defp load_session(socket) do
     case current_session(socket) do

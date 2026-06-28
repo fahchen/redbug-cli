@@ -23,6 +23,7 @@ defmodule Server.Stores.NodeStore do
     field(:cookie, String.t())
     field(:connected, boolean())
     field(:source, :config | :env)
+    field(:error, Server.Schema.AppError.t() | nil)
     field(:sessions, list(SessionItemStore.state()))
   end
 
@@ -44,6 +45,11 @@ defmodule Server.Stores.NodeStore do
   end
 
   command :disconnect do
+    payload do
+    end
+  end
+
+  command :dismissError do
     payload do
     end
   end
@@ -71,6 +77,7 @@ defmodule Server.Stores.NodeStore do
       cookie: n.cookie,
       connected: n.connected,
       source: Map.get(n, :source, "config"),
+      error: Map.get(socket.assigns, :error),
       sessions:
         for s <- n.sessions do
           child(SessionItemStore, id: s.id, session: s, node_id: n.id)
@@ -103,13 +110,22 @@ defmodule Server.Stores.NodeStore do
   end
 
   def handle_command(:connect, _payload, socket) do
-    Config.connect_node(socket.assigns.node.id)
-    {:noreply, socket}
+    error =
+      case Config.connect_node(socket.assigns.node.id) do
+        :ok -> nil
+        {:error, reason} -> Server.Errors.humanize(reason)
+      end
+
+    {:noreply, assign(socket, :error, error)}
   end
 
   def handle_command(:disconnect, _payload, socket) do
     Config.disconnect_node(socket.assigns.node.id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :error, nil)}
+  end
+
+  def handle_command(:dismissError, _payload, socket) do
+    {:noreply, assign(socket, :error, nil)}
   end
 
   def handle_command(:createSession, payload, socket) do
