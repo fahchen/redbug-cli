@@ -32,7 +32,7 @@ defmodule Server.MixProject do
 
   defp deps do
     [
-      {:musubi, "~> 0.12.0"},
+      {:musubi, "~> 0.13.0"},
       {:redbug, "~> 2.0"},
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.1"},
