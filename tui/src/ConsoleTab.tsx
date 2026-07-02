@@ -178,7 +178,7 @@ function ConsoleView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <box flexDirection="row" flexGrow={1}>
+      <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
           borderColor={theme.title}

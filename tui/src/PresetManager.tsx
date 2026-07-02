@@ -164,7 +164,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
       <Header title="Presets" />
 
-      <box flexDirection="row" flexGrow={1}>
+      <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
           borderColor={focus === "list" ? theme.title : theme.border}
@@ -206,7 +206,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
                   <TraceRow key={t.id} rtp={t} active={focus === "detail" && i === traceSel} />
                 ))
               )}
-              <text fg={theme.dim}>{`limits: keep ${cur.limits.keep} · time ${cur.limits.time}s · msgs ${cur.limits.msgs}`}</text>
+              <text fg={theme.dim} marginTop={1}>{`limits: keep ${cur.limits.keep} · time ${cur.limits.time}s · msgs ${cur.limits.msgs}`}</text>
             </>
           )}
         </box>

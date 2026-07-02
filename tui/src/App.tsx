@@ -17,7 +17,7 @@ import { Flash, Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, Sta
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
-import { SettingsScreen } from "./SettingsScreen"
+import { SettingsOverlay } from "./SettingsScreen"
 
 declare const process: { exit(code?: number): never }
 
@@ -26,7 +26,6 @@ type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 
 type NodeProxy = StoreProxy<"Server.Stores.NodeStore", Musubi.Stores>
-type SessionProxy = StoreProxy<"Server.Stores.SessionItemStore", Musubi.Stores>
 
 type Node = Server.Schema.Node
 type Session = Server.Schema.Session
@@ -36,21 +35,11 @@ type Screen =
   | { name: "session"; nodeId: string; sessionId: string }
   | { name: "presets" }
   | { name: "snippets" }
-  | { name: "settings" }
-
-type Row =
-  | { kind: "node"; node: Node; nodeProxy: NodeProxy }
-  | {
-      kind: "session"
-      node: Node
-      session: Session
-      nodeProxy: NodeProxy
-      sessionProxy: SessionProxy
-    }
 
 type Modal =
   | { kind: "none" }
   | { kind: "help" }
+  | { kind: "settings" }
   | { kind: "newNode" }
   | { kind: "editNode"; id: string }
   | { kind: "newSessionName"; nodeId: string }
@@ -125,9 +114,6 @@ function Router({
     if (screen.name === "snippets")
       return <SnippetManager onBack={() => setScreen({ name: "tree" })} />
 
-    if (screen.name === "settings")
-      return <SettingsScreen onBack={() => setScreen({ name: "tree" })} />
-
     return (
       <S1View
         nodesStore={nodesStore}
@@ -135,78 +121,75 @@ function Router({
         onOpenSession={(nodeId, sessionId) => setScreen({ name: "session", nodeId, sessionId })}
         onOpenPresets={() => setScreen({ name: "presets" })}
         onOpenSnippets={() => setScreen({ name: "snippets" })}
-        onOpenSettings={() => setScreen({ name: "settings" })}
       />
     )
   }
 }
 
-function flatten(nodes: readonly Node[], store: NodesStore): Row[] {
-  const rows: Row[] = []
-  nodes.forEach((node, ni) => {
-    const nodeProxy = store.nodes[ni]
-    rows.push({ kind: "node", node, nodeProxy })
-    node.sessions.forEach((session, si) => {
-      rows.push({
-        kind: "session",
-        node,
-        session,
-        nodeProxy,
-        sessionProxy: nodeProxy.sessions[si]
-      })
-    })
-  })
-  return rows
-}
+type Focus = "nodes" | "sessions"
 
 function S1View({
   nodesStore,
   presetsStore,
   onOpenSession,
   onOpenPresets,
-  onOpenSnippets,
-  onOpenSettings
+  onOpenSnippets
 }: {
   nodesStore: NodesStore
   presetsStore: PresetsStore
   onOpenSession: (nodeId: string, sessionId: string) => void
   onOpenPresets: () => void
   onOpenSnippets: () => void
-  onOpenSettings: () => void
 }) {
   const nodesSnap = useMusubiSnapshot(nodesStore)
   const presetsSnap = useMusubiSnapshot(presetsStore)
 
-  const rows = flatten(nodesSnap?.nodes ?? [], nodesStore)
+  const nodeList = nodesSnap?.nodes ?? []
   // env mode is mutually exclusive: if any node is env-injected, all are, and the
   // node list is read-only (only new sessions allowed under them).
-  const envMode = (nodesSnap?.nodes ?? []).some((n) => n.source === "env")
-  const nodeList = nodesSnap?.nodes ?? []
+  const envMode = nodeList.some((n) => n.source === "env")
   const connCount = nodeList.filter((n) => n.connected).length
-  const [sel, setSel] = useState(0)
+
+  const [nodeSel, setNodeSel] = useState(0)
+  const [sessSel, setSessSel] = useState(0)
+  const [focus, setFocus] = useState<Focus>("nodes")
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
   const [nameDraft, setNameDraft] = useState("")
   const [cookieDraft, setCookieDraft] = useState("")
   const [nodeField, setNodeField] = useState(0)
 
-  const cur = rows[Math.min(sel, rows.length - 1)]
-  const nodeContext = cur?.kind === "node" ? cur.node : cur?.session ? cur.node : null
+  const nodeIdx = Math.min(nodeSel, Math.max(0, nodeList.length - 1))
+  const node = nodeList[nodeIdx] ?? null
+  const nodeProxy = node ? nodesStore.nodes[nodeIdx] : undefined
+  const sessions = node?.sessions ?? []
+  const sessIdx = Math.min(sessSel, Math.max(0, sessions.length - 1))
+  const session = sessions[sessIdx] ?? null
+  const sessionProxy = node && session ? nodeProxy!.sessions[sessIdx] : undefined
+
   // `error` lives on the NodeStore child state (node-scoped); `Node` is aliased
   // to Schema.Node which omits it, so reach it via intersection.
   const nodeError =
-    (nodeContext as (Node & { error?: Server.Schema.AppError | null }) | null)?.error ?? null
+    (node as (Node & { error?: Server.Schema.AppError | null }) | null)?.error ?? null
 
   // createNode is the only root command; node/session mutations dispatch on the
   // matching child proxy (the store path is the routing — no ids in payload).
   const createNode = dispatcher(nodesStore)
   const nodeProxyById = (id: string): NodeProxy | undefined => {
-    const i = (nodesSnap?.nodes ?? []).findIndex((n) => n.id === id)
+    const i = nodeList.findIndex((n) => n.id === id)
     return i >= 0 ? nodesStore.nodes[i] : undefined
   }
 
   // preset options for the new-session picker: "blank" + each preset
   const presetList = presetsSnap?.presets ?? []
+
+  const openNewNode = () => {
+    if (envMode) return
+    setNameDraft("")
+    setCookieDraft("")
+    setNodeField(0)
+    setModal({ kind: "newNode" })
+  }
 
   useKeyboard((key) => {
     const name = key.name
@@ -214,6 +197,10 @@ function S1View({
     switch (modal.kind) {
       case "help":
         setModal({ kind: "none" })
+        return
+
+      case "settings":
+        // SettingsOverlay owns its own keyboard handling while open.
         return
 
       case "confirm":
@@ -263,60 +250,99 @@ function S1View({
         return
     }
 
-    // no modal: tree navigation
+    // no modal — two-pane navigation
+    const newSession = () => {
+      if (node) {
+        setPresetIdx(0)
+        setModal({ kind: "newSessionName", nodeId: node.id })
+      }
+    }
+
+    if (focus === "sessions") {
+      switch (name) {
+        case "escape":
+        case "tab":
+        case "left":
+        case "h":
+          setFocus("nodes")
+          break
+        case "j":
+        case "down":
+          setSessSel((i) => Math.min(i + 1, sessions.length - 1))
+          break
+        case "k":
+        case "up":
+          setSessSel((i) => Math.max(i - 1, 0))
+          break
+        case "return":
+          if (node && session) onOpenSession(node.id, session.id)
+          break
+        case "s":
+          newSession()
+          break
+        case "d":
+          if (node && session) {
+            const proxy = sessionProxy
+            setModal({
+              kind: "confirm",
+              label: `Delete session "${session.name}"?`,
+              run: () => proxy && dispatcher(proxy)("deleteSession")
+            })
+          }
+          break
+        case "?":
+          setModal({ kind: "help" })
+          break
+      }
+      return
+    }
+
+    // focus === "nodes"
     switch (name) {
-      case "return":
-        if (cur?.kind === "session") onOpenSession(cur.node.id, cur.session.id)
-        break
       case "j":
       case "down":
-        setSel((i) => Math.min(i + 1, rows.length - 1))
+        setNodeSel((i) => Math.min(i + 1, nodeList.length - 1))
+        setSessSel(0)
         break
       case "k":
       case "up":
-        setSel((i) => Math.max(i - 1, 0))
+        setNodeSel((i) => Math.max(i - 1, 0))
+        setSessSel(0)
+        break
+      case "return":
+      case "tab":
+      case "right":
+        if (node && sessions.length > 0) {
+          setSessSel(0)
+          setFocus("sessions")
+        }
         break
       case "n":
-        if (!envMode) {
-          setNameDraft("")
-          setCookieDraft("")
-          setNodeField(0)
-          setModal({ kind: "newNode" })
-        }
+        openNewNode()
         break
       case "s":
-        if (nodeContext) {
-          setPresetIdx(0)
-          setModal({ kind: "newSessionName", nodeId: nodeContext.id })
-        }
+        newSession()
         break
       case "e":
         // env nodes are read-only
-        if (nodeContext && nodeContext.source !== "env") {
-          setNameDraft(nodeContext.name)
-          setCookieDraft(nodeContext.cookie)
+        if (node && node.source !== "env") {
+          setNameDraft(node.name)
+          setCookieDraft(node.cookie)
           setNodeField(0)
-          setModal({ kind: "editNode", id: nodeContext.id })
+          setModal({ kind: "editNode", id: node.id })
         }
         break
       case "c":
-        if (cur)
-          dispatcher(cur.nodeProxy)(cur.node.connected ? "disconnect" : "connect")
+        if (node && nodeProxy)
+          dispatcher(nodeProxy)(node.connected ? "disconnect" : "connect")
         break
       case "d":
-        if (cur?.kind === "node" && cur.node.source !== "env") {
-          const proxy = cur.nodeProxy
+        if (node && node.source !== "env" && nodeProxy) {
+          const proxy = nodeProxy
           setModal({
             kind: "confirm",
-            label: `Delete node "${cur.node.name}" and all its sessions?`,
+            label: `Delete node "${node.name}" and all its sessions?`,
             run: () => dispatcher(proxy)("deleteNode")
-          })
-        } else if (cur?.kind === "session") {
-          const proxy = cur.sessionProxy
-          setModal({
-            kind: "confirm",
-            label: `Delete session "${cur.session.name}"?`,
-            run: () => dispatcher(proxy)("deleteSession")
           })
         }
         break
@@ -327,7 +353,7 @@ function S1View({
         onOpenSnippets()
         break
       case ",":
-        onOpenSettings()
+        setModal({ kind: "settings" })
         break
       case "?":
         setModal({ kind: "help" })
@@ -346,19 +372,47 @@ function S1View({
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
       <Header title="redbug · nodes ▸ sessions" />
 
-      <box
-        border
-        borderColor={theme.border}
-        backgroundColor={theme.bg}
-        flexGrow={1}
-        flexDirection="column"
-        padding={1}
-      >
-        {rows.length === 0 ? (
-          <text fg={theme.dim}>No nodes yet · n to add</text>
-        ) : (
-          rows.map((row, i) => <TreeRow key={rowKey(row)} row={row} active={i === sel} />)
-        )}
+      <box flexDirection="row" flexGrow={1} gap={1}>
+        <box
+          border
+          borderColor={focus === "nodes" ? theme.title : theme.border}
+          backgroundColor={theme.bg}
+          title={`Nodes (${nodeList.length})`}
+          titleColor={theme.title}
+          width={38}
+          flexDirection="column"
+          padding={1}
+        >
+          {nodeList.length === 0 ? (
+            <text fg={theme.dim}>No nodes yet · n to add</text>
+          ) : (
+            nodeList.map((n, i) => (
+              <NodeRow key={n.id} node={n} active={i === nodeIdx} />
+            ))
+          )}
+        </box>
+
+        <box
+          border
+          borderColor={focus === "sessions" ? theme.title : theme.border}
+          backgroundColor={theme.bg}
+          title={node ? `${node.name} — sessions` : "—"}
+          titleColor={theme.title}
+          flexGrow={1}
+          flexBasis={0}
+          flexDirection="column"
+          padding={1}
+        >
+          {!node ? (
+            <text fg={theme.dim}>Select a node</text>
+          ) : sessions.length === 0 ? (
+            <text fg={theme.dim}>No sessions · s to add</text>
+          ) : (
+            sessions.map((s, i) => (
+              <SessionRow key={s.id} session={s} active={focus === "sessions" && i === sessIdx} />
+            ))
+          )}
+        </box>
       </box>
 
       {nodeError && <Flash error={nodeError} hint="c retry" />}
@@ -366,13 +420,19 @@ function S1View({
       <StatusBar
         statusText={`${connCount}/${nodeList.length} connected`}
         hints={
-          envMode
-            ? "j/k move · enter open · s session · c connect · env read-only · ? help · q quit"
-            : "j/k move · enter open · n node · c connect · ? help · q quit"
+          focus === "nodes"
+            ? envMode
+              ? "j/k node · enter sessions · s session · c connect · env read-only · , settings · ? help · q quit"
+              : "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · , settings · ? help · q quit"
+            : "j/k session · enter open · s new · d del · tab/esc nodes · ? help"
         }
       />
 
-      {modal.kind !== "none" && (
+      {modal.kind === "settings" && (
+        <SettingsOverlay onClose={() => setModal({ kind: "none" })} />
+      )}
+
+      {modal.kind !== "none" && modal.kind !== "settings" && (
         <ModalLayer
           modal={modal}
           presetList={presetList}
@@ -392,34 +452,29 @@ function S1View({
   )
 }
 
-function rowKey(row: Row): string {
-  return row.kind === "node" ? `n:${row.node.id}` : `s:${row.session.id}`
-}
-
-function TreeRow({ row, active }: { row: Row; active: boolean }) {
+function NodeRow({ node, active }: { node: Node; active: boolean }) {
   const bg = active ? theme.selBg : theme.bg
   const fg = active ? theme.selFg : theme.fg
-
-  if (row.kind === "node") {
-    const n = row.node
-    const dot = n.connected ? "●" : "○"
-    const dotColor = n.connected ? theme.on : theme.off
-    return (
-      <box backgroundColor={bg} flexDirection="row">
-        <text bg={bg} fg={dotColor}>{`${dot} `}</text>
-        <text bg={bg} fg={fg}>{n.name}</text>
-        <text bg={bg} fg={theme.dim}>{`  (${n.sessions.length})`}</text>
-        {n.source === "env" && <text bg={bg} fg={theme.dim}>{"  env"}</text>}
-      </box>
-    )
-  }
-
-  const s = row.session
+  const dot = node.connected ? "●" : "○"
+  const dotColor = node.connected ? theme.on : theme.off
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.dim}>{"    • "}</text>
-      <text bg={bg} fg={fg}>{s.name}</text>
-      <text bg={bg} fg={theme.dim}>{`  [${s.status}]`}</text>
+      <text bg={bg} fg={dotColor}>{`${dot} `}</text>
+      <text bg={bg} fg={fg}>{node.name}</text>
+      <text bg={bg} fg={theme.dim}>{`  (${node.sessions.length})`}</text>
+      {node.source === "env" && <text bg={bg} fg={theme.dim}>{"  env"}</text>}
+    </box>
+  )
+}
+
+function SessionRow({ session, active }: { session: Session; active: boolean }) {
+  const bg = active ? theme.selBg : theme.bg
+  const fg = active ? theme.selFg : theme.fg
+  return (
+    <box backgroundColor={bg} flexDirection="row">
+      <text bg={bg} fg={theme.dim}>{"• "}</text>
+      <text bg={bg} fg={fg}>{session.name}</text>
+      <text bg={bg} fg={theme.dim}>{`  [${session.status}]`}</text>
     </box>
   )
 }
@@ -458,7 +513,7 @@ function ModalLayer({
             {
               lines: [
                 ["j / k", "move"],
-                ["enter", "open session"],
+                ["enter", "sessions / open"],
                 ["n", "new node"],
                 ["s", "new session"],
                 ["e", "edit node"],
@@ -568,4 +623,3 @@ function Field({
     </box>
   )
 }
-

@@ -63,7 +63,7 @@ export function Header({ title, children }: { title: string; children?: ReactNod
 // body; without it, children render flush (callers that own their own heading).
 export function Overlay({
   title,
-  minWidth = 58,
+  minWidth = 60,
   children
 }: {
   title?: string
@@ -87,8 +87,8 @@ export function Overlay({
         flexDirection="column"
         paddingTop={1}
         paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
+        paddingLeft={3}
+        paddingRight={3}
         minWidth={minWidth}
       >
         {title && <text fg={theme.title}>{title}</text>}
@@ -119,7 +119,7 @@ export function HelpOverlay({ title, sections }: { title: string; sections: Help
           {sec.lines.map(([k, desc], j) => (
             <box key={j} flexDirection="row">
               <text fg={theme.title}>{k.padEnd(keyWidth)}</text>
-              <text fg={theme.fg}>{`  ${desc}`}</text>
+              <text fg={theme.fg}>{`   ${desc}`}</text>
             </box>
           ))}
         </box>

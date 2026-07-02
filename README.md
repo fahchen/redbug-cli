@@ -176,6 +176,7 @@ routable hosts, `REDBUG_NODES` env injection, SSH-tunnelled setups, and
 
 - [Remote nodes](docs/remote-nodes.md) — trace nodes on other hosts (routable, `REDBUG_NODES`, SSH, Kamal)
 - [Screen design](docs/screens.md) — TUI screen-by-screen design reference
+- [Testing & screenshots](docs/testing.md) — run tests, screenshot the TUI via a web terminal
 
 ## License
 

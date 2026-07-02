@@ -7,7 +7,7 @@ import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./m
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { editorName } from "./editor"
 import { theme, themeNames } from "./theme"
-import { Header, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit } from "./ui"
+import { HelpOverlay, Overlay, RootGate, TextField, fit } from "./ui"
 
 type SettingsStore = StoreProxy<"Server.Stores.SettingsRoot", Musubi.Stores>
 type Settings = Server.Schema.Settings
@@ -16,16 +16,17 @@ type ColKey = "name" | "pid" | "mfa" | "info"
 const COL_KEYS: ColKey[] = ["name", "pid", "mfa", "info"]
 const SORT_VALUES = ["ts_desc", "ts_asc", "kind_asc", "kind_desc", "pid_asc", "mfa_asc"]
 
-export function SettingsScreen({ onBack }: { onBack: () => void }) {
+// Settings is a centered modal opened from the tree (`,`), not a full page.
+export function SettingsOverlay({ onClose }: { onClose: () => void }) {
   const root = useMusubiRoot(SETTINGS_ROOT)
   return (
     <RootGate root={root} loading="Loading settings…" errorLabel="Settings">
-      {(store) => <SettingsView store={store} onBack={onBack} />}
+      {(store) => <SettingsView store={store} onClose={onClose} />}
     </RootGate>
   )
 }
 
-function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => void }) {
+function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () => void }) {
   const snap = useMusubiSnapshot(store)
   const s = snap?.settings as Settings | undefined
   const cols = s?.columns ?? { name: true, pid: true, mfa: true, info: true }
@@ -78,7 +79,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
     }
     switch (n) {
       case "escape":
-        onBack()
+        onClose()
         break
       case "j":
       case "down":
@@ -98,20 +99,11 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
   })
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title="Settings" />
-
-      <box
-        border
-        borderColor={theme.border}
-        backgroundColor={theme.bg}
-        flexGrow={1}
-        flexDirection="column"
-        padding={1}
-      >
+    <>
+      <Overlay title="Settings" minWidth={66}>
         <SettingRow label="theme" value={curTheme} active={sel === 0} />
         <SettingRow label="default sort" value={curSort} active={sel === 1} />
-        <SettingRow label="col · name" value={cols.name ? "[x]" : "[ ]"} active={sel === 2} />
+        <SettingRow label="col · name" value={cols.name ? "[x]" : "[ ]"} active={sel === 2} spacedAbove />
         <SettingRow label="col · pid" value={cols.pid ? "[x]" : "[ ]"} active={sel === 3} />
         <SettingRow label="col · mfa" value={cols.mfa ? "[x]" : "[ ]"} active={sel === 4} />
         <SettingRow label="col · info" value={cols.info ? "[x]" : "[ ]"} active={sel === 5} />
@@ -119,16 +111,16 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
           label="default limits"
           value={`keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}
           active={sel === 6}
+          spacedAbove
         />
-        <SettingRow label="show hints" value={showHints ? "[x]" : "[ ]"} active={sel === 7} />
-        <box flexDirection="row">
+        <SettingRow label="show hints" value={showHints ? "[x]" : "[ ]"} active={sel === 7} spacedAbove />
+        <box flexDirection="row" marginTop={1}>
           <text fg={theme.dim}>{fit("$EDITOR", 16)}</text>
           <text fg={theme.dim}>{`${editor} (read-only · set via env)`}</text>
         </box>
         <text fg={theme.dim}>ts and k columns are always shown.</text>
-      </box>
-
-      <StatusBar hints="j/k move · space toggle · ? help · esc back" />
+        <text fg={theme.dim} marginTop={1}>j/k move · space toggle · ? help · esc close</text>
+      </Overlay>
 
       {help && (
         <HelpOverlay
@@ -138,7 +130,7 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
               lines: [
                 ["j / k", "move"],
                 ["space / enter / l", "toggle or cycle value"],
-                ["esc", "back"]
+                ["esc", "close"]
               ]
             },
             {
@@ -163,18 +155,27 @@ function SettingsView({ store, onBack }: { store: SettingsStore; onBack: () => v
           />
         </Overlay>
       )}
-    </box>
+    </>
   )
 }
 
-function SettingRow({ label, value, active }: { label: string; value: string; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
+function SettingRow({
+  label,
+  value,
+  active,
+  spacedAbove
+}: {
+  label: string
+  value: string
+  active: boolean
+  spacedAbove?: boolean
+}) {
+  const bg = active ? theme.selBg : theme.overlay
   const fg = active ? theme.selFg : theme.fg
   return (
-    <box backgroundColor={bg} flexDirection="row">
+    <box backgroundColor={bg} flexDirection="row" marginTop={spacedAbove ? 1 : 0}>
       <text bg={bg} fg={theme.dim}>{fit(label, 16)}</text>
       <text bg={bg} fg={fg}>{value}</text>
     </box>
   )
 }
-

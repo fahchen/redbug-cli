@@ -119,7 +119,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
       <Header title="Snippets — global library" />
 
-      <box flexDirection="row" flexGrow={1}>
+      <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
           borderColor={theme.title}

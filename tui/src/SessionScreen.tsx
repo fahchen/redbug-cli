@@ -366,8 +366,8 @@ function SessionView({
 
   const headerInfo =
     `sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"}` +
-    `  filter:${filter ? `${filter.scope}/${filter.query}` : "-"}` +
-    `  group:${group}`
+    `    filter:${filter ? `${filter.scope}/${filter.query}` : "-"}` +
+    `    group:${group}`
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
@@ -397,7 +397,7 @@ function SessionView({
       ) : (
       <>
       {!zoom && (
-      <box flexDirection="row" flexGrow={1}>
+      <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
           borderColor={focus === "list" ? theme.title : theme.border}
