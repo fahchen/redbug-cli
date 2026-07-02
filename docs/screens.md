@@ -447,8 +447,8 @@ Fields:
 - **cookie**: distributed cookie. Shown in plain text (not masked).
 
 ### Decisions
-- **cookie stored plaintext** in `~/.redbug/config.json`. cookie == RCE, so the config
-  file should be `0600` (owner-only) even though stored in clear.
+- **cookie stored plaintext** in `~/.config/redbug/config.json` (honors `$XDG_CONFIG_HOME`).
+  cookie == RCE, so the config file should be `0600` (owner-only) even though stored in clear.
 - **name validation**: none up front; errors surface on connect
   (`✗ nodedown` / bad cookie / etc.). Input shows a `name@host` hint only.
 - **delete node cascades to its sessions** (Tree `d` → y/n confirm).

@@ -128,12 +128,11 @@ in plaintext, so keep the file local and the WebSocket channel trusted.
 mise run package
 ```
 
-Produces a self-contained `dist/`:
+Produces a single self-contained binary:
 
 ```
 dist/
   redbug       single-file binary (run this) — bun --compile, embeds the server release
-  redbug-tui   standalone TUI binary — only needed to attach to a separately-running server
 ```
 
 `dist/redbug` is a bun `--compile` executable with the `server` release (ERTS bundled)
@@ -285,3 +284,7 @@ port (`9100`, `9101`, …) since they all land on `127.0.0.1`.
 | `XDG_CONFIG_HOME` | server | `~/.config` | Base dir for `redbug/config.json` |
 
 \* The server uses an OS-assigned free port when `REDBUG_PORT` is unset.
+
+## License
+
+[MIT](LICENSE) © Phil Chen
