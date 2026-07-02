@@ -112,6 +112,69 @@ port (`9100`, `9101`, …) since they all land on `127.0.0.1`.
 > distribution must come up *after* boot. Set the node name via `CONTROLLER_NODE` instead
 > (`CONTROLLER_NODE=redbug_controller@127.0.0.1 CONTROLLER_COOKIE=… REDBUG_NODES=… elixir -S mix phx.server`).
 
+### Kamal (Docker) deployments
+
+Same shim-over-SSH path, plus three container-specific wrinkles. The target is a
+[Kamal](https://kamal-deploy.org)-deployed container on a Linux host you reach only via SSH; the
+container publishes no ports.
+
+**1. The target node must be a longname.** The controller starts as `:longnames`, and Erlang
+refuses to connect a longname node to a shortname one. Elixir releases default to
+`RELEASE_DISTRIBUTION=sname`, so override it in `deploy.yml` (the cookie comes from the
+`RELEASE_COOKIE` secret):
+
+```yaml
+env:
+  clear:
+    RELEASE_DISTRIBUTION: name
+    RELEASE_NODE: app@127.0.0.1        # dotted host ⇒ a valid longname
+```
+
+**2. The dist port lives inside the container.** epmd hands out a random high port unless pinned,
+and the host's `epmd` can't see it — query it *inside* the container, and grab the container's
+bridge IP (the node binds dist on `0.0.0.0`, so it's reachable from the Docker host at that IP):
+
+```sh
+ssh user@server
+C=$(docker ps --filter label=service=<service> -q | head -1)   # the running app container
+docker exec "$C" epmd -names           # → name app at port 44001
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$C"   # → 172.18.0.4
+```
+
+**3. The `ssh -L` target is the container IP, not `127.0.0.1`.** The node lives in the
+container's network namespace — the host's loopback has nothing on that port. Forward a local
+port straight to `<container-ip>:<dist-port>` (the local port is free to differ; the shim pins
+the endpoint and never re-queries, so it doesn't need to match the remote dist port):
+
+```sh
+# local 9100 → (server) → container 172.18.0.4:44001
+ssh -N -L 9100:172.18.0.4:44001 user@server
+```
+
+Then launch the CLI dialing the tunnel's local end, with the node name matching the container
+node's own name:
+
+```sh
+REDBUG_NODES="app@127.0.0.1|127.0.0.1:9100|$RELEASE_COOKIE" ./dist/redbug
+# from source: REDBUG_NODES="app@127.0.0.1|127.0.0.1:9100|$RELEASE_COOKIE" mise run dev
+```
+
+Pin the dist port to skip the per-session `epmd -names` lookup and reuse a fixed tunnel — add to
+`deploy.yml`:
+
+```yaml
+env:
+  clear:
+    ERL_AFLAGS: "-kernel inet_dist_listen_min 9100 -kernel inet_dist_listen_max 9100"
+```
+
+The container IP can still change across deploys; re-check it, or put the app on a Kamal
+`network` with a stable alias.
+
+> Verified end-to-end: a longname container node (`app@127.0.0.1`, cookie, random dist port) ←
+> the repo controller booted with the shim (`REDBUG_NODES="app@127.0.0.1|<container-ip>:<port>|<cookie>"`);
+> `Node.connect/1` returned `true` and `:rpc` round-tripped across an OTP 28 → OTP 27 gap.
+
 ## Security
 
 - **Cookie == RCE.** The cookie is a full remote-code-execution capability on the target.
