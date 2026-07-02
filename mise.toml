@@ -38,7 +38,7 @@ cd ../tui && REDBUG_PORT="$port" bun run dev
 """
 
 [tasks.package]
-description = "Build single-file dist/redbug (bun --compile embedding the server release) + standalone TUI"
+description = "Build single-file dist/redbug (bun --compile embedding the server release)"
 run = """
 set -e
 root="$(pwd)"
@@ -47,11 +47,10 @@ cd "$root/server" && MIX_ENV=prod mix release server --overwrite
 mkdir -p "$root/tui/embed"
 tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
 # redbug = single file (main.tsx embeds the tarball, extracts + spawns it at runtime).
-# redbug-tui = standalone TUI (index.tsx), only needed to attach to a separately-running server (REDBUG_HOST/REDBUG_PORT).
-# Both compile straight into the root dist/ (build scripts target ../dist).
+# Compiles straight into the root dist/ (build script targets ../dist).
 rm -rf "$root/dist"
 mkdir -p "$root/dist"
-cd "$root/tui" && bun install && bun run build:bin && bun run build:redbug
-chmod +x "$root/dist/redbug" "$root/dist/redbug-tui"
-echo "packaged -> dist/redbug (single file; run it to launch) + dist/redbug-tui (standalone TUI)"
+cd "$root/tui" && bun install && bun run build:redbug
+chmod +x "$root/dist/redbug"
+echo "packaged -> dist/redbug (single file; run it to launch)"
 """

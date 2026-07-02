@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "dev": "bun src/index.tsx",
-    "build:bin": "bun build --compile src/index.tsx --outfile ../dist/redbug-tui",
     "build:redbug": "bun build --compile src/main.tsx --outfile ../dist/redbug",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
