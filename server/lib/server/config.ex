@@ -316,19 +316,20 @@ defmodule Server.Config do
           {:error, :not_found}
 
         node ->
-          target = String.to_atom(node.name)
-          if cookie = node[:cookie], do: Node.set_cookie(target, String.to_atom(cookie))
+          # ssh-backed nodes resolve their real name + cookie by opening the tunnel
+          # first (which also pins the dial endpoint); direct nodes use as-entered.
+          with {:ok, name, cookie} <- resolve_target(node) do
+            persist_discovered(id, node, name, cookie)
+            target = String.to_atom(name)
+            if cookie && cookie != "", do: Node.set_cookie(target, String.to_atom(cookie))
 
-          # ssh-backed nodes need their tunnel up (which pins the dial endpoint)
-          # before Node.connect; direct nodes skip straight through.
-          with :ok <- open_tunnel(node) do
             case Node.connect(target) do
               true ->
                 add_connected(id)
                 :ok
 
               other ->
-                Logger.warning("connect #{node.name} failed: #{inspect(other)}")
+                Logger.warning("connect #{name} failed: #{inspect(other)}")
                 {:error, :unreachable}
             end
           end
@@ -404,10 +405,32 @@ defmodule Server.Config do
     broadcast()
   end
 
-  # ssh-backed nodes open a tunnel (pins the dial endpoint) before connecting;
-  # direct nodes skip it.
-  defp open_tunnel(node) do
-    if node[:ssh_host] in [nil, ""], do: :ok, else: Server.SshTunnel.open(node)
+  # Resolve the node to actually dial: an ssh-backed node opens its tunnel (which
+  # discovers the real name + cookie and pins the endpoint); a direct node uses
+  # what the user entered.
+  defp resolve_target(node) do
+    if node[:ssh_host] in [nil, ""] do
+      {:ok, node.name, node[:cookie]}
+    else
+      Server.SshTunnel.open(node)
+    end
+  end
+
+  # Write a tunnel-discovered name/cookie back onto the config node, so the tree
+  # and the trace/console runners (which read `node.name`) target the real node.
+  defp persist_discovered(id, node, name, cookie) do
+    name_changed = is_binary(name) and name != node.name
+    cookie_changed = is_binary(cookie) and cookie != "" and cookie != node[:cookie]
+
+    if (name_changed or cookie_changed) and not env_id?(id) do
+      lookup(:nodes, [])
+      |> update_in_list(id, fn n ->
+        n
+        |> then(&if(name_changed, do: Map.put(&1, :name, name), else: &1))
+        |> then(&if(cookie_changed, do: Map.put(&1, :cookie, cookie), else: &1))
+      end)
+      |> put_nodes()
+    end
   end
 
   defp persist_and_broadcast do

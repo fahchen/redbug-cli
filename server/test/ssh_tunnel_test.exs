@@ -34,4 +34,23 @@ defmodule Server.SshTunnelTest do
     assert SshTunnel.parse_port("epmd: up and running on port 4369 with data:\n") ==
              {:error, :no_port}
   end
+
+  test "parse_sname / host / cookie pull the sname atom parts from discovery output" do
+    out = """
+    172.18.0.4
+    epmd: up and running on port 4369 with data:
+    name muku at port 35017
+    HOST=178
+    COOKIE=VJ26O3ABC====
+    """
+
+    assert SshTunnel.parse_sname(out) == "muku"
+    assert SshTunnel.parse_host(out) == "178"
+    assert SshTunnel.parse_cookie(out) == "VJ26O3ABC===="
+    # a full name in the epmd line still yields just the short name
+    assert SshTunnel.parse_sname("name app at port 9100") == "app"
+    # missing lines → nil, not a crash
+    assert SshTunnel.parse_host("no host line") == nil
+    assert SshTunnel.parse_cookie("no cookie line") == nil
+  end
 end

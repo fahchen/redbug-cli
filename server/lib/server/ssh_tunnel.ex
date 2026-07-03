@@ -34,8 +34,15 @@ defmodule Server.SshTunnel do
 
   def start_link(_opts \\ []), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
-  @doc "Open (or reuse) a tunnel for an ssh-backed node and pin its endpoint."
-  @spec open(map()) :: :ok | {:error, term()}
+  @doc """
+  Open (or reuse) a tunnel for an ssh-backed node and pin its endpoint.
+
+  Returns `{:ok, node_name, cookie}` — the actual node to dial and the cookie to
+  use. For a shortname controller the name is discovered (`<sname>@<host>`, since
+  the caller can't know a release's `-sname` host); the cookie is read from the
+  release when the node has none set.
+  """
+  @spec open(map()) :: {:ok, String.t(), String.t() | nil} | {:error, term()}
   def open(node), do: GenServer.call(__MODULE__, {:open, node}, 30_000)
 
   @doc "Tear the node's tunnel down and unpin its endpoint."
@@ -52,18 +59,20 @@ defmodule Server.SshTunnel do
 
   @impl true
   def handle_call({:open, node}, _from, state) do
-    if Map.has_key?(state.tunnels, node.id) do
-      {:reply, :ok, state}
-    else
-      case establish(node) do
-        {:ok, conn, node_atom} ->
-          mon = Process.monitor(conn)
-          tunnel = %{conn: conn, mon: mon, node_atom: node_atom}
-          {:reply, :ok, put_in(state.tunnels[node.id], tunnel)}
+    case Map.get(state.tunnels, node.id) do
+      %{name: name, cookie: cookie} ->
+        {:reply, {:ok, name, cookie}, state}
 
-        {:error, _} = err ->
-          {:reply, err, state}
-      end
+      nil ->
+        case establish(node) do
+          {:ok, conn, node_atom, name, cookie} ->
+            mon = Process.monitor(conn)
+            tunnel = %{conn: conn, mon: mon, node_atom: node_atom, name: name, cookie: cookie}
+            {:reply, {:ok, name, cookie}, put_in(state.tunnels[node.id], tunnel)}
+
+          {:error, _} = err ->
+            {:reply, err, state}
+        end
     end
   end
 
@@ -90,11 +99,30 @@ defmodule Server.SshTunnel do
     with {:ok, host} <- require_field(node[:ssh_host], :no_ssh_host),
          user = node[:ssh_user] || System.get_env("USER") || "",
          {:ok, conn} <- ssh_connect(host, user),
-         {:ok, ip, port} <- discover(conn, node[:container]),
-         {:ok, lport} <- forward(conn, ip, port) do
-      node_atom = String.to_atom(node.name)
+         {:ok, info} <- discover(conn, node[:container]),
+         name = resolve_name(node, info),
+         {:ok, lport} <- forward(conn, info.ip, info.port) do
+      node_atom = String.to_atom(name)
       :ets.insert(@endpoints, {node_atom, {{127, 0, 0, 1}, lport}})
-      {:ok, conn, node_atom}
+      {:ok, conn, node_atom, name, pick_cookie(node, info)}
+    end
+  end
+
+  # Shortname controller: the release's node is `<sname>@<short-host>` and the
+  # user can't know the host, so use the discovered name. Longname (or missing
+  # discovery): trust the name the user entered.
+  defp resolve_name(node, info) do
+    if :net_kernel.longnames() or is_nil(info.sname) or info.host in [nil, ""] do
+      node.name
+    else
+      "#{info.sname}@#{info.host}"
+    end
+  end
+
+  defp pick_cookie(node, info) do
+    case node[:cookie] do
+      c when is_binary(c) and c != "" -> c
+      _ -> info.cookie
     end
   end
 
@@ -161,7 +189,14 @@ defmodule Server.SshTunnel do
          {:ok, out, 0} <- exec(conn, discover_cmd(svc)),
          {:ok, ip} <- parse_ip(out),
          {:ok, port} <- parse_port(out) do
-      {:ok, ip, port}
+      {:ok,
+       %{
+         ip: ip,
+         port: port,
+         sname: parse_sname(out),
+         host: parse_host(out),
+         cookie: parse_cookie(out)
+       }}
     else
       {:ok, _out, status} -> {:error, {:discovery_exit, status}}
       {:error, _} = err -> err
@@ -171,6 +206,8 @@ defmodule Server.SshTunnel do
 
   # Kamal labels the app container `service=<name> role=web`; fall back to a bare
   # name/id match. `svc` is validated (safe_container/1) before interpolation.
+  # Emits: bridge IP, `epmd -names` (short name + port), `HOST=<short hostname>`
+  # (the `-sname` host part), and `COOKIE=<release cookie>` when readable.
   defp discover_cmd(svc) do
     ~c"""
     set -e
@@ -181,6 +218,8 @@ defmodule Server.SshTunnel do
     # epmd is often not on PATH in a release image (it lives under erts-*/bin), so
     # locate it before asking for the node's port.
     docker exec "$C" sh -c 'E=$(command -v epmd 2>/dev/null || ls -d /app/erts-*/bin/epmd 2>/dev/null | head -1); exec "$E" -names'
+    echo "HOST=$(docker exec "$C" hostname -s 2>/dev/null)"
+    echo "COOKIE=$(docker exec "$C" sh -c 'cat /app/releases/COOKIE 2>/dev/null || cat "$HOME/.erlang.cookie" 2>/dev/null' 2>/dev/null)"
     """
   end
 
@@ -228,6 +267,30 @@ defmodule Server.SshTunnel do
     case Regex.run(~r/at port (\d+)/, out) do
       [_, p] -> {:ok, String.to_integer(p)}
       _ -> {:error, :no_port}
+    end
+  end
+
+  @doc false
+  def parse_sname(out) do
+    case Regex.run(~r/name (\S+) at port/, out) do
+      [_, name] -> name
+      _ -> nil
+    end
+  end
+
+  @doc false
+  def parse_host(out) do
+    case Regex.run(~r/^HOST=(\S+)/m, out) do
+      [_, host] -> host
+      _ -> nil
+    end
+  end
+
+  @doc false
+  def parse_cookie(out) do
+    case Regex.run(~r/^COOKIE=(\S+)/m, out) do
+      [_, cookie] -> cookie
+      _ -> nil
     end
   end
 
