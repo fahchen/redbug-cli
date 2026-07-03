@@ -384,7 +384,7 @@ function S1View({
           padding={1}
         >
           {nodeList.length === 0 ? (
-            <text fg={theme.dim}>No nodes yet · n to add</text>
+            <EmptyTree />
           ) : (
             nodeList.map((n, i) => (
               <NodeRow key={n.id} node={n} active={i === nodeIdx} />
@@ -448,6 +448,24 @@ function S1View({
           }}
         />
       )}
+    </box>
+  )
+}
+
+// First-run: instead of a bare "nothing here", teach the domain model in a
+// glance so the empty screen is the shortest path to understanding what to add.
+function EmptyTree() {
+  return (
+    <box flexDirection="column">
+      <text fg={theme.fg}>No nodes yet</text>
+      <text fg={theme.dim} marginTop={1}>Node ▸ Session ▸ Trace</text>
+      <text fg={theme.dim}>{"                └ → Events"}</text>
+      <text fg={theme.dim} marginTop={1}>a target, a run, a pattern,</text>
+      <text fg={theme.dim}>the calls it catches, live.</text>
+      <box flexDirection="row" marginTop={1}>
+        <text fg={theme.accent}>n</text>
+        <text fg={theme.dim}>{"  add your first node"}</text>
+      </box>
     </box>
   )
 }

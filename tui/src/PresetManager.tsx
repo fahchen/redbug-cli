@@ -200,7 +200,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           ) : (
             <>
               {traces.length === 0 ? (
-                <text fg={theme.dim}>No patterns yet · enter, then a to add</text>
+                <text fg={theme.dim}>No patterns yet · enter, then n to add</text>
               ) : (
                 traces.map((t, i) => (
                   <TraceRow key={t.id} rtp={t} active={focus === "detail" && i === traceSel} />

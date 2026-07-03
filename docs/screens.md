@@ -314,11 +314,11 @@ on demand, or is prompted on exit.
 │  [x] lists:seq/2 -> return                                    │
 │  [x] M:f/2 -> return;stack                                    │
 │  [ ] gen_server:call -> return            <- disabled, dim    │
-│ j/k move · space toggle · a add · e edit · Ctrl+D del · Ctrl+W save preset · esc close
+│ j/k move · space toggle · n add · e edit · Ctrl+D del · Ctrl+W save preset · esc close
 └────────────────────────────────────────────────────────────────┘
 ```
-- `[x]`/`[ ]` = enabled / disabled (dim). Empty list shows `No patterns yet · a to add`.
-- `space` toggles the selected RTP; `a` opens an add field; `e` edits the selected RTP;
+- `[x]`/`[ ]` = enabled / disabled (dim). Empty list shows `No patterns yet · n to add`.
+- `space` toggles the selected RTP; `n` opens an add field; `e` edits the selected RTP;
   both are single-line TextField inputs (`enter` submits, `esc` cancels, empty discarded).
 - `Ctrl+D` deletes the selected RTP immediately (no confirm; the modifier is the safeguard).
 - `Ctrl+W` opens save-as-preset: a name field that always **creates a new** preset
@@ -398,10 +398,10 @@ trace template storing **traces (RTP list) + limits** (time/msgs/keep).
 │  [x] lists:map -> return;stack                    │
 │  + add RTP                                        │
 │ Limits:  time 24h   msgs 1e6   keep 500           │
-│ j/k move · space toggle · a add · e edit · l limits · Ctrl+D del · tab/esc back │
+│ j/k move · space toggle · n add · e edit · l limits · Ctrl+D del · tab/esc back │
 └──────────────────────────────────────────────────┘
 ```
-- detail-pane (focus right): `space` toggle trace, `a` add RTP, `e` edit RTP,
+- detail-pane (focus right): `space` toggle trace, `n` add RTP, `e` edit RTP,
   `l` edit limits (modal), `Ctrl+D` delete trace (**y/n confirm** — unlike the session
   trace editor, which deletes immediately), `tab`/`esc` back to list.
 - **no start/stop** (preset is a template); edits auto-persist on commit (no staged/restart).

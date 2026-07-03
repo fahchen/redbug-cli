@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/react */
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor } from "./theme"
-import { ErrorDetailOverlay, Flash, Header, HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TextField, fit } from "./ui"
+import { ErrorDetailOverlay, Flash, Header, HelpOverlay, InfoPeek, Overlay, PickRow, RootGate, StatusBar, TermLine, TextField, fit } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 
@@ -53,6 +53,8 @@ const GROUP_CYCLE: GroupKey[] = ["none", "pid", "mfa", "kind"]
 
 const COL = { ts: 12, k: 1, name: 16, pid: 11, mfa: 22, info: 44 }
 const COLGAP = 2
+const SPARK_N = 24
+const SPARK_RAMP = "▁▂▃▄▅▆▇█"
 
 export function SessionScreen({
   nodeId,
@@ -104,6 +106,52 @@ function SessionView({
   const running = snap?.status === "running"
   const dirty = snap?.dirty === true
   const error = snap?.error ?? null
+
+  // Liveness: a running session that traces nothing looks identical to a healthy
+  // one. Track wall-clock age since the event buffer last grew and tick a clock
+  // while running so the status reads ● live vs ◇ idle Ns (the "is my pattern
+  // even matching?" signal). Age from a client timestamp, not ev.ts, so it is
+  // independent of the id/ts encoding.
+  const lastEventAt = useRef(Date.now())
+  const seenMaxId = useRef(0)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  // Detect new events by max id, NOT array length: the buffer is capped (keep),
+  // so once it fills, length stops growing while events still stream in. Length
+  // would then falsely read as "idle".
+  const curMaxId = events.reduce((m, e) => Math.max(m, Number(e.id)), seenMaxId.current)
+  if (curMaxId > seenMaxId.current) {
+    lastEventAt.current = Date.now()
+    seenMaxId.current = curMaxId
+  }
+
+  // Rate sparkline: per-second arrivals over a rolling window. Counted by max
+  // event id (monotonic) rather than buffer length, so it stays accurate once
+  // the capped buffer starts evicting. Shares the one liveness timer.
+  const eventsRef = useRef(events)
+  eventsRef.current = events
+  const lastMaxId = useRef(0)
+  const buckets = useRef<number[]>(new Array(SPARK_N).fill(0))
+  useEffect(() => {
+    if (!running) {
+      buckets.current = new Array(SPARK_N).fill(0)
+      return
+    }
+    const id = setInterval(() => {
+      let delta = 0
+      let mx = lastMaxId.current
+      for (const e of eventsRef.current) {
+        const n = Number(e.id)
+        if (n > lastMaxId.current) delta++
+        if (n > mx) mx = n
+      }
+      lastMaxId.current = mx
+      buckets.current = [...buckets.current.slice(1), delta]
+      setNowTick(Date.now())
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running])
+  const idleSec = Math.max(0, Math.round((nowTick - lastEventAt.current) / 1000))
+  const live = running && idleSec <= 2
 
   const [sort, setSort] = useState<Sort>(() => parseSort(settings?.default_sort))
   const [filter, setFilter] = useState<Filter | null>(null)
@@ -413,12 +461,18 @@ function SessionView({
           {rows.length === 0 ? (
             <text fg={theme.dim}>No events yet · ⇧S to start</text>
           ) : (
-            rows
-              .slice(0, 300)
-              .map((row) =>
-                row.type === "header" ? (
-                  <text key={row.key} fg={theme.dim}>{`▸ ${row.label} (${row.count})`}</text>
-                ) : (
+            (() => {
+              const shown = rows.slice(0, 300)
+              // ditto: in the plain chronological view, dim a row's name/pid when
+              // identical to the row directly above so the eye tracks changes, not
+              // repeats. Off while grouped or filtering (there the repeats matter).
+              const ditto = group === "none" && !filter?.query
+              return shown.map((row, i) => {
+                if (row.type === "header")
+                  return <text key={row.key} fg={theme.dim}>{`▸ ${row.label} (${row.count})`}</text>
+                const prev = i > 0 ? shown[i - 1] : null
+                const prevEv = prev && prev.type === "event" ? prev.ev : null
+                return (
                   <EventRow
                     key={row.key}
                     ev={row.ev}
@@ -426,9 +480,12 @@ function SessionView({
                     filter={filter}
                     cols={cols}
                     pidWidth={pidWidth}
+                    dittoName={ditto && !!prevEv && !!row.ev.name && prevEv.name === row.ev.name}
+                    dittoPid={ditto && !!prevEv && prevEv.pid === row.ev.pid}
                   />
                 )
-              )
+              })
+            })()
           )}
         </box>
 
@@ -440,9 +497,16 @@ function SessionView({
 
       {error && <Flash error={error} />}
 
+      {!detailOpen && !zoom && selectedEvent && selectedEvent.info.length > COL.info && (
+        <InfoPeek text={selectedEvent.info} />
+      )}
+
       <StatusBar
-        statusText={`${snap?.status ?? "stopped"} · ${count} evt · buf ${events.length}/${limits.keep}`}
-        tone={running ? "on" : "dim"}
+        statusText={
+          `${liveness(running, live, idleSec, snap?.status)} · ${count} evt · buf ${events.length}/${limits.keep}` +
+          (running ? ` · ${sparkline(buckets.current)}` : "")
+        }
+        tone={!running ? "dim" : live ? "on" : "warn"}
         hints="j/k move · enter detail · t traces · ⇧S/X run/stop · ? help · esc back"
       />
 
@@ -559,7 +623,7 @@ function SessionView({
           <text fg={theme.title}>{`Traces — ${snap?.name ?? ""}`}</text>
           <box flexDirection="column" marginTop={1}>
             {traces.length === 0 ? (
-              <text fg={theme.dim}>No patterns yet · a to add</text>
+              <text fg={theme.dim}>No patterns yet · n to add</text>
             ) : (
               traces.map((t, i) => <RtpRow key={t.id} rtp={t} active={i === rtpSel} />)
             )}
@@ -627,9 +691,13 @@ function SessionView({
           >
             {detailLines(selectedEvent)
               .slice(detailScroll)
-              .map((ln, i) => (
-                <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
-              ))}
+              .map((ln, i) =>
+                ln.term ? (
+                  <TermLine key={i} line={ln.text} bg={theme.overlay} />
+                ) : (
+                  <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
+                )
+              )}
           </box>
         </box>
       )}
@@ -657,13 +725,17 @@ function EventRow({
   active,
   filter,
   cols,
-  pidWidth
+  pidWidth,
+  dittoName,
+  dittoPid
 }: {
   ev: TraceEvent
   active: boolean
   filter: Filter | null
   cols: Cols
   pidWidth: number
+  dittoName?: boolean
+  dittoPid?: boolean
 }) {
   if (ev.kind === "restart")
     return <text fg={theme.dim}>{`── ${ev.info} ──`}</text>
@@ -674,13 +746,16 @@ function EventRow({
   const sym = kindSym[ev.kind] ?? "?"
   const hl = (scope: FilterScope) =>
     filter && (filter.scope === scope || filter.scope === "all") ? filter.query : ""
+  // the active row always shows real values; ditto only recedes unselected repeats
+  const nameFg = dittoName && !active ? theme.dim : fg
+  const pidFg = dittoPid && !active ? theme.dim : fg
 
   return (
     <box backgroundColor={bg} flexDirection="row">
       <text bg={bg} fg={theme.dim} marginRight={COLGAP}>{fit(ev.ts, COL.ts)}</text>
       <text bg={bg} fg={kc} marginRight={COLGAP}>{` ${sym} `}</text>
-      {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={fg} q={hl("all")} mr />}
-      {cols.pid && <Cell text={fit(ev.pid, pidWidth)} bg={bg} fg={fg} q={hl("pid")} mr />}
+      {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={nameFg} q={hl("all")} mr />}
+      {cols.pid && <Cell text={fit(ev.pid, pidWidth)} bg={bg} fg={pidFg} q={hl("pid")} mr />}
       {cols.mfa && <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} mr />}
       {cols.info && <Cell text={fit(ev.info, COL.info)} bg={bg} fg={fg} q={hl("info")} />}
     </box>
@@ -733,14 +808,18 @@ function DetailPane({
     >
       {detailLines(ev)
         .slice(scroll)
-        .map((ln, i) => (
-          <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
-        ))}
+        .map((ln, i) =>
+          ln.term ? (
+            <TermLine key={i} line={ln.text} />
+          ) : (
+            <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
+          )
+        )}
     </box>
   )
 }
 
-function detailLines(ev: TraceEvent): { text: string; dim?: boolean }[] {
+function detailLines(ev: TraceEvent): { text: string; dim?: boolean; term?: boolean }[] {
   const sym = kindSym[ev.kind] ?? "?"
   const payloadLabel =
     ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
@@ -751,7 +830,7 @@ function detailLines(ev: TraceEvent): { text: string; dim?: boolean }[] {
     { text: `name: ${ev.name || "-"}` },
     { text: `mfa:  ${ev.mfa || "-"}` },
     { text: `${payloadLabel}:`, dim: true },
-    ...wrap(ev.info, 42).map((t) => ({ text: t }))
+    ...wrap(ev.info, 42).map((t) => ({ text: t, term: true }))
   ]
 }
 
@@ -906,6 +985,20 @@ function wrap(s: string, width: number): string[] {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(n, hi))
+}
+
+function liveness(running: boolean, live: boolean, idleSec: number, status?: string): string {
+  if (!running) return status ?? "stopped"
+  return live ? "● live" : `◇ idle ${idleSec}s`
+}
+
+// Rolling per-second arrival counts → a block sparkline, scaled to its own peak
+// (relative shape, not absolute rate). Flat baseline when idle.
+function sparkline(buckets: number[]): string {
+  const mx = Math.max(1, ...buckets)
+  return buckets
+    .map((v) => SPARK_RAMP[Math.min(SPARK_RAMP.length - 1, Math.floor((v / mx) * (SPARK_RAMP.length - 1)))])
+    .join("")
 }
 
 async function openInEditor(

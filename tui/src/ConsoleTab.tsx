@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { HelpOverlay, Overlay, PickRow, RootGate, StatusBar } from "./ui"
+import { HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TermLine } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -300,7 +300,7 @@ function ExecDetail({ exec }: { exec: Exec }) {
         <>
           <text fg={theme.dim} marginTop={1}>result</text>
           {wrap(exec.result, 60).slice(0, 10).map((l, i) => (
-            <text key={`r${i}`} fg={theme.fg}>{l}</text>
+            <TermLine key={`r${i}`} line={l} />
           ))}
         </>
       )}

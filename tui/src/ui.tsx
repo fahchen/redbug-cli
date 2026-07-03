@@ -4,6 +4,30 @@ import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
 
 import { theme, type Theme } from "./theme"
+import { colorizeTerm, type TermRole } from "./term"
+
+// Semantic hue per term role, drawn from the active theme so it re-tints with
+// the palette. Detail/console payloads are data-viz, so a full-palette read is
+// warranted here (unlike the restrained event stream).
+const termColor = (role: TermRole): keyof Theme =>
+  role === "str" ? "on"
+  : role === "num" ? "send"
+  : role === "atom" ? "recv"
+  : role === "key" ? "title"
+  : role === "ref" ? "dim"
+  : "fg"
+
+// Render one already-wrapped line of an Elixir/Erlang term with semantic color.
+export function TermLine({ line, bg }: { line: string; bg?: string }) {
+  const segs = colorizeTerm(line)
+  return (
+    <box backgroundColor={bg ?? theme.bg} flexDirection="row">
+      {segs.map((s, i) => (
+        <text key={i} bg={bg ?? theme.bg} fg={theme[termColor(s.role)]}>{s.t}</text>
+      ))}
+    </box>
+  )
+}
 
 // Whether keybind hint footers are shown (driven by the `show_hints` setting).
 // Defaults to true so screens render hints even without an enclosing provider.
@@ -44,6 +68,18 @@ export function StatusBar({
           {(left !== "" ? "   " : "") + hintText}
         </text>
       )}
+    </box>
+  )
+}
+
+// One-line peek of the selected row's full value, shown above the StatusBar when
+// the list column truncated it. Cheap progressive disclosure: read the whole
+// payload without opening (and later closing) the Detail pane.
+export function InfoPeek({ text }: { text: string }) {
+  const { width } = useTerminalDimensions()
+  return (
+    <box backgroundColor={theme.overlay} paddingLeft={1} paddingRight={1} flexDirection="row">
+      <text bg={theme.overlay} fg={theme.dim}>{truncate(`▸ ${text}`, Math.max(0, width - 2))}</text>
     </box>
   )
 }
