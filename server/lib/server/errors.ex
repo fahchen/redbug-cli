@@ -16,7 +16,14 @@ defmodule Server.Errors do
     node_not_found: "Node not found",
     session_not_found: "Session not found",
     not_found: "Node not found",
-    unreachable: "Can't reach node — check address / cookie"
+    unreachable: "Can't reach node — check address / cookie",
+    no_ssh_host: "This node has no SSH host set",
+    bad_container: "Invalid container name (letters, digits, . _ - only)",
+    no_container: "No container / service name set for this SSH node",
+    no_ip: "Could not read the container's IP over SSH",
+    no_port: "Could not find the node's epmd port in the container",
+    exec_timeout: "Timed out running discovery over SSH",
+    ssh_auth: "SSH auth failed — no usable key (agent or ~/.ssh)"
   }
 
   @spec humanize(term()) :: AppError.t()
@@ -34,6 +41,18 @@ defmodule Server.Errors do
     detail = if String.contains?(reason, "\n"), do: reason, else: nil
     %AppError{message: first, detail: detail}
   end
+
+  def humanize({:ssh_connect, reason}),
+    do: %AppError{message: "SSH connect failed — check host, user, and key", detail: inspect(reason)}
+
+  def humanize({:ssh_forward, reason}),
+    do: %AppError{message: "SSH port-forward failed", detail: inspect(reason)}
+
+  def humanize({:discovery_exit, _status}),
+    do: %AppError{
+      message: "Container not found on the host — check the container / service name",
+      detail: nil
+    }
 
   def humanize(reason) do
     text = inspect(reason)

@@ -11,6 +11,8 @@ defmodule Server.Application do
     children = [
       {Phoenix.PubSub, name: Server.PubSub},
       Server.Config,
+      # after Config: SshTunnel writes the :redbug_endpoints table Config owns.
+      Server.SshTunnel,
       {Registry, keys: :unique, name: Server.Trace.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Server.Trace.Supervisor},
       {Registry, keys: :unique, name: Server.Remote.Registry},

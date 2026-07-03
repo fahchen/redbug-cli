@@ -319,14 +319,18 @@ defmodule Server.Config do
           target = String.to_atom(node.name)
           if cookie = node[:cookie], do: Node.set_cookie(target, String.to_atom(cookie))
 
-          case Node.connect(target) do
-            true ->
-              add_connected(id)
-              :ok
+          # ssh-backed nodes need their tunnel up (which pins the dial endpoint)
+          # before Node.connect; direct nodes skip straight through.
+          with :ok <- open_tunnel(node) do
+            case Node.connect(target) do
+              true ->
+                add_connected(id)
+                :ok
 
-            other ->
-              Logger.warning("connect #{node.name} failed: #{inspect(other)}")
-              {:error, :unreachable}
+              other ->
+                Logger.warning("connect #{node.name} failed: #{inspect(other)}")
+                {:error, :unreachable}
+            end
           end
       end
 
@@ -335,8 +339,12 @@ defmodule Server.Config do
 
   def handle_call({:disconnect_node, id}, _from, state) do
     case fetch_node(id) do
-      nil -> :ok
-      node -> Node.disconnect(String.to_atom(node.name))
+      nil ->
+        :ok
+
+      node ->
+        Node.disconnect(String.to_atom(node.name))
+        if node[:ssh_host] not in [nil, ""], do: Server.SshTunnel.close(id)
     end
 
     drop_connected(id)
@@ -394,6 +402,12 @@ defmodule Server.Config do
   defp drop_connected(id) do
     :ets.insert(@table, {:connected, MapSet.delete(lookup(:connected, MapSet.new()), id)})
     broadcast()
+  end
+
+  # ssh-backed nodes open a tunnel (pins the dial endpoint) before connecting;
+  # direct nodes skip it.
+  defp open_tunnel(node) do
+    if node[:ssh_host] in [nil, ""], do: :ok, else: Server.SshTunnel.open(node)
   end
 
   defp persist_and_broadcast do
