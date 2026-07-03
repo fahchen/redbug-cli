@@ -53,4 +53,19 @@ defmodule Server.SshTunnelTest do
     assert SshTunnel.parse_host("no host line") == nil
     assert SshTunnel.parse_cookie("no cookie line") == nil
   end
+
+  test "parse_name / cookie read the node's own beam args (host-native)" do
+    out = """
+    127.0.0.1
+    /home/deploy/apps/loyalty/erts-16.4/bin/beam.smp -- -root /x -setcookie WL3M==== -name loyalty@172.31.13.88 -kernel inet_dist_listen_min 4370
+    name loyalty at port 4370
+    HOST=ip-172-31-13-88
+    """
+
+    assert SshTunnel.parse_name(out) == "loyalty@172.31.13.88"
+    assert SshTunnel.parse_cookie(out) == "WL3M===="
+    assert SshTunnel.parse_port(out) == {:ok, 4370}
+    # a shortname release yields just the name (no @); pairing with HOST is resolve's job
+    assert SshTunnel.parse_name("beam.smp -sname loyalty -config x") == "loyalty"
+  end
 end

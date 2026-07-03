@@ -108,14 +108,16 @@ defmodule Server.SshTunnel do
     end
   end
 
-  # Shortname controller: the release's node is `<sname>@<short-host>` and the
-  # user can't know the host, so use the discovered name. Longname (or missing
-  # discovery): trust the name the user entered.
+  # Prefer the node's own name off its beam args: `-name app@host` is a full
+  # longname atom; `-sname app` (or the epmd short name) is paired with the
+  # discovered short host. Fall back to the name the user entered.
   defp resolve_name(node, info) do
-    if :net_kernel.longnames() or is_nil(info.sname) or info.host in [nil, ""] do
-      node.name
-    else
-      "#{info.sname}@#{info.host}"
+    short = info.name || info.sname
+
+    cond do
+      is_binary(info.name) and String.contains?(info.name, "@") -> info.name
+      is_binary(short) and info.host not in [nil, ""] -> "#{short}@#{info.host}"
+      true -> node.name
     end
   end
 
@@ -184,6 +186,10 @@ defmodule Server.SshTunnel do
 
   # --- discovery (over the same ssh connection) ---
 
+  # The node runs either in a container (Kamal/Docker) or straight on the host (a
+  # release under systemd, etc.). One command decides: if docker is present and a
+  # container matches, discover from it; otherwise find the beam on the host. Kept
+  # to a single exec (one channel), which some sshd setups need.
   defp discover(conn, container) do
     with {:ok, svc} <- safe_container(container),
          {:ok, out, 0} <- exec(conn, discover_cmd(svc)),
@@ -193,6 +199,7 @@ defmodule Server.SshTunnel do
        %{
          ip: ip,
          port: port,
+         name: parse_name(out),
          sname: parse_sname(out),
          host: parse_host(out),
          cookie: parse_cookie(out)
@@ -204,22 +211,33 @@ defmodule Server.SshTunnel do
     end
   end
 
-  # Kamal labels the app container `service=<name> role=web`; fall back to a bare
-  # name/id match. `svc` is validated (safe_container/1) before interpolation.
-  # Emits: bridge IP, `epmd -names` (short name + port), `HOST=<short hostname>`
-  # (the `-sname` host part), and `COOKIE=<release cookie>` when readable.
+  # Emits (either branch): the dial IP, the beam's own args (`-name`/`-sname`/
+  # `-setcookie`), `epmd -names` (port), `HOST=<short hostname>`, and — docker
+  # only — `COOKIE=<release cookie file>`. `svc` is validated before interpolation.
   defp discover_cmd(svc) do
     ~c"""
     set -e
-    C=$(docker ps --filter label=service=#{svc} --filter label=role=web -q | head -1)
-    [ -n "$C" ] || C=$(docker ps --filter name=#{svc} -q | head -1)
-    [ -n "$C" ] || { echo "no container for #{svc}" >&2; exit 3; }
-    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{println}}{{end}}' "$C" | grep . | head -1
-    # epmd is often not on PATH in a release image (it lives under erts-*/bin), so
-    # locate it before asking for the node's port.
-    docker exec "$C" sh -c 'E=$(command -v epmd 2>/dev/null || ls -d /app/erts-*/bin/epmd 2>/dev/null | head -1); exec "$E" -names'
-    echo "HOST=$(docker exec "$C" hostname -s 2>/dev/null)"
-    echo "COOKIE=$(docker exec "$C" sh -c 'cat /app/releases/COOKIE 2>/dev/null || cat "$HOME/.erlang.cookie" 2>/dev/null' 2>/dev/null)"
+    C=
+    if command -v docker >/dev/null 2>&1; then
+      C=$(docker ps --filter label=service=#{svc} --filter label=role=web -q | head -1)
+      [ -n "$C" ] || C=$(docker ps --filter name=#{svc} -q | head -1)
+    fi
+    if [ -n "$C" ]; then
+      docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{println}}{{end}}' "$C" | grep . | head -1
+      docker exec "$C" sh -c 'for p in /proc/[0-9]*/cmdline; do a=$(tr "\\0" " " < "$p" 2>/dev/null); case "$a" in *beam.smp*) printf "%s\\n" "$a"; break;; esac; done'
+      docker exec "$C" sh -c 'E=$(command -v epmd 2>/dev/null || ls -d /app/erts-*/bin/epmd 2>/dev/null | head -1); "$E" -names'
+      echo "HOST=$(docker exec "$C" hostname -s 2>/dev/null)"
+      echo "COOKIE=$(docker exec "$C" sh -c 'cat /app/releases/COOKIE 2>/dev/null || cat "$HOME/.erlang.cookie" 2>/dev/null' 2>/dev/null)"
+    else
+      echo 127.0.0.1
+      A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | grep -- "#{svc}" | head -1)
+      [ -n "$A" ] || A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | head -1)
+      [ -n "$A" ] || { echo "no container or beam for #{svc}" >&2; exit 3; }
+      echo "$A"
+      B=$(printf '%s' "$A" | grep -oE '[-]bindir [^ ]+' | awk '{print $2}')
+      { [ -n "$B" ] && "$B/epmd" -names 2>/dev/null; } || epmd -names 2>/dev/null
+      echo "HOST=$(hostname -s 2>/dev/null)"
+    fi
     """
   end
 
@@ -278,6 +296,15 @@ defmodule Server.SshTunnel do
     end
   end
 
+  # The node's own name off `-name app@host` / `-sname app` in the beam args.
+  @doc false
+  def parse_name(out) do
+    case Regex.run(~r/ -s?name (\S+)/, out) do
+      [_, name] -> name
+      _ -> nil
+    end
+  end
+
   @doc false
   def parse_host(out) do
     case Regex.run(~r/^HOST=(\S+)/m, out) do
@@ -286,9 +313,10 @@ defmodule Server.SshTunnel do
     end
   end
 
+  # From a `COOKIE=` line (docker release file) or `-setcookie` in the beam args.
   @doc false
   def parse_cookie(out) do
-    case Regex.run(~r/^COOKIE=(\S+)/m, out) do
+    case Regex.run(~r/^COOKIE=(\S+)/m, out) || Regex.run(~r/-setcookie (\S+)/, out) do
       [_, cookie] -> cookie
       _ -> nil
     end
