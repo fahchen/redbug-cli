@@ -50,6 +50,12 @@ defmodule Server.Trace.Runner do
 
   @impl true
   def init(opts) do
+    # Trap exits so a supervisor/disconnect shutdown runs terminate/2 → :redbug.stop,
+    # tearing the trace off the target immediately — instead of leaving it to
+    # redbug's own nodedown cleanup (or the time/msgs limits) once the controller
+    # goes away. The catch-all handle_info absorbs any stray {:EXIT, _, _}.
+    Process.flag(:trap_exit, true)
+
     state = %__MODULE__{
       node_id: Keyword.fetch!(opts, :node_id),
       session_id: Keyword.fetch!(opts, :session_id)

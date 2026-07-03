@@ -344,6 +344,10 @@ defmodule Server.Config do
         :ok
 
       node ->
+        # stop any running trace on the target *before* dropping the link, so
+        # redbug is torn off the node (terminate/2 → :redbug.stop) rather than left
+        # running; then disconnect and close the tunnel.
+        Enum.each(node.sessions, &Server.Trace.terminate(&1.id))
         Node.disconnect(String.to_atom(node.name))
         if node[:ssh_host] not in [nil, ""], do: Server.SshTunnel.close(id)
     end
