@@ -12,8 +12,8 @@ import {
   useMusubiRoot,
   useMusubiSnapshot
 } from "./musubi"
-import { theme, setTheme } from "./theme"
-import { Flash, Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, StatusBar, TextField } from "./ui"
+import { theme, setTheme, PANEL_BORDER } from "./theme"
+import { Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, StatusBar, TextField, useSpinner } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -148,7 +148,7 @@ function S1View({
   // env mode is mutually exclusive: if any node is env-injected, all are, and the
   // node list is read-only (only new sessions allowed under them).
   const envMode = nodeList.some((n) => n.source === "env")
-  const connCount = nodeList.filter((n) => n.connected).length
+  const connCount = nodeList.filter((n) => n.status === "connected").length
 
   const [nodeSel, setNodeSel] = useState(0)
   const [sessSel, setSessSel] = useState(0)
@@ -354,8 +354,11 @@ function S1View({
         }
         break
       case "c":
+        // connected → disconnect; anything else (idle/connecting/error) →
+        // (re)connect. request_connect resets the retry counter, so `c` doubles
+        // as the manual retry after a failed connect.
         if (node && nodeProxy)
-          dispatcher(nodeProxy)(node.connected ? "disconnect" : "connect")
+          dispatcher(nodeProxy)(node.status === "connected" ? "disconnect" : "connect")
         break
       case "d":
         if (node && node.source !== "env" && nodeProxy) {
@@ -396,6 +399,7 @@ function S1View({
       <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
+          borderStyle={PANEL_BORDER}
           borderColor={focus === "nodes" ? theme.title : theme.border}
           backgroundColor={theme.bg}
           title={`Nodes (${nodeList.length})`}
@@ -415,6 +419,7 @@ function S1View({
 
         <box
           border
+          borderStyle={PANEL_BORDER}
           borderColor={focus === "sessions" ? theme.title : theme.border}
           backgroundColor={theme.bg}
           title={node ? `${node.name} — sessions` : "—"}
@@ -424,6 +429,7 @@ function S1View({
           flexDirection="column"
           padding={1}
         >
+          {node && <NodeDetailBand node={node} error={nodeError} />}
           {!node ? (
             <text fg={theme.dim}>Select a node</text>
           ) : sessions.length === 0 ? (
@@ -436,10 +442,11 @@ function S1View({
         </box>
       </box>
 
-      {nodeError && <Flash error={nodeError} hint="c retry" />}
-
       <StatusBar
-        statusText={`${connCount}/${nodeList.length} connected`}
+        statusText={
+          `${"▮".repeat(connCount)}${"▯".repeat(Math.max(0, nodeList.length - connCount))} ` +
+          `${connCount}/${nodeList.length} up`
+        }
         hints={
           focus === "nodes"
             ? envMode
@@ -500,14 +507,50 @@ function EmptyTree() {
 function NodeRow({ node, active }: { node: Node; active: boolean }) {
   const bg = active ? theme.selBg : theme.bg
   const fg = active ? theme.selFg : theme.fg
-  const dot = node.connected ? "●" : "○"
-  const dotColor = node.connected ? theme.on : theme.off
+  // 1-wide status glyph: spinner while connecting (circleHalves keeps the column
+  // from shifting), else ●/✖/○ for connected/error/idle.
+  const spin = useSpinner(node.status === "connecting", "circle")
+  const glyph =
+    node.status === "connected" ? "●"
+    : node.status === "connecting" ? spin
+    : node.status === "error" ? "✖"
+    : "○"
+  const glyphColor =
+    node.status === "connected" ? theme.on
+    : node.status === "connecting" ? theme.warn
+    : node.status === "error" ? theme.err
+    : theme.off
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={dotColor}>{`${dot} `}</text>
+      <text bg={bg} fg={glyphColor}>{`${glyph} `}</text>
       <text bg={bg} fg={fg}>{node.name}</text>
       <text bg={bg} fg={theme.dim}>{`  (${node.sessions.length})`}</text>
       {node.source === "env" && <text bg={bg} fg={theme.dim}>{"  env"}</text>}
+    </box>
+  )
+}
+
+// Meta strip atop the sessions panel. Normal: SSH route + env badge (skipped
+// when there's nothing to show). On a node connect error it turns red and shows
+// the message + retry hint, replacing the old floating Flash.
+function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppError | null }) {
+  if (error) {
+    return (
+      <box flexDirection="column" marginBottom={1}>
+        <text fg={theme.err}>{`✖ ${error.message}`}</text>
+        <text fg={theme.dim}>{"c retry"}</text>
+      </box>
+    )
+  }
+  const ssh = node.ssh_host
+    ? `ssh ${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}` +
+      (node.container ? ` · ${node.container}` : "")
+    : null
+  const parts = [ssh, node.source === "env" ? "env" : null].filter(Boolean)
+  if (parts.length === 0) return null
+  return (
+    <box flexDirection="row" marginBottom={1}>
+      <text fg={theme.dim}>{parts.join("  ·  ")}</text>
     </box>
   )
 }
@@ -517,7 +560,7 @@ function SessionRow({ session, active }: { session: Session; active: boolean }) 
   const fg = active ? theme.selFg : theme.fg
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.dim}>{"• "}</text>
+      <text bg={bg} fg={active ? theme.accent : theme.dim}>{active ? "► " : "  "}</text>
       <text bg={bg} fg={fg}>{session.name}</text>
       <text bg={bg} fg={theme.dim}>{`  [${session.status}]`}</text>
     </box>

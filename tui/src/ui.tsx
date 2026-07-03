@@ -1,10 +1,33 @@
 /** @jsxImportSource @opentui/react */
-import { createContext, useContext, useState } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
 
-import { theme, type Theme } from "./theme"
+import { theme, type Theme, PANEL_BORDER } from "./theme"
 import { colorizeTerm, type TermRole } from "./term"
+
+// ora spinner frames. `dots` (simpleDotsScrolling) is a 3-wide text spinner for
+// inline "connecting…" labels; `circle` (circleHalves) is a 1-wide glyph that
+// slots into a status-dot column without shifting alignment. Swap SPINNER to
+// change the inline-label spinner project-wide.
+export const SPINNERS = {
+  dots: { frames: [".  ", ".. ", "...", " ..", "  .", "   "], interval: 200 },
+  circle: { frames: ["◐", "◓", "◑", "◒"], interval: 120 }
+} as const
+
+export const SPINNER = SPINNERS.dots
+
+// Advance a spinner while `active`; returns the current frame ("" when idle).
+export function useSpinner(active: boolean, which: keyof typeof SPINNERS = "dots"): string {
+  const spin = SPINNERS[which]
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => setI((n) => n + 1), spin.interval)
+    return () => clearInterval(id)
+  }, [active, spin.interval])
+  return active ? spin.frames[i % spin.frames.length] : ""
+}
 
 // Semantic hue per term role, drawn from the active theme so it re-tints with
 // the palette. Detail/console payloads are data-viz, so a full-palette read is
@@ -56,6 +79,9 @@ export function StatusBar({
   const left = statusText ?? ""
   const budget = Math.max(0, width - left.length - 4)
   const hintText = showHints && hints ? truncate(hints, budget) : ""
+  // arcade HUD: each hint reads as a button prompt — the leading key token pops
+  // in the title hue, the rest stays dim. Segments split on " · ".
+  const segs = hintText === "" ? [] : hintText.split(" · ")
   return (
     <box backgroundColor={theme.overlay} paddingLeft={1} paddingRight={1} flexDirection="row">
       {left !== "" && (
@@ -63,11 +89,18 @@ export function StatusBar({
           {left}
         </text>
       )}
-      {hintText !== "" && (
-        <text bg={theme.overlay} fg={theme.dim}>
-          {(left !== "" ? "   " : "") + hintText}
-        </text>
-      )}
+      {segs.length > 0 && <text bg={theme.overlay} fg={theme.dim}>{left !== "" ? "   " : ""}</text>}
+      {segs.map((seg, i) => {
+        const sp = seg.indexOf(" ")
+        const key = sp < 0 ? seg : seg.slice(0, sp)
+        const label = sp < 0 ? "" : seg.slice(sp)
+        return (
+          <box key={i} flexDirection="row" backgroundColor={theme.overlay}>
+            <text bg={theme.overlay} fg={theme.title}>{key}</text>
+            <text bg={theme.overlay} fg={theme.dim}>{label}{i < segs.length - 1 ? " · " : ""}</text>
+          </box>
+        )
+      })}
     </box>
   )
 }
@@ -118,6 +151,7 @@ export function Overlay({
     >
       <box
         border
+        borderStyle={PANEL_BORDER}
         borderColor={theme.title}
         backgroundColor={theme.overlay}
         flexDirection="column"
@@ -169,8 +203,9 @@ export function PickRow({ label, active }: { label: string; active: boolean }) {
   const bg = active ? theme.selBg : theme.overlay
   const fg = active ? theme.selFg : theme.fg
   return (
-    <box backgroundColor={bg}>
-      <text bg={bg} fg={fg}>{`${active ? "›" : " "} ${label}`}</text>
+    <box backgroundColor={bg} flexDirection="row">
+      <text bg={bg} fg={active ? theme.accent : bg}>{active ? "► " : "  "}</text>
+      <text bg={bg} fg={fg}>{label}</text>
     </box>
   )
 }

@@ -1,13 +1,22 @@
 # Nodes page redesign — spec
 
-Status: **spec locked, not started**. Awaiting go + ordering decision.
+Status: **All three tracks implemented & screenshot-verified. Optional 8-bit polish (block-glyph/hint styling) remains.**
+
+Implementation notes:
+- Retry runs inline in the Config GenServer (do_connect in handle_info), same as
+  the old synchronous connect_node — so a slow/unreachable dial blocks Config for
+  the dial timeout. Pre-existing behavior, not a regression. If it bites, move
+  do_connect into a Task. `ponytail:` left inline.
+- SessionRoot reads node status into **assigns** (put_node_conn) rather than
+  live in render, because musubi only re-renders when assigns change; a
+  status-only config_updated would otherwise be skipped and leave a stale glyph.
 
 Scope: nodes page status/spinner/error rework + whole-TUI 8-bit restyle. Two
 tracks below; can ship independently.
 
 ---
 
-## Track 1 — Node status: spinner + status enum + error
+## Track 1 — Node status: spinner + status enum + error  ✅ DONE (verified)
 
 ### Backend (`server/`)
 
@@ -47,7 +56,11 @@ tracks below; can ship independently.
 
 ---
 
-## Track 2 — Whole-TUI 8-bit game restyle
+## Track 2 — Whole-TUI 8-bit game restyle  ✅ DONE (core, verified)
+
+Decided: full restyle + dark arcade base. Done so far: PICO-8 dark theme added +
+set as default (theme.ts + server default). In progress: heavy panel borders
+(PANEL_BORDER), menu-pointer selection, HUD statusbar, block glyphs, RPG modals.
 
 Register: product. No PRODUCT.md yet (optional: `/impeccable teach`).
 
@@ -83,6 +96,18 @@ call #29adff  retn #00e436  send #ffec27  recv #83769c
 - **Glyphs**: node status `●` → `█`; session `•` → `▸`. Retro copy, light touch,
   don't hurt readability.
 
+### Font (8-bit pixel look)
+
+TUI runs in a terminal; the app cannot set the font (the terminal owns it). Two
+levers:
+- ttyd screenshot host: pass `-t fontFamily=...` to render with a pixel font.
+- End users: document a recommended terminal font; can't enforce.
+
+Pitfall: most 8-bit pixel fonts (e.g. Press Start 2P) LACK box-drawing glyphs
+(`╔═╗ ▛▀`) and will break the cartridge borders. Use a pixel/bitmap monospace
+that ships box-drawing: **Terminus** or **Cozette**. Verify borders render
+before committing to a font.
+
 ### Effort
 
 Core in `theme.ts` (add theme) + `App.tsx` render sites (border/HUD/pointer).
@@ -92,7 +117,7 @@ Not a rewrite.
 
 ---
 
-## Track 3 — Session page: auto-connect + retry + banner redesign
+## Track 3 — Session page: auto-connect + retry + banner redesign  ✅ DONE (verified)
 
 ### Auto-connect + retry
 
@@ -171,12 +196,24 @@ Note: lowercase `h`/`l` collide (`l` = limits), so vim binding uses Shift `H`/`L
 
 ---
 
-## Open decisions before build
+## Decisions (resolved)
 
-1. Spinner choice: `simpleDotsScrolling` vs `circleHalves` vs 8-bit block spin.
-2. Backend status field shape confirmed: single `status` enum (locked).
-3. Track ordering: status/error first, 8-bit restyle, or session track first?
-4. 8-bit depth: full restyle (borders/HUD/modals) or just add PICO-8 theme first
-   to preview color?
-5. Track 3 retry: interval (fixed 2s?), logic layer (A backend recommended),
-   manual retry key.
+1. ✅ Spinner: `circleHalves` for the 1-wide status glyph (row/breadcrumb);
+   `simpleDotsScrolling` available for inline labels. (`useSpinner` in ui.tsx)
+2. ✅ Backend status field: single `status` enum.
+3. ✅ Track order: 1 → 3 → 2.
+4. ✅ 8-bit depth: full restyle + dark arcade base.
+5. ✅ Track 3 retry: fixed 2s, backend (A), manual retry key `c`.
+
+## Track 2 progress
+
+- ✅ PICO-8 dark theme added + set default (theme.ts + server default + user config).
+- ✅ Heavy borders (`PANEL_BORDER`) on all framed panels: Nodes, sessions,
+  Events, Detail, zoom, Console History/detail, Overlay (→ RPG modals).
+- ✅ Menu-pointer (►) selection on SessionRow, ConsoleTab HistoryRow, PickRow.
+- ✅ HUD statusbar gauge on nodes page (`▮▮▯ 0/3 up` block gauge).
+- ✅ Border style set to `double` (clear cartridge frame; `heavy` too subtle in font).
+- ✅ Button-prompt hint styling: StatusBar keys pop in title hue, labels dim.
+- ✅ Font: Terminus/Cozette recommendation added to docs/testing.md ttyd cmd.
+- (Kept event/kind arrow glyphs as-is — clear + column-stable.)
+- ⬜ Font: recommend Terminus/Cozette in the ttyd host + docs (box-drawing safe).

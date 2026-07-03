@@ -25,6 +25,8 @@ defmodule Server.Stores.SessionRoot do
     field(:session_id, String.t())
     field(:name, String.t())
     field(:status, String.t())
+    field(:node_status, String.t())
+    field(:node_error, Server.Schema.AppError.t() | nil)
     field(:dirty, boolean())
     field(:error, Server.Schema.AppError.t() | nil)
     field(:traces, list(Server.Schema.Rtp.t()))
@@ -90,6 +92,11 @@ defmodule Server.Stores.SessionRoot do
     end
   end
 
+  command :reconnect do
+    payload do
+    end
+  end
+
   command :saveAsPreset do
     payload do
       field(:name, String.t())
@@ -104,6 +111,12 @@ defmodule Server.Stores.SessionRoot do
     Config.subscribe()
     Trace.subscribe(session_id)
 
+    # Entering a session auto-connects its node (unless already connected). The
+    # async request drives status + retry in Config and broadcasts each step,
+    # which reflows through {:config_updated} into node_status/node_error below.
+    if Config.node_connection(node_id).status != "connected",
+      do: Config.request_connect(node_id)
+
     snap = Trace.snapshot(session_id)
 
     socket =
@@ -112,6 +125,7 @@ defmodule Server.Stores.SessionRoot do
       |> assign(:session_id, session_id)
       |> assign(:applied_sig, snap.applied_sig)
       |> load_session()
+      |> put_node_conn()
       |> put_status(snap.status)
       |> stream(:events, snap.events, reset: true)
 
@@ -127,6 +141,8 @@ defmodule Server.Stores.SessionRoot do
       session_id: a.session_id,
       name: a.name,
       status: a.status,
+      node_status: a.node_status,
+      node_error: Map.get(a, :node_error),
       dirty: a.dirty,
       error: Map.get(a, :error),
       traces: a.traces,
@@ -137,7 +153,10 @@ defmodule Server.Stores.SessionRoot do
 
   @impl true
   def handle_info({:config_updated}, socket) do
-    {:noreply, socket |> load_session() |> recompute_dirty()}
+    # config_updated also fires on node connection status changes; refresh the
+    # node conn assigns so the banner/glyph re-render (render reads assigns, so
+    # storing it here is what makes musubi re-render on a status-only change).
+    {:noreply, socket |> load_session() |> put_node_conn() |> recompute_dirty()}
   end
 
   def handle_info({:trace_event, event}, socket) do
@@ -230,6 +249,13 @@ defmodule Server.Stores.SessionRoot do
     {:noreply, assign(socket, :error, nil)}
   end
 
+  # Manual retry after the node connect gave up (:error). request_connect resets
+  # the retry counter and re-drives the status machine.
+  def handle_command(:reconnect, _payload, socket) do
+    Config.request_connect(socket.assigns.node_id)
+    {:noreply, socket}
+  end
+
   def handle_command(:saveAsPreset, payload, socket) do
     name = get(payload, "name", "")
 
@@ -244,6 +270,14 @@ defmodule Server.Stores.SessionRoot do
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
 
   # --- helpers ---
+
+  defp put_node_conn(socket) do
+    conn = Config.node_connection(socket.assigns.node_id)
+
+    socket
+    |> assign(:node_status, conn.status)
+    |> assign(:node_error, conn.error)
+  end
 
   defp put_error(socket, :ok), do: assign(socket, :error, nil)
   defp put_error(socket, {:error, reason}), do: assign(socket, :error, Server.Errors.humanize(reason))

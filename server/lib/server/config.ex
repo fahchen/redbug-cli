@@ -3,7 +3,7 @@ defmodule Server.Config do
   Single source of truth for redbug-cli state.
 
   Persisted config (`:nodes`, `:presets`, `:settings`) plus runtime state
-  (`:connected`, `:session_status`) live in a named ETS table owned by this
+  (`:node_status`, `:session_status`) live in a named ETS table owned by this
   GenServer. Stores read the table directly via the `nodes/0`, `presets/0`,
   `settings/0`, … helpers (no GenServer round-trip) and subscribe to the
   `"config"` PubSub topic; every mutation here writes ETS, persists the config
@@ -24,11 +24,20 @@ defmodule Server.Config do
   @topic "config"
   @pubsub Server.PubSub
 
+  # Connection state machine (per node, in the `:node_status` ETS map). A node is
+  # `:idle` until asked to connect; `request_connect/1` drives it :connecting →
+  # :connected, or retries on failure and lands on :error after @max_attempts
+  # consecutive fails (manual retry resets). The low-level sync `connect_node/1`
+  # (console/runner) also lands a node on :connected on success.
+  @idle_status %{state: :idle, error: nil, attempts: 0}
+  @max_attempts 3
+  @retry_ms 2000
+
   @default_settings %{
     columns: %{name: true, pid: true, mfa: true, info: true},
     default_sort: "ts_desc",
     default_limits: %{keep: 500, time: 900, msgs: 10_000},
-    theme: "dark",
+    theme: "pico-8",
     show_hints: true
   }
 
@@ -40,21 +49,30 @@ defmodule Server.Config do
 
   # --- reads (hit ETS directly) ---
 
-  @doc "All target nodes (config or env), each merged with runtime `connected`/session `status`."
+  @doc "All target nodes (config or env), each merged with connection `status`/`error` + session `status`."
   def nodes do
-    connected = lookup(:connected, MapSet.new())
-    statuses = lookup(:session_status, %{})
+    node_st = lookup(:node_status, %{})
+    session_st = lookup(:session_status, %{})
 
     for node <- nodes_raw() do
+      st = Map.get(node_st, node.id, @idle_status)
+
       sessions =
         for s <- node.sessions do
-          Map.put(s, :status, Map.get(statuses, s.id, "stopped"))
+          Map.put(s, :status, Map.get(session_st, s.id, "stopped"))
         end
 
       node
-      |> Map.put(:connected, MapSet.member?(connected, node.id))
+      |> Map.put(:status, Atom.to_string(st.state))
+      |> Map.put(:error, st.error)
       |> Map.put(:sessions, sessions)
     end
+  end
+
+  @doc "Connection `status`/`error` for one node id (for stores that surface it, e.g. the session screen)."
+  def node_connection(id) do
+    st = Map.get(lookup(:node_status, %{}), id, @idle_status)
+    %{status: Atom.to_string(st.state), error: st.error}
   end
 
   @doc "True when nodes come from `REDBUG_NODES` (read-only env mode, the whole list)."
@@ -127,8 +145,19 @@ defmodule Server.Config do
 
   # --- remote-node side-effects (run inside the GenServer) ---
 
+  @doc "Synchronous single-shot connect (console/runner). Returns `:ok` or `{:error, reason}`."
   def connect_node(id), do: GenServer.call(__MODULE__, {:connect_node, id})
   def disconnect_node(id), do: GenServer.call(__MODULE__, {:disconnect_node, id})
+
+  @doc """
+  Async, self-driving connect for the interactive/auto path: broadcasts
+  `:connecting`, retries every #{@retry_ms}ms, and stops on `:error` after
+  #{@max_attempts} consecutive failures. Call again to retry (resets attempts).
+  """
+  def request_connect(id), do: GenServer.cast(__MODULE__, {:request_connect, id})
+
+  @doc "Clear a node's `:error` status back to `:idle`."
+  def dismiss_node_error(id), do: GenServer.call(__MODULE__, {:dismiss_node_error, id})
 
   @doc "Set a session's runtime status (\"running\"/\"stopped\"); not persisted."
   def set_session_status(session_id, status),
@@ -161,7 +190,7 @@ defmodule Server.Config do
     :ets.insert(@table, {:settings, config.settings})
     :ets.insert(@table, {:env_sessions, config.env_sessions})
     :ets.insert(@table, {:env_nodes, env_nodes})
-    :ets.insert(@table, {:connected, MapSet.new()})
+    :ets.insert(@table, {:node_status, %{}})
     :ets.insert(@table, {:session_status, %{}})
 
     # Watch the dist links we open: when a connected target drops (node restart,
@@ -180,9 +209,8 @@ defmodule Server.Config do
   @impl true
   def handle_info({:nodedown, node, _info}, state) do
     name = Atom.to_string(node)
-    connected = lookup(:connected, MapSet.new())
 
-    case Enum.find(nodes_raw(), &(&1.name == name and MapSet.member?(connected, &1.id))) do
+    case Enum.find(nodes_raw(), &(&1.name == name and connected?(&1.id))) do
       nil ->
         :ok
 
@@ -195,7 +223,41 @@ defmodule Server.Config do
     {:noreply, state}
   end
 
+  # One connect attempt in the retry chain kicked off by `request_connect/1`. The
+  # guard aborts a stale chain (node was disconnected, or already connected, since
+  # this message was scheduled). On failure it either reschedules (staying
+  # :connecting so the UI keeps spinning) or lands on :error after @max_attempts.
+  def handle_info({:attempt_connect, id}, state) do
+    if status_of(id).state == :connecting do
+      case do_connect(id) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          attempts = status_of(id).attempts + 1
+
+          if attempts >= @max_attempts do
+            set_status(id, %{state: :error, error: Server.Errors.humanize(reason), attempts: attempts})
+          else
+            set_status(id, %{state: :connecting, attempts: attempts})
+            Process.send_after(self(), {:attempt_connect, id}, @retry_ms)
+          end
+      end
+    end
+
+    {:noreply, state}
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def handle_cast({:request_connect, id}, state) do
+    set_status(id, %{state: :connecting, error: nil, attempts: 0})
+    send(self(), {:attempt_connect, id})
+    {:noreply, state}
+  end
+
+  def handle_cast(_msg, state), do: {:noreply, state}
 
   @impl true
   def handle_call({:add_node, attrs}, _from, state) do
@@ -340,32 +402,12 @@ defmodule Server.Config do
   end
 
   def handle_call({:connect_node, id}, _from, state) do
-    result =
-      case fetch_node(id) do
-        nil ->
-          {:error, :not_found}
+    {:reply, do_connect(id), state}
+  end
 
-        node ->
-          # ssh-backed nodes resolve their real name + cookie by opening the tunnel
-          # first (which also pins the dial endpoint); direct nodes use as-entered.
-          with {:ok, name, cookie} <- resolve_target(node) do
-            persist_discovered(id, node, name, cookie)
-            target = String.to_atom(name)
-            if cookie && cookie != "", do: Node.set_cookie(target, String.to_atom(cookie))
-
-            case Node.connect(target) do
-              true ->
-                add_connected(id)
-                :ok
-
-              other ->
-                Logger.warning("connect #{name} failed: #{inspect(other)}")
-                {:error, :unreachable}
-            end
-          end
-      end
-
-    {:reply, result, state}
+  def handle_call({:dismiss_node_error, id}, _from, state) do
+    set_status(id, %{state: :idle, error: nil, attempts: 0})
+    {:reply, :ok, state}
   end
 
   def handle_call({:disconnect_node, id}, _from, state) do
@@ -422,21 +464,54 @@ defmodule Server.Config do
   defp env_id?(id), do: is_binary(id) and String.starts_with?(id, "env:")
   defp env_name("env:" <> name), do: name
 
-  defp add_connected(id) do
-    connected = lookup(:connected, MapSet.new())
+  # connect_node/1 runs on every console execution, so set_status only writes +
+  # broadcasts when the status actually changes, else each run triggers a global
+  # re-render of every subscribed store.
+  defp add_connected(id), do: set_status(id, %{state: :connected, error: nil, attempts: 0})
+  defp drop_connected(id), do: set_status(id, @idle_status)
 
-    # connect_node/1 runs on every console execution; only write + fan out a
-    # {:config_updated} when membership actually changes, else each run triggers
-    # a global re-render of every subscribed store.
-    unless MapSet.member?(connected, id) do
-      :ets.insert(@table, {:connected, MapSet.put(connected, id)})
+  defp connected?(id), do: status_of(id).state == :connected
+
+  defp status_of(id), do: Map.get(lookup(:node_status, %{}), id, @idle_status)
+
+  defp set_status(id, fields) do
+    statuses = lookup(:node_status, %{})
+    cur = Map.get(statuses, id, @idle_status)
+    next = Map.merge(cur, fields)
+
+    if next != cur do
+      :ets.insert(@table, {:node_status, Map.put(statuses, id, next)})
       broadcast()
     end
   end
 
-  defp drop_connected(id) do
-    :ets.insert(@table, {:connected, MapSet.delete(lookup(:connected, MapSet.new()), id)})
-    broadcast()
+  # One connect attempt. Extracted from the sync connect_node/1 path so the async
+  # retry chain (request_connect/1) reuses it. On success it lands the node on
+  # :connected via add_connected/1.
+  defp do_connect(id) do
+    case fetch_node(id) do
+      nil ->
+        {:error, :not_found}
+
+      node ->
+        # ssh-backed nodes resolve their real name + cookie by opening the tunnel
+        # first (which also pins the dial endpoint); direct nodes use as-entered.
+        with {:ok, name, cookie} <- resolve_target(node) do
+          persist_discovered(id, node, name, cookie)
+          target = String.to_atom(name)
+          if cookie && cookie != "", do: Node.set_cookie(target, String.to_atom(cookie))
+
+          case Node.connect(target) do
+            true ->
+              add_connected(id)
+              :ok
+
+            other ->
+              Logger.warning("connect #{name} failed: #{inspect(other)}")
+              {:error, :unreachable}
+          end
+        end
+    end
   end
 
   # Resolve the node to actually dial: an ssh-backed node opens its tunnel (which

@@ -21,7 +21,7 @@ defmodule Server.Stores.NodeStore do
     field(:id, String.t())
     field(:name, String.t())
     field(:cookie, String.t())
-    field(:connected, boolean())
+    field(:status, String.t())
     field(:source, :config | :env)
     field(:ssh_host, String.t() | nil)
     field(:ssh_user, String.t() | nil)
@@ -81,12 +81,12 @@ defmodule Server.Stores.NodeStore do
       id: n.id,
       name: n.name,
       cookie: n.cookie,
-      connected: n.connected,
+      status: Map.get(n, :status, "idle"),
       source: Map.get(n, :source, "config"),
       ssh_host: Map.get(n, :ssh_host),
       ssh_user: Map.get(n, :ssh_user),
       container: Map.get(n, :container),
-      error: Map.get(socket.assigns, :error),
+      error: Map.get(n, :error),
       sessions:
         for s <- n.sessions do
           child(SessionItemStore, id: s.id, session: s, node_id: n.id)
@@ -122,22 +122,20 @@ defmodule Server.Stores.NodeStore do
   end
 
   def handle_command(:connect, _payload, socket) do
-    error =
-      case Config.connect_node(socket.assigns.node.id) do
-        :ok -> nil
-        {:error, reason} -> Server.Errors.humanize(reason)
-      end
-
-    {:noreply, assign(socket, :error, error)}
+    # async: Config drives :connecting → :connected/:error (with retry) and
+    # broadcasts each step, which reflows the fresh status down through update/2.
+    Config.request_connect(socket.assigns.node.id)
+    {:noreply, socket}
   end
 
   def handle_command(:disconnect, _payload, socket) do
     Config.disconnect_node(socket.assigns.node.id)
-    {:noreply, assign(socket, :error, nil)}
+    {:noreply, socket}
   end
 
   def handle_command(:dismissError, _payload, socket) do
-    {:noreply, assign(socket, :error, nil)}
+    Config.dismiss_node_error(socket.assigns.node.id)
+    {:noreply, socket}
   end
 
   def handle_command(:createSession, payload, socket) do

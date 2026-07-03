@@ -31,6 +31,15 @@ brew install ttyd   # once
 ttyd --writable -p 7681 -t fontSize=15 bash -lc 'exec mise run dev'
 ```
 
+For the 8-bit look, render with a pixel/bitmap monospace that ships box-drawing
+glyphs (so the `double` cartridge borders stay intact) — Terminus or Cozette
+work; avoid Press Start 2P (no box-drawing):
+
+```sh
+ttyd --writable -p 7681 -t fontSize=15 -t 'fontFamily=Terminus (TTF)' \
+  bash -lc 'exec mise run dev'
+```
+
 ttyd spawns the child **only when a browser connects**, so nothing boots until step 2. `mise run
 dev` starts the controller on a random port, then the TUI; the server log goes to
 `/tmp/redbug-server.log`.

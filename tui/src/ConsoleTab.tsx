@@ -5,7 +5,7 @@ import type { StoreProxy } from "@musubi/react"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
-import { theme } from "./theme"
+import { theme, PANEL_BORDER } from "./theme"
 import { HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TermLine } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
@@ -136,10 +136,13 @@ function ConsoleView({
       return
     }
 
+    // tab switch back to Events: vim-directional (Shift+H/L) or Ctrl+←/→
+    if (n === "L" || n === "H" || (key.shift && (n === "l" || n === "h")) || (key.ctrl && (n === "left" || n === "right"))) {
+      onSwitchToEvents()
+      return
+    }
+
     switch (n) {
-      case "[":
-        onSwitchToEvents()
-        break
       case "escape":
         onBack()
         break
@@ -181,6 +184,7 @@ function ConsoleView({
       <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
+          borderStyle={PANEL_BORDER}
           borderColor={theme.title}
           backgroundColor={theme.bg}
           title={`History (${history.length})`}
@@ -198,6 +202,7 @@ function ConsoleView({
 
         <box
           border
+          borderStyle={PANEL_BORDER}
           borderColor={theme.border}
           backgroundColor={theme.bg}
           title={cur ? `${cur.name || "execution"} — ${cur.status}` : "—"}
@@ -238,7 +243,7 @@ function ConsoleView({
             {
               title: "tabs",
               lines: [
-                ["[", "switch to Events"],
+                ["H / ⌃←", "switch to Events"],
                 ["esc", "back"]
               ]
             }
@@ -280,6 +285,7 @@ function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
   const label = exec.name?.trim() ? exec.name : firstLine(exec.code)
   return (
     <box backgroundColor={bg} flexDirection="row">
+      <text bg={bg} fg={active ? theme.accent : theme.bg}>{active ? "►" : " "}</text>
       <text bg={bg} fg={statusColor(exec.status)}>{`${glyph} `}</text>
       <text bg={bg} fg={theme.dim}>{`${exec.ts} `}</text>
       <text bg={bg} fg={fg}>{label}</text>

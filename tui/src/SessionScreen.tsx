@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/react */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useKeyboard, useRenderer } from "@opentui/react"
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
-import { theme, kindColor } from "./theme"
-import { ErrorDetailOverlay, Flash, Header, HelpOverlay, InfoPeek, Overlay, PickRow, RootGate, StatusBar, TermLine, TextField, fit } from "./ui"
+import { theme, kindColor, PANEL_BORDER } from "./theme"
+import { ErrorDetailOverlay, Flash, Header, HelpOverlay, InfoPeek, Overlay, PickRow, RootGate, StatusBar, TermLine, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 
@@ -100,12 +100,29 @@ function SessionView({
   const snap = useMusubiSnapshot(store)
   const cols = settings?.columns ?? ALL_COLS
   const renderer = useRenderer()
+  const { width } = useTerminalDimensions()
   const traces = (snap?.traces ?? []) as Rtp[]
   const events = (snap?.events ?? []) as TraceEvent[]
   const limits = snap?.limits ?? DEFAULT_LIMITS
   const running = snap?.status === "running"
   const dirty = snap?.dirty === true
   const error = snap?.error ?? null
+
+  // Node connection status (auto-connected on entry by SessionRoot). Drives the
+  // breadcrumb glyph and the connect-error banner in the events pane.
+  const nodeStatus = snap?.node_status ?? "idle"
+  const nodeError = snap?.node_error ?? null
+  const nodeSpin = useSpinner(nodeStatus === "connecting", "circle")
+  const nodeGlyph =
+    nodeStatus === "connected" ? "●"
+    : nodeStatus === "connecting" ? nodeSpin
+    : nodeStatus === "error" ? "✖"
+    : "○"
+  const nodeGlyphColor =
+    nodeStatus === "connected" ? theme.on
+    : nodeStatus === "connecting" ? theme.warn
+    : nodeStatus === "error" ? theme.err
+    : theme.off
 
   // Liveness: a running session that traces nothing looks identical to a healthy
   // one. Track wall-clock age since the event buffer last grew and tick a clock
@@ -114,7 +131,9 @@ function SessionView({
   // independent of the id/ts encoding.
   const lastEventAt = useRef(Date.now())
   const seenMaxId = useRef(0)
-  const [nowTick, setNowTick] = useState(() => Date.now())
+  // ticks a rerender each second while running so the sparkline advances (the
+  // value itself is unused; only the state update matters).
+  const [, setNowTick] = useState(() => Date.now())
   // Detect new events by max id, NOT array length: the buffer is capped (keep),
   // so once it fills, length stops growing while events still stream in. Length
   // would then falsely read as "idle".
@@ -150,9 +169,6 @@ function SessionView({
     }, 1000)
     return () => clearInterval(id)
   }, [running])
-  const idleSec = Math.max(0, Math.round((nowTick - lastEventAt.current) / 1000))
-  const live = running && idleSec <= 2
-
   const [sort, setSort] = useState<Sort>(() => parseSort(settings?.default_sort))
   const [filter, setFilter] = useState<Filter | null>(null)
   const [filterScope, setFilterScope] = useState<FilterScope>("all")
@@ -295,12 +311,17 @@ function SessionView({
 
     // list focus
     if (key.ctrl) {
+      if (n === "left" || n === "right") return setTab("console")
       if (n === "l") return dispatch("clearEvents")
       if (n === "s") return dispatch("applyRestart")
       if (detailOpen && (n === "j" || n === "down")) return moveSel(1)
       if (detailOpen && (n === "k" || n === "up")) return moveSel(-1)
       return
     }
+
+    // vim-directional tab switch (Shift+L/H); lowercase l/h collide (l = limits).
+    if (n === "L" || n === "H" || (key.shift && (n === "l" || n === "h")))
+      return setTab("console")
 
     switch (n) {
       case "escape":
@@ -360,8 +381,9 @@ function SessionView({
       case "x":
         if (key.shift) dispatch("stopTrace")
         break
-      case "]":
-        setTab("console")
+      case "c":
+        // manual retry after the node connect gave up (:error)
+        if (nodeStatus === "error") dispatch("reconnect")
         break
       case "e":
         if (error?.detail) setOverlay("errorDetail")
@@ -412,27 +434,34 @@ function SessionView({
     }
   }
 
-  const headerInfo =
-    `sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"}` +
-    `    filter:${filter ? `${filter.scope}/${filter.query}` : "-"}` +
-    `    group:${group}`
+  // sort/filter/group moved off the header onto the Events panel's top border
+  // (right-aligned via a padded composite title, since a box has one title/edge).
+  const metaText =
+    `sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"} · ` +
+    `filter:${filter ? `${filter.scope}/${filter.query}` : "-"} · ` +
+    `group:${group}`
+  const detailW = detailOpen && !zoom && selectedEvent ? 47 : 0
+  const eventsInner = Math.max(12, width - detailW - 4)
+  const leftTitle = `Events (${count})`
+  const pad = Math.max(2, eventsInner - leftTitle.length - metaText.length)
+  const eventsTitle = leftTitle + " ".repeat(pad) + metaText
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title={snap?.name ?? "session"}>
-        <text fg={theme.dim}>{`  ${headerInfo}`}</text>
+      <Header title="redbug · nodes ▸">
+        <text fg={nodeGlyphColor}>{` ${nodeGlyph} `}</text>
+        <text fg={theme.fg}>{snap?.name ?? "session"}</text>
         {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (⌃S)"}</text>}
       </Header>
 
       <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
         <text fg={tab === "events" ? theme.title : theme.dim}>
-          {tab === "events" ? "● Events" : "○ Events"}
+          {tab === "events" ? "▸ Events" : "  Events"}
         </text>
         <text fg={theme.dim}>{"   "}</text>
         <text fg={tab === "console" ? theme.title : theme.dim}>
-          {tab === "console" ? "● Console" : "○ Console"}
+          {tab === "console" ? "▸ Console" : "  Console"}
         </text>
-        <text fg={theme.dim}>{"   [/] switch"}</text>
       </box>
 
       {tab === "console" ? (
@@ -448,15 +477,24 @@ function SessionView({
       <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
+          borderStyle={PANEL_BORDER}
           borderColor={focus === "list" ? theme.title : theme.border}
           backgroundColor={theme.bg}
-          title={`Events (${count})`}
-          titleColor={theme.title}
+          title={eventsTitle}
+          titleColor={theme.dim}
           flexGrow={1}
           flexBasis={0}
           flexDirection="column"
           padding={1}
         >
+          {nodeStatus === "error" && nodeError ? (
+            <box flexDirection="column" marginBottom={1}>
+              <text fg={theme.err}>{`✖ ${nodeError.message}`}</text>
+              <text fg={theme.dim}>{"c retry"}</text>
+            </box>
+          ) : nodeStatus === "connecting" ? (
+            <text fg={theme.warn} marginBottom={1}>{`${nodeSpin} connecting…`}</text>
+          ) : null}
           <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
             <text fg={theme.dim}>No events yet · ⇧S to start</text>
@@ -503,10 +541,10 @@ function SessionView({
 
       <StatusBar
         statusText={
-          `${liveness(running, live, idleSec, snap?.status)} · ${count} evt · buf ${events.length}/${limits.keep}` +
-          (running ? ` · ${sparkline(buckets.current)}` : "")
+          `${count} · ${events.length}/${limits.keep}` +
+          (running && buckets.current.some((v) => v > 0) ? ` ${sparkline(buckets.current)}` : "")
         }
-        tone={!running ? "dim" : live ? "on" : "warn"}
+        tone={running ? "on" : "dim"}
         hints="j/k move · enter detail · t traces · ⇧S/X run/stop · ? help · esc back"
       />
 
@@ -528,6 +566,7 @@ function SessionView({
                 ["/", "filter"],
                 ["g", "cycle grouping"],
                 ["l", "limits"],
+                ["c", "retry node connect"],
                 ["e / d", "error detail / dismiss"]
               ]
             },
@@ -543,7 +582,7 @@ function SessionView({
             {
               title: "tabs",
               lines: [
-                ["]", "switch to Console"],
+                ["L / ⌃→", "switch to Console"],
                 ["esc", "back"]
               ]
             }
@@ -678,6 +717,7 @@ function SessionView({
         >
           <box
             border
+            borderStyle={PANEL_BORDER}
             borderColor={theme.title}
             backgroundColor={theme.overlay}
             title="Detail (zoom · esc close · v view)"
@@ -798,6 +838,7 @@ function DetailPane({
   return (
     <box
       border
+      borderStyle={PANEL_BORDER}
       borderColor={focused ? theme.title : theme.border}
       backgroundColor={theme.bg}
       title="Detail (z zoom · v view)"
@@ -985,11 +1026,6 @@ function wrap(s: string, width: number): string[] {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(n, hi))
-}
-
-function liveness(running: boolean, live: boolean, idleSec: number, status?: string): string {
-  if (!running) return status ?? "stopped"
-  return live ? "● live" : `◇ idle ${idleSec}s`
 }
 
 // Rolling per-second arrival counts → a block sparkline, scaled to its own peak

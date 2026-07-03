@@ -40,7 +40,33 @@ const base: Theme = {
 
 const def = (over: Partial<Theme>): Theme => ({ ...base, ...over })
 
+// Border style for framed panels/overlays. "heavy" reads as a chunky 8-bit
+// cartridge frame; opentui also offers "single" | "double" | "rounded".
+export type PanelBorder = "single" | "double" | "rounded" | "heavy"
+export const PANEL_BORDER: PanelBorder = "double"
+
 export const themes: Record<string, Theme> = {
+  // 8-bit / PICO-8 arcade palette: dark blue-black base, saturated status hues.
+  // Kept first + used as the default so the whole TUI reads retro out of the box.
+  "pico-8": def({
+    bg: "#100f1c",
+    fg: "#fff1e8",
+    dim: "#5f574f",
+    border: "#29adff",
+    title: "#ffec27",
+    accent: "#ff77a8",
+    selBg: "#7e2553",
+    selFg: "#fff1e8",
+    overlay: "#1d2b53",
+    on: "#00e436",
+    off: "#5f574f",
+    warn: "#ffa300",
+    err: "#ff004d",
+    call: "#29adff",
+    retn: "#00e436",
+    send: "#ffec27",
+    recv: "#83769c"
+  }),
   dark: def({}),
   light: def({
     bg: "#fafafa",
@@ -225,11 +251,11 @@ const buildKind = (t: Theme): Record<string, string> => ({
   restart: t.dim
 })
 
-export let theme: Theme = themes.dark
+export let theme: Theme = themes["pico-8"]
 export let kindColor: Record<string, string> = buildKind(theme)
 
 export function setTheme(name: string) {
-  const next = themes[name] ?? themes.dark
+  const next = themes[name] ?? themes["pico-8"]
   theme = next
   kindColor = buildKind(next)
 }
