@@ -135,6 +135,7 @@ stored in plaintext, so keep the file local and the WebSocket channel trusted.
 | `REDBUG_PORT_FILE` | server | — | If set, the chosen port is written here (used by the launcher) |
 | `RB_COOKIE` | dev | `rbtest` | Distribution cookie for the controller (`mise run dev`) |
 | `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
+| `CONTROLLER_DISTRIBUTION` | server | `name` | `sname` to trace shortname targets (default Elixir releases); see [Remote nodes](docs/remote-nodes.md) |
 | `RELEASE_NODE` / `RELEASE_COOKIE` / `RELEASE_DISTRIBUTION` | release | — | Standard Elixir release distribution settings |
 | `XDG_CONFIG_HOME` | server | `~/.config` | Base dir for `redbug/config.json` |
 

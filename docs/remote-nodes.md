@@ -119,38 +119,41 @@ The target is a [Kamal](https://kamal-deploy.org)-deployed container on a Linux 
 only via SSH; the container publishes no ports. The CLI can tunnel to it for you (below), or you
 can wire the tunnel by hand ([Manual `ssh -L`](#manual-ssh--l-scripting--ci)).
 
-**The target node must be a longname, either way.** The controller starts as `:longnames`, and
-Erlang refuses to connect a longname node to a shortname one. Elixir releases default to
-`RELEASE_DISTRIBUTION=sname`, so override it in `deploy.yml` (the cookie comes from the
-`RELEASE_COOKIE` secret):
+**Match the target's distribution mode.** A node is longname-or-shortname for its whole life and
+Erlang won't connect the two, so the controller must run the same kind. Elixir releases **default
+to shortnames** (`RELEASE_DISTRIBUTION=sname`, so a Kamal app comes up as `app@<container-host>`) —
+for those, launch redbug with `CONTROLLER_DISTRIBUTION=sname` (no server change needed):
 
-```yaml
-env:
-  clear:
-    RELEASE_DISTRIBUTION: name
-    RELEASE_NODE: app@127.0.0.1        # dotted host ⇒ a valid longname
+```sh
+CONTROLLER_DISTRIBUTION=sname ./dist/redbug      # or: CONTROLLER_DISTRIBUTION=sname mise run dev
 ```
+
+Leave it unset (longnames, the default) for a longname target — e.g. one pinned in `deploy.yml`
+with `RELEASE_DISTRIBUTION: name` + `RELEASE_NODE: app@127.0.0.1`.
 
 #### Built-in SSH tunnel (recommended)
 
 Give the node its SSH details and connect — the controller opens an SSH connection to the host,
-discovers the container's bridge IP and the node's (random) distribution port over that same
-connection (`docker inspect` + `epmd -names`), forwards a local port to it, and pins the dial
-endpoint so distribution goes straight through. No manual `ssh -L`, no `REDBUG_NODES`, no
-dist-port pinning; the port is re-discovered on every connect, so it survives redeploys.
+discovers the container's bridge IP, the node's (random) distribution port, its **name**, and the
+release **cookie** over that one connection (`docker inspect` / `epmd -names` / `releases/COOKIE`),
+forwards a local port to it, and pins the dial endpoint so distribution goes straight through. No
+manual `ssh -L`, no `REDBUG_NODES`, no dist-port pinning; everything is re-discovered on each
+connect, so it survives redeploys.
 
-In the node editor (`n` new / `e` edit on the tree), fill the fields under **over SSH**:
+In the node editor (`n` new / `e` edit on the tree), fill the fields under **over SSH** and leave
+name + cookie blank — they're discovered on connect (a shortname release's node is
+`app@<short-host>`, which you can't guess anyway):
 
 | field | value |
 |---|---|
-| name | the container node's own name, e.g. `app@127.0.0.1` |
-| cookie | the node's `RELEASE_COOKIE` |
 | ssh host | the server to SSH into, e.g. `prod-1.example.com` |
 | ssh user | SSH login user (defaults to `$USER`) |
 | container | the Kamal `service` name (or a bare container name / id) |
+| name / cookie | leave blank — auto-discovered (set them only to override) |
 
-Leave the three SSH fields blank for a directly-dialed node. Press `c` to connect; on disconnect
-(or a dropped SSH connection) the tunnel is torn down and the endpoint unpinned.
+Press `c` to connect; on disconnect (or a dropped SSH connection) the tunnel is torn down and the
+endpoint unpinned. Leave all three SSH fields blank for a directly-dialed node — then name +
+cookie are required.
 
 Requirements:
 
@@ -162,8 +165,10 @@ Requirements:
 - **Container match** — by Kamal's `service` label (+ `role=web`, newest), falling back to a bare
   container name / id. The name is validated before it reaches the shell.
 
-> Verified end to end against an OrbStack machine running dockerized erlang: connect → `:rpc` →
-> disconnect, with the dial endpoint pinned to the tunnel and then cleared (OTP 28 → OTP 27).
+> Verified end to end against a live Kamal shortname app (`CONTROLLER_DISTRIBUTION=sname`, node +
+> cookie auto-discovered as `muku@178`): connect → inject redbug → trace a real function
+> (`MukuWeb.Endpoint.url/0`) → capture call/return → disconnect, no server changes. Also verified
+> against an OrbStack machine (longname, OTP 28 → OTP 27).
 
 #### Manual `ssh -L` (scripting / CI)
 
