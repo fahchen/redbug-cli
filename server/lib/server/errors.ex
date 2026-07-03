@@ -13,6 +13,7 @@ defmodule Server.Errors do
 
   @messages %{
     no_enabled_rtp: "No trace pattern enabled — press space to enable at least one",
+    no_matching_functions: "No such function on the target — check module, name, and arity (it must be loaded there)",
     node_not_found: "Node not found",
     session_not_found: "Session not found",
     not_found: "Node not found",

@@ -139,8 +139,12 @@ defmodule Server.Trace.Runner do
         print_fun: print_fun(self())
       ]
 
+      # redbug returns {ProcName, matched_functions, matched_procs} on success and
+      # {:argument_error, reason} on a bad pattern. A pattern whose module/function/
+      # arity isn't loaded on the target matches 0 functions (or errors), which we
+      # surface instead of reporting a "running" trace that can never fire.
       case :redbug.start(patterns, opts) do
-        result when is_tuple(result) and tuple_size(result) in [2, 3] ->
+        {proc, matched, _procs} when is_atom(proc) and is_integer(matched) and matched > 0 ->
           state =
             state
             |> Map.put(:target, target)
@@ -152,6 +156,9 @@ defmodule Server.Trace.Runner do
           Config.set_session_status(state.session_id, "running")
           broadcast(state.session_id, {:trace_status, status_payload(state)})
           {:ok, state}
+
+        {proc, 0, _procs} when is_atom(proc) ->
+          {:error, :no_matching_functions, %{state | status: "stopped"}}
 
         other ->
           Logger.error("redbug start failed for #{node.name}: #{inspect(other)}")
@@ -220,7 +227,8 @@ defmodule Server.Trace.Runner do
 
   defp print_fun(runner), do: fn msg -> send(runner, {:redbug, msg}) end
 
-  defp redbug_error({:argument_error, _} = e), do: inspect(e)
+  defp redbug_error({:argument_error, :no_matching_functions}), do: :no_matching_functions
+  defp redbug_error({:argument_error, reason}), do: "redbug: #{inspect(reason)}"
   defp redbug_error(other) when is_atom(other), do: other
   defp redbug_error(other), do: inspect(other)
 
