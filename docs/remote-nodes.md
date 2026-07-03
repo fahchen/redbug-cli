@@ -40,11 +40,12 @@ Then in the TUI add the node as `app@<host>` using the **same host/IP the node n
 
 ## REDBUG_NODES — epmd-free connect (SSH-friendly)
 
-Set `REDBUG_NODES` and the controller boots with a connect-only epmd replacement
-(`Server.Epmd`, installed via `-start_epmd false -epmd_module`). Distribution then dials each
-target's `{ip, port}` straight from the env var, skipping epmd **and** DNS — so an `ssh -L`
-tunnel onto plain `127.0.0.1` works with no loopback-alias/`sudo` dance and no collision with
-the controller's own epmd. This is the recommended path for tunnelled or non-routable nodes.
+The controller always boots with a connect-only epmd replacement (`Server.Epmd`, installed via
+`-start_epmd false -epmd_module`): a name pinned in the endpoint table dials its `{ip, port}`
+directly (skipping epmd **and** DNS), and any other name falls back to real epmd. `REDBUG_NODES`
+pins a comma-separated set of endpoints up front — so an `ssh -L` tunnel onto plain `127.0.0.1`
+works with no loopback-alias/`sudo` dance and no collision with the controller's own epmd. The
+[built-in SSH tunnel](#built-in-ssh-tunnel-recommended) pins the same table at runtime instead.
 
 `REDBUG_NODES` is a comma-separated list; each entry is `name@host|dial_ip:port|cookie`:
 
@@ -107,19 +108,19 @@ epmd on `127.0.0.1:4369` — the shim resolves the dial endpoint directly, so lo
 with no epmd collision, no `lo0` alias, no `sudo`. Each tunnelled node needs a distinct local
 port (`9100`, `9101`, …) since they all land on `127.0.0.1`.
 
-> **Launching separately in env mode.** `mise run dev` handles this, but if you start the server
-> by hand, do **not** pass `--name`: the shim module only loads once the app starts, so
+> **Launching the server by hand.** `mise run dev` handles this, but if you start the server
+> yourself, do **not** pass `--name`: the shim module only loads once the app starts, so
 > distribution must come up *after* boot. Set the node name via `CONTROLLER_NODE` instead
 > (`CONTROLLER_NODE=redbug_controller@127.0.0.1 CONTROLLER_COOKIE=… REDBUG_NODES=… elixir -S mix phx.server`).
 
 ### Kamal (Docker) deployments
 
-Same shim-over-SSH path, plus three container-specific wrinkles. The target is a
-[Kamal](https://kamal-deploy.org)-deployed container on a Linux host you reach only via SSH; the
-container publishes no ports.
+The target is a [Kamal](https://kamal-deploy.org)-deployed container on a Linux host you reach
+only via SSH; the container publishes no ports. The CLI can tunnel to it for you (below), or you
+can wire the tunnel by hand ([Manual `ssh -L`](#manual-ssh--l-scripting--ci)).
 
-**1. The target node must be a longname.** The controller starts as `:longnames`, and Erlang
-refuses to connect a longname node to a shortname one. Elixir releases default to
+**The target node must be a longname, either way.** The controller starts as `:longnames`, and
+Erlang refuses to connect a longname node to a shortname one. Elixir releases default to
 `RELEASE_DISTRIBUTION=sname`, so override it in `deploy.yml` (the cookie comes from the
 `RELEASE_COOKIE` secret):
 
@@ -130,7 +131,45 @@ env:
     RELEASE_NODE: app@127.0.0.1        # dotted host ⇒ a valid longname
 ```
 
-**2. The dist port lives inside the container.** epmd hands out a random high port unless pinned,
+#### Built-in SSH tunnel (recommended)
+
+Give the node its SSH details and connect — the controller opens an SSH connection to the host,
+discovers the container's bridge IP and the node's (random) distribution port over that same
+connection (`docker inspect` + `epmd -names`), forwards a local port to it, and pins the dial
+endpoint so distribution goes straight through. No manual `ssh -L`, no `REDBUG_NODES`, no
+dist-port pinning; the port is re-discovered on every connect, so it survives redeploys.
+
+In the node editor (`n` new / `e` edit on the tree), fill the fields under **over SSH**:
+
+| field | value |
+|---|---|
+| name | the container node's own name, e.g. `app@127.0.0.1` |
+| cookie | the node's `RELEASE_COOKIE` |
+| ssh host | the server to SSH into, e.g. `prod-1.example.com` |
+| ssh user | SSH login user (defaults to `$USER`) |
+| container | the Kamal `service` name (or a bare container name / id) |
+
+Leave the three SSH fields blank for a directly-dialed node. Press `c` to connect; on disconnect
+(or a dropped SSH connection) the tunnel is torn down and the endpoint unpinned.
+
+Requirements:
+
+- **SSH key auth** — publickey only: ssh-agent first (when `SSH_AUTH_SOCK` is set), then a key in
+  `~/.ssh`. No passwords. `:ssh` does **not** read `~/.ssh/config`, so there is **no `ProxyJump`/
+  bastion** and no `Host` aliases — use the real host.
+- **Docker without sudo** — the SSH user runs `docker ps` / `docker inspect` / `docker exec`
+  directly (add them to the `docker` group).
+- **Container match** — by Kamal's `service` label (+ `role=web`, newest), falling back to a bare
+  container name / id. The name is validated before it reaches the shell.
+
+> Verified end to end against an OrbStack machine running dockerized erlang: connect → `:rpc` →
+> disconnect, with the dial endpoint pinned to the tunnel and then cleared (OTP 28 → OTP 27).
+
+#### Manual `ssh -L` (scripting / CI)
+
+For env-injected (`REDBUG_NODES`) runs, or when you'd rather own the tunnel, wire it by hand.
+
+**The dist port lives inside the container.** epmd hands out a random high port unless pinned,
 and the host's `epmd` can't see it — query it *inside* the container, and grab the container's
 bridge IP (the node binds dist on `0.0.0.0`, so it's reachable from the Docker host at that IP):
 
@@ -141,10 +180,10 @@ docker exec "$C" epmd -names           # → name app at port 44001
 docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$C"   # → 172.18.0.4
 ```
 
-**3. The `ssh -L` target is the container IP, not `127.0.0.1`.** The node lives in the
-container's network namespace — the host's loopback has nothing on that port. Forward a local
-port straight to `<container-ip>:<dist-port>` (the local port is free to differ; the shim pins
-the endpoint and never re-queries, so it doesn't need to match the remote dist port):
+**The `ssh -L` target is the container IP, not `127.0.0.1`.** The node lives in the container's
+network namespace — the host's loopback has nothing on that port. Forward a local port straight to
+`<container-ip>:<dist-port>` (the local port is free to differ; the shim pins the endpoint and
+never re-queries, so it doesn't need to match the remote dist port):
 
 ```sh
 # local 9100 → (server) → container 172.18.0.4:44001
@@ -170,10 +209,6 @@ env:
 
 The container IP can still change across deploys; re-check it, or put the app on a Kamal
 `network` with a stable alias.
-
-> Verified end-to-end: a longname container node (`app@127.0.0.1`, cookie, random dist port) ←
-> the repo controller booted with the shim (`REDBUG_NODES="app@127.0.0.1|<container-ip>:<port>|<cookie>"`);
-> `Node.connect/1` returned `true` and `:rpc` round-tripped across an OTP 28 → OTP 27 gap.
 
 ## Security
 

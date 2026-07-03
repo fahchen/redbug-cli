@@ -160,9 +160,11 @@ arm64 only; no system Erlang or Bun needed on the target.
 
 The controller and TUI always run locally. To trace a node on another host, the controller
 only needs to reach that node over Erlang distribution (its **epmd** and **distribution**
-ports) with a matching cookie — no agent, sidecar, or code is deployed to the target. For
-routable hosts, `REDBUG_NODES` env injection, SSH-tunnelled setups, and
-[Kamal](https://kamal-deploy.org)/Docker containers, see [**Remote nodes**](docs/remote-nodes.md).
+ports) with a matching cookie — no agent, sidecar, or code is deployed to the target. Give a
+node its SSH details (host + container) and the controller tunnels to a container node on its
+own — no exposed port, no manual `ssh -L`. For that, routable hosts, `REDBUG_NODES` env
+injection, and [Kamal](https://kamal-deploy.org)/Docker containers, see
+[**Remote nodes**](docs/remote-nodes.md).
 
 ## Security
 
