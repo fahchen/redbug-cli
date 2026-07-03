@@ -239,7 +239,12 @@ function S1View({
         if (name === "escape") setModal({ kind: "none" })
         else if (name === "tab") setNodeField((f) => (f + 1) % NODE_FIELDS)
         else if (name === "return") {
-          if (nameDraft.trim() !== "" && cookieDraft.trim() !== "") {
+          // ssh nodes auto-discover their name + cookie, so only require those
+          // two for a directly-dialed node.
+          const ok =
+            sshHostDraft.trim() !== "" ||
+            (nameDraft.trim() !== "" && cookieDraft.trim() !== "")
+          if (ok) {
             const payload = {
               name: nameDraft,
               cookie: cookieDraft,
@@ -593,14 +598,14 @@ function ModalLayer({
         <>
           <Field
             label="name"
-            hint="name@host (longname), e.g. myapp@127.0.0.1"
+            hint="name@host, e.g. myapp@127.0.0.1 (auto-discovered for SSH nodes)"
             value={nameDraft}
             onInput={onName}
             focused={nodeField === 0}
           />
           <Field
             label="cookie"
-            hint="Erlang distribution cookie; must match the target"
+            hint="distribution cookie; must match target (auto-read for SSH nodes)"
             value={cookieDraft}
             onInput={onCookie}
             focused={nodeField === 1}
