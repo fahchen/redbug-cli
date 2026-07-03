@@ -25,14 +25,33 @@ defmodule Server.Application do
 
   # redbug remote tracing needs the controller node to be alive and distributed
   # so it can connect to the target node with a matching cookie.
+  #
+  # A node is either a longname or a shortname node for its whole life, and Erlang
+  # refuses to connect the two — so to trace a shortname target (an Elixir release
+  # left on its `-sname` default, e.g. Kamal's `muku@178`), boot the controller as
+  # shortnames too via `CONTROLLER_DISTRIBUTION=sname`. Default is longnames.
   defp ensure_distributed do
     unless Node.alive?() do
-      name = String.to_atom(System.get_env("CONTROLLER_NODE", "redbug_controller@127.0.0.1"))
-      {:ok, _} = :net_kernel.start([name, :longnames])
+      {name, mode} = controller_identity()
+      {:ok, _} = :net_kernel.start([name, mode])
     end
 
     if cookie = System.get_env("CONTROLLER_COOKIE") do
       Node.set_cookie(String.to_atom(cookie))
+    end
+  end
+
+  defp controller_identity do
+    node = System.get_env("CONTROLLER_NODE", "redbug_controller@127.0.0.1")
+
+    case System.get_env("CONTROLLER_DISTRIBUTION") do
+      "sname" ->
+        # shortnames can't carry a dotted `@host`; take the bare name and let the
+        # VM append the short host.
+        {node |> String.split("@") |> hd() |> String.to_atom(), :shortnames}
+
+      _ ->
+        {String.to_atom(node), :longnames}
     end
   end
 
