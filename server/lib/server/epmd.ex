@@ -1,16 +1,19 @@
 defmodule Server.Epmd do
   @moduledoc """
   Connect-only epmd replacement, installed via the VM flags
-  `-start_epmd false -epmd_module Elixir.Server.Epmd` when `REDBUG_NODES` is set.
+  `-start_epmd false -epmd_module Elixir.Server.Epmd`.
 
-  The controller never registers in any real epmd and never queries one: outbound
-  `Node.connect/1` resolves a target's dial endpoint straight from the
-  `:redbug_endpoints` ETS table (`Server.Config` fills it from `REDBUG_NODES`),
-  so distribution skips DNS + epmd entirely. This is what lets an `ssh -L` tunnel
+  Always installed (not just for `REDBUG_NODES`): outbound `Node.connect/1` first
+  checks the `:redbug_endpoints` ETS table (filled by `Server.Config` from
+  `REDBUG_NODES` and by `Server.SshTunnel`) for a pinned `{ip, port}` dial target.
+  A pinned name skips DNS + epmd entirely, which is what lets an `ssh -L` tunnel
   on `127.0.0.1:<port>` work without colliding with the controller's own epmd.
+  An **unpinned** name falls back to the real `:erl_epmd`, so plain routable
+  nodes still resolve through their host's epmd as usual.
 
-  `register_node/3` is a no-op returning a fake creation — the controller only
-  makes outbound connections, nothing needs to find it by name.
+  The controller never registers in any real epmd (`register_node/3` is a no-op
+  returning a fake creation) — it only makes outbound connections, nothing needs
+  to find it by name.
   """
 
   @endpoints :redbug_endpoints
@@ -27,7 +30,7 @@ defmodule Server.Epmd do
 
   def listen_port_please(_name, _host), do: {:ok, 0}
 
-  def names(_host), do: {:error, :address}
+  def names(host), do: :erl_epmd.names(host)
 
   # The 4th element is hs_data.other_version, the legacy epmd-era protocol
   # version. Modern distribution (OTP 23+) negotiates the real version in-band
@@ -38,12 +41,13 @@ defmodule Server.Epmd do
   @dist_proto_version 5
 
   @doc """
-  Resolve `name@host` to its pinned `{ip, port}` from the endpoint table.
+  Resolve `name@host` to its pinned `{ip, port}` from the endpoint table, or defer
+  to the real `:erl_epmd` when the name is not pinned (plain routable nodes).
   """
-  def address_please(name, host, _family) do
+  def address_please(name, host, family) do
     case lookup(:"#{name}@#{host}") do
       {ip, port} -> {:ok, ip, port, @dist_proto_version}
-      nil -> {:error, :nxdomain}
+      nil -> :erl_epmd.address_please(name, host, family)
     end
   end
 

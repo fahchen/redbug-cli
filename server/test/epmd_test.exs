@@ -17,8 +17,11 @@ defmodule Server.EpmdTest do
              {:ok, {127, 0, 0, 1}, 9100, 5}
   end
 
-  test "unknown node is nxdomain (so connect fails cleanly, not a crash)" do
-    assert Server.Epmd.address_please(~c"ghost", ~c"prod-1", :inet) == {:error, :nxdomain}
+  test "unpinned node defers to real epmd (plain routable-node path)" do
+    # not in the endpoint table → the shim must return exactly what :erl_epmd
+    # would, so ordinary routable nodes still resolve via their host's epmd.
+    assert Server.Epmd.address_please(~c"ghost", ~c"prod-1", :inet) ==
+             :erl_epmd.address_please(~c"ghost", ~c"prod-1", :inet)
   end
 
   test "register_node is a no-op returning a fake creation" do
