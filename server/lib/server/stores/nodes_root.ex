@@ -23,6 +23,9 @@ defmodule Server.Stores.NodesRoot do
     payload do
       field(:name, String.t())
       field(:cookie, String.t())
+      field(:ssh_host, String.t() | nil)
+      field(:ssh_user, String.t() | nil)
+      field(:container, String.t() | nil)
     end
   end
 
@@ -48,7 +51,13 @@ defmodule Server.Stores.NodesRoot do
   def handle_command(:createNode, payload, socket) do
     # env-injected nodes are the whole list in env mode; manual creation is off.
     unless Config.env_mode?() do
-      Config.add_node(%{name: get(payload, "name", ""), cookie: get(payload, "cookie", "")})
+      Config.add_node(%{
+        name: get(payload, "name", ""),
+        cookie: get(payload, "cookie", ""),
+        ssh_host: get(payload, "ssh_host", nil),
+        ssh_user: get(payload, "ssh_user", nil),
+        container: get(payload, "container", nil)
+      })
     end
 
     {:noreply, socket}

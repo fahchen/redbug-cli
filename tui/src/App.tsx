@@ -157,7 +157,11 @@ function S1View({
   const [presetIdx, setPresetIdx] = useState(0)
   const [nameDraft, setNameDraft] = useState("")
   const [cookieDraft, setCookieDraft] = useState("")
+  const [sshHostDraft, setSshHostDraft] = useState("")
+  const [sshUserDraft, setSshUserDraft] = useState("")
+  const [containerDraft, setContainerDraft] = useState("")
   const [nodeField, setNodeField] = useState(0)
+  const NODE_FIELDS = 5
 
   const nodeIdx = Math.min(nodeSel, Math.max(0, nodeList.length - 1))
   const node = nodeList[nodeIdx] ?? null
@@ -187,6 +191,9 @@ function S1View({
     if (envMode) return
     setNameDraft("")
     setCookieDraft("")
+    setSshHostDraft("")
+    setSshUserDraft("")
+    setContainerDraft("")
     setNodeField(0)
     setModal({ kind: "newNode" })
   }
@@ -230,14 +237,20 @@ function S1View({
       case "newNode":
       case "editNode":
         if (name === "escape") setModal({ kind: "none" })
-        else if (name === "tab") setNodeField((f) => (f === 0 ? 1 : 0))
+        else if (name === "tab") setNodeField((f) => (f + 1) % NODE_FIELDS)
         else if (name === "return") {
           if (nameDraft.trim() !== "" && cookieDraft.trim() !== "") {
-            if (modal.kind === "newNode")
-              createNode("createNode", { name: nameDraft, cookie: cookieDraft })
+            const payload = {
+              name: nameDraft,
+              cookie: cookieDraft,
+              ssh_host: sshHostDraft,
+              ssh_user: sshUserDraft,
+              container: containerDraft
+            }
+            if (modal.kind === "newNode") createNode("createNode", payload)
             else {
               const np = nodeProxyById(modal.id)
-              if (np) dispatcher(np)("editNode", { name: nameDraft, cookie: cookieDraft })
+              if (np) dispatcher(np)("editNode", payload)
             }
             setModal({ kind: "none" })
           }
@@ -328,6 +341,9 @@ function S1View({
         if (node && node.source !== "env") {
           setNameDraft(node.name)
           setCookieDraft(node.cookie)
+          setSshHostDraft(node.ssh_host ?? "")
+          setSshUserDraft(node.ssh_user ?? "")
+          setContainerDraft(node.container ?? "")
           setNodeField(0)
           setModal({ kind: "editNode", id: node.id })
         }
@@ -439,9 +455,15 @@ function S1View({
           presetIdx={presetIdx}
           nameDraft={nameDraft}
           cookieDraft={cookieDraft}
+          sshHostDraft={sshHostDraft}
+          sshUserDraft={sshUserDraft}
+          containerDraft={containerDraft}
           nodeField={nodeField}
           onName={setNameDraft}
           onCookie={setCookieDraft}
+          onSshHost={setSshHostDraft}
+          onSshUser={setSshUserDraft}
+          onContainer={setContainerDraft}
           onCommit={(m, payload) => {
             if (m === "newSessionName")
               setModal({ kind: "newSessionPreset", nodeId: (modal as any).nodeId, name: payload })
@@ -503,9 +525,15 @@ function ModalLayer({
   presetIdx,
   nameDraft,
   cookieDraft,
+  sshHostDraft,
+  sshUserDraft,
+  containerDraft,
   nodeField,
   onName,
   onCookie,
+  onSshHost,
+  onSshUser,
+  onContainer,
   onCommit
 }: {
   modal: Modal
@@ -513,9 +541,15 @@ function ModalLayer({
   presetIdx: number
   nameDraft: string
   cookieDraft: string
+  sshHostDraft: string
+  sshUserDraft: string
+  containerDraft: string
   nodeField: number
   onName: (v: string) => void
   onCookie: (v: string) => void
+  onSshHost: (v: string) => void
+  onSshUser: (v: string) => void
+  onContainer: (v: string) => void
   onCommit: (kind: Modal["kind"], value: string) => void
 }) {
   const box = (title: string, children: ReactNode) => (
@@ -570,6 +604,28 @@ function ModalLayer({
             value={cookieDraft}
             onInput={onCookie}
             focused={nodeField === 1}
+          />
+          <text fg={theme.dim} marginTop={1}>over SSH (optional — leave blank to dial directly)</text>
+          <Field
+            label="ssh host"
+            hint="the server to SSH into, e.g. prod-1.example.com"
+            value={sshHostDraft}
+            onInput={onSshHost}
+            focused={nodeField === 2}
+          />
+          <Field
+            label="ssh user"
+            hint="SSH login user (defaults to $USER)"
+            value={sshUserDraft}
+            onInput={onSshUser}
+            focused={nodeField === 3}
+          />
+          <Field
+            label="container"
+            hint="Kamal service / container name on the host"
+            value={containerDraft}
+            onInput={onContainer}
+            focused={nodeField === 4}
           />
           <text fg={theme.dim} marginTop={1}>Tab switch field · Enter save · Esc cancel</text>
         </>

@@ -34,6 +34,9 @@ defmodule Server.Stores.NodeStore do
     payload do
       field(:name, String.t() | nil)
       field(:cookie, String.t() | nil)
+      field(:ssh_host, String.t() | nil)
+      field(:ssh_user, String.t() | nil)
+      field(:container, String.t() | nil)
     end
   end
 
@@ -98,6 +101,9 @@ defmodule Server.Stores.NodeStore do
         %{}
         |> put_if(payload, "name", :name)
         |> put_if(payload, "cookie", :cookie)
+        |> put_if(payload, "ssh_host", :ssh_host)
+        |> put_if(payload, "ssh_user", :ssh_user)
+        |> put_if(payload, "container", :container)
 
       Config.update_node(socket.assigns.node.id, attrs)
     end
