@@ -164,8 +164,38 @@ defmodule Server.Config do
     :ets.insert(@table, {:connected, MapSet.new()})
     :ets.insert(@table, {:session_status, %{}})
 
+    # Watch the dist links we open: when a connected target drops (node restart,
+    # tunnel down, etc.) reflect it instead of leaving the tree/session showing a
+    # stale "connected/running". node_type: :all because the controller is a
+    # hidden node, so every target link is a hidden connection — the default
+    # (visible-only) monitor would never fire for them.
+    :net_kernel.monitor_nodes(true, %{node_type: :all})
+
     {:ok, %{}}
   end
+
+  # A target node vanished. If it was one we had marked connected, stop its
+  # sessions (redbug is dead with the link) and drop the tunnel so the next
+  # connect re-discovers a fresh dial port.
+  @impl true
+  def handle_info({:nodedown, node, _info}, state) do
+    name = Atom.to_string(node)
+    connected = lookup(:connected, MapSet.new())
+
+    case Enum.find(nodes_raw(), &(&1.name == name and MapSet.member?(connected, &1.id))) do
+      nil ->
+        :ok
+
+      down ->
+        Enum.each(down.sessions, &Server.Trace.node_down(&1.id))
+        if down[:ssh_host] not in [nil, ""], do: Server.SshTunnel.close(down.id)
+        drop_connected(down.id)
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
   def handle_call({:add_node, attrs}, _from, state) do

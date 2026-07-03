@@ -31,6 +31,9 @@ defmodule Server.Trace do
   @doc "Stop tracing; the event buffer is retained."
   def stop(session_id), do: with_runner(session_id, &Runner.stop/1)
 
+  @doc "Mark a session stopped because its target node went down (buffer retained)."
+  def node_down(session_id), do: with_runner(session_id, &Runner.node_down/1)
+
   @doc "Apply current config (RTP/limit edits) by restarting the trace; inserts a separator."
   def apply_restart(session_id), do: with_runner(session_id, &Runner.apply_restart/1)
 

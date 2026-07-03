@@ -40,6 +40,7 @@ defmodule Server.Trace.Runner do
 
   def start(session_id), do: GenServer.call(via(session_id), :start)
   def stop(session_id), do: GenServer.call(via(session_id), :stop)
+  def node_down(session_id), do: GenServer.cast(via(session_id), :node_down)
   def apply_restart(session_id), do: GenServer.call(via(session_id), :apply_restart)
   def clear(session_id), do: GenServer.call(via(session_id), :clear)
   def snapshot(session_id), do: GenServer.call(via(session_id), :snapshot)
@@ -95,6 +96,18 @@ defmodule Server.Trace.Runner do
 
   def handle_call(:snapshot, _from, state) do
     {:reply, %{events: state.buffer, status: state.status, applied_sig: state.applied_sig}, state}
+  end
+
+  @impl true
+  # The target's dist link dropped (node restart / tunnel down). redbug doesn't
+  # notify its print_fun on nodedown, so Config's node watcher tells us: flip to
+  # stopped and push an error so the session stops showing a stale "running".
+  def handle_cast(:node_down, state) do
+    Config.set_session_status(state.session_id, "stopped")
+    new_state = %{state | status: "stopped"}
+    broadcast(state.session_id, {:trace_status, status_payload(new_state)})
+    broadcast(state.session_id, {:trace_error, Server.Errors.humanize(:noconnection)})
+    {:noreply, new_state}
   end
 
   @impl true

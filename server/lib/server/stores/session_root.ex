@@ -157,6 +157,10 @@ defmodule Server.Stores.SessionRoot do
     {:noreply, socket}
   end
 
+  def handle_info({:trace_error, error}, socket) do
+    {:noreply, socket |> assign(:error, error) |> put_status("stopped")}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
