@@ -35,6 +35,16 @@ defmodule Server.SshTunnelTest do
              {:error, :no_port}
   end
 
+  test "parse_port ignores a transient rem-* remote-console node" do
+    # `bin/app remote` registers a rem-<hex>-<name> node whose `at port` line comes
+    # first; the port must still resolve to the real node, not the console shell.
+    out = "name rem-23f1-loyalty at port 44935\nname loyalty at port 4370\n"
+    # own name known (from beam -name): exact match wins
+    assert SshTunnel.parse_port(out, "loyalty") == {:ok, 4370}
+    # own name unknown: skip rem-* and take the first real node
+    assert SshTunnel.parse_port(out) == {:ok, 4370}
+  end
+
   test "parse_sname / host / cookie pull the sname atom parts from discovery output" do
     out = """
     172.18.0.4

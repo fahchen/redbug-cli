@@ -194,7 +194,8 @@ defmodule Server.SshTunnel do
     with {:ok, svc} <- safe_container(container),
          {:ok, out, 0} <- exec(conn, discover_cmd(svc)),
          {:ok, ip} <- parse_ip(out),
-         {:ok, port} <- parse_port(out) do
+         own = own_shortname(out),
+         {:ok, port} <- parse_port(out, own) do
       {:ok,
        %{
          ip: ip,
@@ -280,9 +281,31 @@ defmodule Server.SshTunnel do
     end
   end
 
+  # The node's own short name off its beam args (`-name app@host` / `-sname app`),
+  # used to pick the right epmd port when a transient `rem-*` remote-console node
+  # is also registered (its port would otherwise win as the first `at port` match).
+  defp own_shortname(out) do
+    case parse_name(out) do
+      name when is_binary(name) -> name |> String.split("@", parts: 2) |> hd()
+      _ -> nil
+    end
+  end
+
   @doc false
-  def parse_port(out) do
-    case Regex.run(~r/at port (\d+)/, out) do
+  def parse_port(out, own \\ nil)
+
+  # Prefer the epmd entry for the node's own short name (exact match), so a
+  # co-registered `rem-<hex>-<name>` remote-console node can't hijack the port.
+  def parse_port(out, own) when is_binary(own) do
+    case Regex.run(~r/name #{Regex.escape(own)} at port (\d+)/, out) do
+      [_, p] -> {:ok, String.to_integer(p)}
+      _ -> parse_port(out, nil)
+    end
+  end
+
+  # No known name: take the first real node's port, skipping `rem-*` shells.
+  def parse_port(out, nil) do
+    case Regex.run(~r/name (?!rem-)\S+ at port (\d+)/, out) do
       [_, p] -> {:ok, String.to_integer(p)}
       _ -> {:error, :no_port}
     end
@@ -290,7 +313,7 @@ defmodule Server.SshTunnel do
 
   @doc false
   def parse_sname(out) do
-    case Regex.run(~r/name (\S+) at port/, out) do
+    case Regex.run(~r/name (?!rem-)(\S+) at port/, out) do
       [_, name] -> name
       _ -> nil
     end
