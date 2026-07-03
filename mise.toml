@@ -12,23 +12,17 @@ cookie="${RB_COOKIE:-rbtest}"
 port_file="/tmp/redbug.port"
 rm -f "$port_file"
 export REDBUG_PORT_FILE="$port_file"
-# REDBUG_NODES → bypass epmd with the connect-only shim (see Server.Epmd). The
-# shim module is only loaded once the app starts, so distribution must NOT come
-# up at boot via --name; the app self-distributes (CONTROLLER_NODE) afterwards.
-# Trim first: a whitespace-only value parses to zero nodes, so don't let it flip
-# the server into shim boot and disable normal epmd connects.
-redbug_nodes_trimmed=$(printf '%s' "$REDBUG_NODES" | tr -d '[:space:]')
 # Server shares this terminal with the TUI, so silence its stdout/stderr into a
 # log file (tail it when debugging) instead of corrupting the TUI screen.
 log_file="${REDBUG_SERVER_LOG:-/tmp/redbug-server.log}"
-if [ -n "$redbug_nodes_trimmed" ]; then
-  export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
-  export CONTROLLER_NODE="redbug_controller@127.0.0.1"
-  export CONTROLLER_COOKIE="$cookie"
-  elixir -S mix phx.server >"$log_file" 2>&1 &
-else
-  elixir --name redbug_controller@127.0.0.1 --cookie "$cookie" -S mix phx.server >"$log_file" 2>&1 &
-fi
+# Always boot with the connect-only epmd shim (see Server.Epmd): pinned endpoints
+# (REDBUG_NODES / SSH tunnels) dial direct, unpinned names fall back to real epmd.
+# The shim module only loads once the app starts, so distribution must NOT come up
+# at boot via --name; the app self-distributes (CONTROLLER_NODE) afterwards.
+export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
+export CONTROLLER_NODE="redbug_controller@127.0.0.1"
+export CONTROLLER_COOKIE="$cookie"
+elixir -S mix phx.server >"$log_file" 2>&1 &
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
 until [ -f "$port_file" ]; do sleep 0.2; done

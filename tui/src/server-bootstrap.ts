@@ -11,15 +11,12 @@ import serverTarball from "../embed/server.tar.gz" with { type: "file" }
 
 export type EmbeddedServer = { port: number; stop: () => void }
 
-// With REDBUG_NODES set, boot the controller with the connect-only epmd shim
-// (Server.Epmd) so distribution skips epmd/DNS and dials endpoints directly.
-// The shim module only loads once the app starts, so distribution must not come
-// up at release boot (RELEASE_DISTRIBUTION=none); Server.Application then
-// self-distributes after the code is available.
+// Always boot the controller with the connect-only epmd shim (Server.Epmd):
+// pinned endpoints (REDBUG_NODES / SSH tunnels) dial direct, unpinned names fall
+// back to real epmd. The shim module only loads once the app starts, so
+// distribution must not come up at release boot (RELEASE_DISTRIBUTION=none);
+// Server.Application then self-distributes after the code is available.
 function shimEnv(): Record<string, string> {
-  // Whitespace-only counts as unset: enabling the shim with zero parsed nodes
-  // would disable normal epmd connects for nothing.
-  if (!process.env.REDBUG_NODES?.trim()) return {}
   const shim = "-start_epmd false -epmd_module Elixir.Server.Epmd"
   const existing = process.env.ERL_FLAGS
   return {

@@ -24,6 +24,13 @@ defmodule Server.EpmdTest do
              :erl_epmd.address_please(~c"ghost", ~c"prod-1", :inet)
   end
 
+  test "unpinned port_please defers to real epmd (address_please gives no port)" do
+    # the VM calls port_please after an unpinned address_please, with the resolved
+    # host; it must delegate, not route back through the endpoint table.
+    assert Server.Epmd.port_please(~c"ghost", ~c"prod-1") ==
+             :erl_epmd.port_please(~c"ghost", ~c"prod-1")
+  end
+
   test "register_node is a no-op returning a fake creation" do
     assert {:ok, creation} = Server.Epmd.register_node(~c"controller", 0)
     assert creation in 1..3

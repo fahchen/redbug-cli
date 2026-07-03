@@ -25,8 +25,12 @@ defmodule Server.Epmd do
   def register_node(name, port), do: register_node(name, port, :inet)
   def register_node(_name, _port, _family), do: {:ok, :rand.uniform(3)}
 
-  def port_please(name, host), do: address_please(name, host, :inet)
-  def port_please(name, host, _timeout), do: address_please(name, host, :inet)
+  # Only reached for UNPINNED names: a pinned name resolves through address_please's
+  # 4-tuple (epmd-less direct dial), which the VM uses without a port_please round.
+  # `host` here is the resolved IP tuple, so delegate straight to real epmd (never
+  # string-interpolate it into an endpoint key).
+  def port_please(name, host), do: :erl_epmd.port_please(name, host)
+  def port_please(name, host, _timeout), do: :erl_epmd.port_please(name, host)
 
   def listen_port_please(_name, _host), do: {:ok, 0}
 
