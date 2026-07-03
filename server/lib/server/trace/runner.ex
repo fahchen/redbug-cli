@@ -25,6 +25,7 @@ defmodule Server.Trace.Runner do
     :node_id,
     :session_id,
     :target,
+    :redbug_ref,
     status: "stopped",
     buffer: [],
     keep: 500,
@@ -81,6 +82,7 @@ defmodule Server.Trace.Runner do
   end
 
   def handle_call(:stop, _from, state) do
+    state = demonitor_redbug(state)
     redbug_stop(state.target)
     Config.set_session_status(state.session_id, "stopped")
     new_state = %{state | status: "stopped"}
@@ -103,6 +105,9 @@ defmodule Server.Trace.Runner do
   # notify its print_fun on nodedown, so Config's node watcher tells us: flip to
   # stopped and push an error so the session stops showing a stale "running".
   def handle_cast(:node_down, state) do
+    # nodedown also kills the redbug consumer; drop its monitor so the generic
+    # "trace ended" DOWN doesn't race the clearer :noconnection message.
+    state = demonitor_redbug(state)
     Config.set_session_status(state.session_id, "stopped")
     new_state = %{state | status: "stopped"}
     broadcast(state.session_id, {:trace_status, status_payload(new_state)})
@@ -123,6 +128,18 @@ defmodule Server.Trace.Runner do
     end
   end
 
+  # redbug's consumer process died on its own: it hit the time/msgs limit, was
+  # stopped on the target (redbug is a singleton per node, so another client can
+  # stop it), or crashed. redbug never routes this through print_fun, so without
+  # this the session would keep showing a stale "running" with no new events.
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{redbug_ref: ref} = state) do
+    Config.set_session_status(state.session_id, "stopped")
+    new_state = %{state | status: "stopped", redbug_ref: nil}
+    broadcast(state.session_id, {:trace_status, status_payload(new_state)})
+    broadcast(state.session_id, {:trace_error, ended_error(reason)})
+    {:noreply, new_state}
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -134,6 +151,10 @@ defmodule Server.Trace.Runner do
   # --- start/stop redbug ---
 
   defp do_start(state, separator?) do
+    # drop any prior monitor (and flush its DOWN) before we stop/replace redbug,
+    # so restarting doesn't get mistaken for the trace ending.
+    state = demonitor_redbug(state)
+
     with {:ok, node} <- fetch_node(state.node_id),
          {:ok, session} <- fetch_session(node, state.session_id),
          enabled = Enum.filter(session.traces, & &1.enabled),
@@ -164,6 +185,7 @@ defmodule Server.Trace.Runner do
             |> Map.put(:status, "running")
             |> Map.put(:keep, session.limits.keep)
             |> Map.put(:applied_sig, Server.Trace.Signature.compute(session.traces, session.limits))
+            |> monitor_redbug(proc)
             |> maybe_separator(separator?)
 
           Config.set_session_status(state.session_id, "running")
@@ -244,6 +266,33 @@ defmodule Server.Trace.Runner do
   defp redbug_error({:argument_error, reason}), do: "redbug: #{inspect(reason)}"
   defp redbug_error(other) when is_atom(other), do: other
   defp redbug_error(other), do: inspect(other)
+
+  # --- redbug liveness (monitor the local consumer proc) ---
+
+  defp monitor_redbug(state, proc) do
+    ref =
+      case Process.whereis(proc) do
+        pid when is_pid(pid) -> Process.monitor(pid)
+        _ -> nil
+      end
+
+    %{state | redbug_ref: ref}
+  end
+
+  defp demonitor_redbug(%{redbug_ref: ref} = state) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    %{state | redbug_ref: nil}
+  end
+
+  defp demonitor_redbug(state), do: state
+
+  # A clean :normal exit is the time/msgs limit firing (expected); anything else
+  # is a crash. Either way the trace is no longer live and the user should know.
+  defp ended_error(:normal),
+    do: Server.Errors.humanize("Trace stopped — time/msgs limit reached, press s to restart")
+
+  defp ended_error(reason),
+    do: Server.Errors.humanize("Trace ended on the target: #{inspect(reason)}")
 
   # --- buffer ---
 
