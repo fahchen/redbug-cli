@@ -22,6 +22,9 @@ log_file="${REDBUG_SERVER_LOG:-/tmp/redbug-server.log}"
 export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
 export CONTROLLER_NODE="redbug_controller@127.0.0.1"
 export CONTROLLER_COOKIE="$cookie"
+# tie the controller to this task shell: if it's killed, the controller stops
+# itself (and its traces) instead of orphaning (see Server.ParentWatch).
+export REDBUG_PARENT_PID=$$
 elixir -S mix phx.server >"$log_file" 2>&1 &
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null' EXIT INT TERM

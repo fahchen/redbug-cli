@@ -40,7 +40,15 @@ export async function bootEmbeddedServer(): Promise<EmbeddedServer> {
     stdin: "ignore",
     stdout: "ignore",
     stderr: "ignore",
-    env: { ...process.env, REDBUG_PORT_FILE: portFile, ...shimEnv() }
+    // REDBUG_PARENT_PID lets the controller stop itself if this process is killed
+    // without its signal handlers running (SIGKILL/crash), instead of orphaning
+    // with live traces (see Server.ParentWatch).
+    env: {
+      ...process.env,
+      REDBUG_PORT_FILE: portFile,
+      REDBUG_PARENT_PID: String(process.pid),
+      ...shimEnv()
+    }
   })
 
   const port = await waitForReady(portFile)

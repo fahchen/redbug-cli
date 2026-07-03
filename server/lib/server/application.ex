@@ -17,7 +17,8 @@ defmodule Server.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Server.Trace.Supervisor},
       {Registry, keys: :unique, name: Server.Remote.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Server.Remote.Supervisor},
-      ServerWeb.Endpoint
+      ServerWeb.Endpoint,
+      Server.ParentWatch
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Server.Supervisor)
