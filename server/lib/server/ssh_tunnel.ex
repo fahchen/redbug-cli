@@ -178,7 +178,9 @@ defmodule Server.SshTunnel do
     [ -n "$C" ] || C=$(docker ps --filter name=#{svc} -q | head -1)
     [ -n "$C" ] || { echo "no container for #{svc}" >&2; exit 3; }
     docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{println}}{{end}}' "$C" | grep . | head -1
-    docker exec "$C" epmd -names
+    # epmd is often not on PATH in a release image (it lives under erts-*/bin), so
+    # locate it before asking for the node's port.
+    docker exec "$C" sh -c 'E=$(command -v epmd 2>/dev/null || ls -d /app/erts-*/bin/epmd 2>/dev/null | head -1); exec "$E" -names'
     """
   end
 
