@@ -31,10 +31,19 @@ defmodule Server.Application do
   # refuses to connect the two — so to trace a shortname target (an Elixir release
   # left on its `-sname` default, e.g. Kamal's `muku@178`), boot the controller as
   # shortnames too via `CONTROLLER_DISTRIBUTION=sname`. Default is longnames.
+  #
+  # The controller joins as a HIDDEN node with connect_all disabled: the target is
+  # usually a node in a production cluster, and a visible node would (a) make
+  # `global` fan out a full mesh to every peer it discovers (unreachable through
+  # our single tunnel) and then disconnect the target to "prevent overlapping
+  # partitions", and (b) pull the controller into that cluster. Hidden + no
+  # connect_all keeps us to exactly the one node we dial; redbug still traces.
   defp ensure_distributed do
+    Application.put_env(:kernel, :connect_all, false)
+
     unless Node.alive?() do
-      {name, mode} = controller_identity()
-      {:ok, _} = :net_kernel.start([name, mode])
+      {name, domain} = controller_identity()
+      {:ok, _} = :net_kernel.start(name, %{name_domain: domain, hidden: true})
     end
 
     if cookie = System.get_env("CONTROLLER_COOKIE") do
