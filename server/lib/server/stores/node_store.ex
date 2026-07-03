@@ -23,6 +23,9 @@ defmodule Server.Stores.NodeStore do
     field(:cookie, String.t())
     field(:connected, boolean())
     field(:source, :config | :env)
+    field(:ssh_host, String.t() | nil)
+    field(:ssh_user, String.t() | nil)
+    field(:container, String.t() | nil)
     field(:error, Server.Schema.AppError.t() | nil)
     field(:sessions, list(SessionItemStore.state()))
   end
@@ -77,6 +80,9 @@ defmodule Server.Stores.NodeStore do
       cookie: n.cookie,
       connected: n.connected,
       source: Map.get(n, :source, "config"),
+      ssh_host: Map.get(n, :ssh_host),
+      ssh_user: Map.get(n, :ssh_user),
+      container: Map.get(n, :container),
       error: Map.get(socket.assigns, :error),
       sessions:
         for s <- n.sessions do

@@ -74,6 +74,9 @@ defmodule Server.Config do
           name: nd.name,
           cookie: nd.cookie,
           source: "env",
+          ssh_host: nil,
+          ssh_user: nil,
+          container: nil,
           sessions: Map.get(by_name, nd.name, [])
         }
       end
@@ -170,6 +173,9 @@ defmodule Server.Config do
       id: gen_id(),
       name: Map.get(attrs, :name, ""),
       cookie: Map.get(attrs, :cookie, ""),
+      ssh_host: blank_to_nil(Map.get(attrs, :ssh_host)),
+      ssh_user: blank_to_nil(Map.get(attrs, :ssh_user)),
+      container: blank_to_nil(Map.get(attrs, :container)),
       sessions: []
     }
 
@@ -185,6 +191,9 @@ defmodule Server.Config do
           node
           |> maybe_put(:name, attrs)
           |> maybe_put(:cookie, attrs)
+          |> maybe_put_opt(:ssh_host, attrs)
+          |> maybe_put_opt(:ssh_user, attrs)
+          |> maybe_put_opt(:container, attrs)
         end)
 
       put_nodes(nodes)
@@ -413,6 +422,18 @@ defmodule Server.Config do
     end
   end
 
+  # Like maybe_put, but a blank string clears the field to nil — so emptying an
+  # optional ssh field in the editor actually removes it.
+  defp maybe_put_opt(map, key, attrs) do
+    case Map.fetch(attrs, key) do
+      {:ok, value} -> Map.put(map, key, blank_to_nil(value))
+      :error -> map
+    end
+  end
+
+  defp blank_to_nil(v) when is_binary(v), do: if(String.trim(v) == "", do: nil, else: v)
+  defp blank_to_nil(v), do: v
+
   defp deep_merge(left, right) do
     Map.merge(left, right, fn
       _k, %{} = l, %{} = r -> deep_merge(l, r)
@@ -590,6 +611,9 @@ defmodule Server.Config do
       id: Map.get(j, "id", gen_id()),
       name: Map.get(j, "name", ""),
       cookie: Map.get(j, "cookie", ""),
+      ssh_host: blank_to_nil(Map.get(j, "ssh_host")),
+      ssh_user: blank_to_nil(Map.get(j, "ssh_user")),
+      container: blank_to_nil(Map.get(j, "container")),
       sessions: j |> Map.get("sessions", []) |> Enum.map(&session_from_json/1)
     }
   end
