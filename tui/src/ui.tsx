@@ -4,7 +4,6 @@ import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
 
 import { theme, type Theme, PANEL_BORDER } from "./theme"
-import { colorizeTerm, type TermRole } from "./term"
 
 // ora spinner frames. `dots` (simpleDotsScrolling) is a 3-wide text spinner for
 // inline "connecting…" labels; `circle` (circleHalves) is a 1-wide glyph that
@@ -12,10 +11,12 @@ import { colorizeTerm, type TermRole } from "./term"
 // change the inline-label spinner project-wide.
 export const SPINNERS = {
   dots: { frames: [".  ", ".. ", "...", " ..", "  .", "   "], interval: 200 },
-  circle: { frames: ["◐", "◓", "◑", "◒"], interval: 120 }
+  block: { frames: ["▖", "▘", "▝", "▗"], interval: 140 },
+  // opencode's braille spinner: smooth, 1-wide, not a round glyph.
+  braille: { frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], interval: 80 }
 } as const
 
-export const SPINNER = SPINNERS.dots
+export const SPINNER = SPINNERS.braille
 
 // Advance a spinner while `active`; returns the current frame ("" when idle).
 export function useSpinner(active: boolean, which: keyof typeof SPINNERS = "dots"): string {
@@ -27,29 +28,6 @@ export function useSpinner(active: boolean, which: keyof typeof SPINNERS = "dots
     return () => clearInterval(id)
   }, [active, spin.interval])
   return active ? spin.frames[i % spin.frames.length] : ""
-}
-
-// Semantic hue per term role, drawn from the active theme so it re-tints with
-// the palette. Detail/console payloads are data-viz, so a full-palette read is
-// warranted here (unlike the restrained event stream).
-const termColor = (role: TermRole): keyof Theme =>
-  role === "str" ? "on"
-  : role === "num" ? "send"
-  : role === "atom" ? "recv"
-  : role === "key" ? "title"
-  : role === "ref" ? "dim"
-  : "fg"
-
-// Render one already-wrapped line of an Elixir/Erlang term with semantic color.
-export function TermLine({ line, bg }: { line: string; bg?: string }) {
-  const segs = colorizeTerm(line)
-  return (
-    <box backgroundColor={bg ?? theme.bg} flexDirection="row">
-      {segs.map((s, i) => (
-        <text key={i} bg={bg ?? theme.bg} fg={theme[termColor(s.role)]}>{s.t}</text>
-      ))}
-    </box>
-  )
 }
 
 // Whether keybind hint footers are shown (driven by the `show_hints` setting).
@@ -128,6 +106,49 @@ export function Header({ title, children }: { title: string; children?: ReactNod
   )
 }
 
+// Frameless pane (opencode style): no box, just padding for rhythm. Focus is
+// signalled by the heading brightening (primary vs textMuted), not a border.
+// Panes are separated by a single <Divider/>, not per-pane frames.
+export function Panel({
+  heading,
+  active = false,
+  width,
+  grow = false,
+  children
+}: {
+  heading?: string
+  active?: boolean
+  width?: number
+  grow?: boolean
+  children: ReactNode
+}) {
+  return (
+    <box
+      backgroundColor={theme.background}
+      width={width}
+      flexGrow={grow ? 1 : undefined}
+      flexBasis={grow ? 0 : undefined}
+      flexDirection="column"
+      paddingLeft={3}
+      paddingRight={2}
+      paddingTop={1}
+    >
+      {heading !== undefined && (
+        <text fg={active ? theme.primary : theme.textMuted} marginBottom={2}>{heading}</text>
+      )}
+      {children}
+    </box>
+  )
+}
+
+// A single hairline vertical separator between panes (one subtle line, not a
+// pair of gutters).
+export function Divider() {
+  return (
+    <box border={["left"]} borderStyle="single" borderColor={theme.borderSubtle} />
+  )
+}
+
 // Full-screen centered modal. With `title` set, the title sits above a spaced
 // body; without it, children render flush (callers that own their own heading).
 export function Overlay({
@@ -196,17 +217,6 @@ export function HelpOverlay({ title, sections }: { title: string; sections: Help
       ))}
       <text fg={theme.dim} marginTop={1}>press ? or Esc to close</text>
     </Overlay>
-  )
-}
-
-export function PickRow({ label, active }: { label: string; active: boolean }) {
-  const bg = active ? theme.selBg : theme.overlay
-  const fg = active ? theme.selFg : theme.fg
-  return (
-    <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={active ? theme.accent : bg}>{active ? "► " : "  "}</text>
-      <text bg={bg} fg={fg}>{label}</text>
-    </box>
   )
 }
 

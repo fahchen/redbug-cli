@@ -37,7 +37,7 @@ defmodule Server.Config do
     columns: %{name: true, pid: true, mfa: true, info: true},
     default_sort: "ts_desc",
     default_limits: %{keep: 500, time: 900, msgs: 10_000},
-    theme: "pico-8",
+    theme: "tokyo-night",
     show_hints: true
   }
 

@@ -1,14 +1,15 @@
 /** @jsxImportSource @opentui/react */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
+import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor, PANEL_BORDER } from "./theme"
-import { ErrorDetailOverlay, Flash, Header, HelpOverlay, InfoPeek, Overlay, PickRow, RootGate, StatusBar, TermLine, TextField, fit, useSpinner } from "./ui"
+import { ErrorDetailOverlay, Flash, HelpOverlay, InfoPeek, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
+import { elixirStyle, tsClient } from "./treesitter"
 
 type SessionStore = StoreProxy<"Server.Stores.SessionRoot", Musubi.Stores>
 type Rtp = Server.Schema.Rtp
@@ -100,7 +101,6 @@ function SessionView({
   const snap = useMusubiSnapshot(store)
   const cols = settings?.columns ?? ALL_COLS
   const renderer = useRenderer()
-  const { width } = useTerminalDimensions()
   const traces = (snap?.traces ?? []) as Rtp[]
   const events = (snap?.events ?? []) as TraceEvent[]
   const limits = snap?.limits ?? DEFAULT_LIMITS
@@ -112,17 +112,7 @@ function SessionView({
   // breadcrumb glyph and the connect-error banner in the events pane.
   const nodeStatus = snap?.node_status ?? "idle"
   const nodeError = snap?.node_error ?? null
-  const nodeSpin = useSpinner(nodeStatus === "connecting", "circle")
-  const nodeGlyph =
-    nodeStatus === "connected" ? "●"
-    : nodeStatus === "connecting" ? nodeSpin
-    : nodeStatus === "error" ? "✖"
-    : "○"
-  const nodeGlyphColor =
-    nodeStatus === "connected" ? theme.on
-    : nodeStatus === "connecting" ? theme.warn
-    : nodeStatus === "error" ? theme.err
-    : theme.off
+  const nodeSpin = useSpinner(nodeStatus === "connecting", "block")
 
   // Liveness: a running session that traces nothing looks identical to a healthy
   // one. Track wall-clock age since the event buffer last grew and tick a clock
@@ -173,12 +163,13 @@ function SessionView({
   const [filter, setFilter] = useState<Filter | null>(null)
   const [filterScope, setFilterScope] = useState<FilterScope>("all")
   const [filterDraft, setFilterDraft] = useState("")
+  const [filterFocus, setFilterFocus] = useState<"query" | "scope">("query")
   const [group, setGroup] = useState<GroupKey>("none")
 
   const [sel, setSel] = useState(0)
   const [detailOpen, setDetailOpen] = useState(false)
   const [focus, setFocus] = useState<Focus>("list")
-  const [detailScroll, setDetailScroll] = useState(0)
+  const [, setDetailScroll] = useState(0)
   const [zoom, setZoom] = useState(false)
 
   const [overlay, setOverlay] = useState<Overlay>("none")
@@ -232,23 +223,16 @@ function SessionView({
     if (tab === "console") return
 
     if (overlay === "filter") {
+      // Tab toggles focus between the query <input> and the scope <select>;
+      // the scope <select> owns j/k while focused.
       if (n === "escape") setOverlay("none")
-      else if (n === "tab")
-        setFilterScope(
-          (s) => FILTER_SCOPES[(FILTER_SCOPES.indexOf(s) + 1) % FILTER_SCOPES.length]
-        )
+      else if (n === "tab") setFilterFocus((f) => (f === "query" ? "scope" : "query"))
       return
     }
 
     if (overlay === "sort") {
-      if (n === "tab") setSortIdx((i) => (i + 1) % SORT_OPTS.length)
-      else if (n === "j" || n === "down") setSortIdx((i) => Math.min(i + 1, SORT_OPTS.length - 1))
-      else if (n === "k" || n === "up") setSortIdx((i) => Math.max(i - 1, 0))
-      else if (n === "escape") setOverlay("none")
-      else if (n === "return") {
-        setSort(SORT_OPTS[sortIdx])
-        setOverlay("none")
-      }
+      // <select> owns j/k/return; only Esc closes the overlay
+      if (n === "escape") setOverlay("none")
       return
     }
 
@@ -353,6 +337,7 @@ function SessionView({
       case "/":
         setFilterDraft(filter?.query ?? "")
         setFilterScope(filter?.scope ?? "all")
+        setFilterFocus("query")
         setOverlay("filter")
         break
       case "g":
@@ -411,14 +396,7 @@ function SessionView({
       case "escape":
         setOverlay("none")
         break
-      case "j":
-      case "down":
-        setRtpSel((i) => Math.min(i + 1, traces.length - 1))
-        break
-      case "k":
-      case "up":
-        setRtpSel((i) => Math.max(i - 1, 0))
-        break
+      // j/k/up/down owned by the <select> below
       case "space":
         if (rtpCur) dispatch("toggleTrace", { trace_id: rtpCur.id })
         break
@@ -436,32 +414,31 @@ function SessionView({
 
   // sort/filter/group moved off the header onto the Events panel's top border
   // (right-aligned via a padded composite title, since a box has one title/edge).
+  // Node connection status/error rides the Events frame's top border, not a body
+  // row. Connected is silent (only exceptions surface); connecting/error take
+  // over the title (and error tints the whole frame red), dropping the
+  // sort/group meta since a down node has no events to sort anyway.
   const metaText =
     `sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"} · ` +
     `filter:${filter ? `${filter.scope}/${filter.query}` : "-"} · ` +
     `group:${group}`
-  const detailW = detailOpen && !zoom && selectedEvent ? 47 : 0
-  const eventsInner = Math.max(12, width - detailW - 4)
-  const leftTitle = `Events (${count})`
-  const pad = Math.max(2, eventsInner - leftTitle.length - metaText.length)
-  const eventsTitle = leftTitle + " ".repeat(pad) + metaText
+
+  const statusSeg =
+    nodeStatus === "error" && nodeError ? ` · ✖ ${nodeError.message} — c retry`
+    : nodeStatus === "connecting" ? ` · ${nodeSpin} connecting…`
+    : ""
+  const eventsTitleColor =
+    nodeStatus === "error" ? theme.error : nodeStatus === "connecting" ? theme.warning : theme.textMuted
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title="redbug · nodes ▸">
-        <text fg={nodeGlyphColor}>{` ${nodeGlyph} `}</text>
-        <text fg={theme.fg}>{snap?.name ?? "session"}</text>
-        {dirty && <text fg={theme.warn}>{"  ⚠ unapplied (⌃S)"}</text>}
-      </Header>
-
-      <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
-        <text fg={tab === "events" ? theme.title : theme.dim}>
-          {tab === "events" ? "▸ Events" : "  Events"}
-        </text>
-        <text fg={theme.dim}>{"   "}</text>
-        <text fg={tab === "console" ? theme.title : theme.dim}>
-          {tab === "console" ? "▸ Console" : "  Console"}
-        </text>
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <box backgroundColor={theme.background} paddingLeft={2} paddingRight={2} paddingTop={1} flexDirection="row">
+        <text fg={theme.text}>{snap?.name ?? "session"}</text>
+        {dirty && <text fg={theme.warning}>{" ⚠ unapplied (⌃S)"}</text>}
+        <box flexGrow={1} backgroundColor={theme.background} />
+        <text fg={tab === "events" ? theme.primary : theme.textMuted}>{"Events"}</text>
+        <text fg={theme.textMuted}>{"   "}</text>
+        <text fg={tab === "console" ? theme.primary : theme.textMuted}>{"Console"}</text>
       </box>
 
       {tab === "console" ? (
@@ -474,61 +451,55 @@ function SessionView({
       ) : (
       <>
       {!zoom && (
-      <box flexDirection="row" flexGrow={1} gap={1}>
+      <box flexDirection="row" flexGrow={1}>
         <box
-          border
-          borderStyle={PANEL_BORDER}
-          borderColor={focus === "list" ? theme.title : theme.border}
-          backgroundColor={theme.bg}
-          title={eventsTitle}
-          titleColor={theme.dim}
           flexGrow={1}
           flexBasis={0}
           flexDirection="column"
-          padding={1}
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={1}
         >
-          {nodeStatus === "error" && nodeError ? (
-            <box flexDirection="column" marginBottom={1}>
-              <text fg={theme.err}>{`✖ ${nodeError.message}`}</text>
-              <text fg={theme.dim}>{"c retry"}</text>
-            </box>
-          ) : nodeStatus === "connecting" ? (
-            <text fg={theme.warn} marginBottom={1}>{`${nodeSpin} connecting…`}</text>
-          ) : null}
+          <box flexDirection="row" marginBottom={1}>
+            <text fg={eventsTitleColor}>{`events · ${count}${statusSeg}`}</text>
+            <box flexGrow={1} />
+            <text fg={theme.textMuted}>{metaText}</text>
+          </box>
           <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
-            <text fg={theme.dim}>No events yet · ⇧S to start</text>
+            <text fg={theme.textMuted}>No events yet · ⇧S to start</text>
           ) : (
-            (() => {
-              const shown = rows.slice(0, 300)
-              // ditto: in the plain chronological view, dim a row's name/pid when
-              // identical to the row directly above so the eye tracks changes, not
-              // repeats. Off while grouped or filtering (there the repeats matter).
-              const ditto = group === "none" && !filter?.query
-              return shown.map((row, i) => {
-                if (row.type === "header")
-                  return <text key={row.key} fg={theme.dim}>{`▸ ${row.label} (${row.count})`}</text>
-                const prev = i > 0 ? shown[i - 1] : null
-                const prevEv = prev && prev.type === "event" ? prev.ev : null
-                return (
-                  <EventRow
-                    key={row.key}
-                    ev={row.ev}
-                    active={row.sidx === selClamped}
-                    filter={filter}
-                    cols={cols}
-                    pidWidth={pidWidth}
-                    dittoName={ditto && !!prevEv && !!row.ev.name && prevEv.name === row.ev.name}
-                    dittoPid={ditto && !!prevEv && prevEv.pid === row.ev.pid}
-                  />
-                )
-              })
-            })()
+            <scrollbox scrollY stickyStart="top" flexGrow={1}>
+              {(() => {
+                const shown = rows.slice(0, 300)
+                // ditto: dim a row's name/pid when identical to the row above so the
+                // eye tracks changes, not repeats. Off while grouped or filtering.
+                const ditto = group === "none" && !filter?.query
+                return shown.map((row, i) => {
+                  if (row.type === "header")
+                    return <text key={row.key} fg={theme.textMuted}>{`${row.label} · ${row.count}`}</text>
+                  const prev = i > 0 ? shown[i - 1] : null
+                  const prevEv = prev && prev.type === "event" ? prev.ev : null
+                  return (
+                    <EventRow
+                      key={row.key}
+                      ev={row.ev}
+                      active={row.sidx === selClamped}
+                      filter={filter}
+                      cols={cols}
+                      pidWidth={pidWidth}
+                      dittoName={ditto && !!prevEv && !!row.ev.name && prevEv.name === row.ev.name}
+                      dittoPid={ditto && !!prevEv && prevEv.pid === row.ev.pid}
+                    />
+                  )
+                })
+              })()}
+            </scrollbox>
           )}
         </box>
 
         {detailOpen && !zoom && selectedEvent && (
-          <DetailPane ev={selectedEvent} scroll={detailScroll} focused={focus === "detail"} />
+          <DetailPane ev={selectedEvent} focused={focus === "detail"} />
         )}
       </box>
       )}
@@ -593,42 +564,67 @@ function SessionView({
       {overlay === "filter" && (
         <Overlay>
           <text fg={theme.title}>Filter events</text>
-          <box marginTop={1}>
-            <FilterScopePicker scope={filterScope} onPick={setFilterScope} />
-          </box>
-          <box flexDirection="column" marginTop={1}>
-            <text fg={theme.dim}>{`scope: ${filterScope} · Tab cycles`}</text>
-            <input
-              focused
-              value={filterDraft}
-              onInput={(v: string) => setFilterDraft(v)}
-              onSubmit={() => {
-                setFilter(filterDraft.trim() === "" ? null : { scope: filterScope, query: filterDraft })
-                setOverlay("none")
-              }}
-              backgroundColor={theme.bg}
-              textColor={theme.fg}
-              focusedBackgroundColor={theme.selBg}
-              focusedTextColor={theme.selFg}
-            />
-          </box>
-          <text fg={theme.dim} marginTop={1}>Enter apply · Esc cancel</text>
+          <text fg={theme.textMuted} marginTop={1}>scope</text>
+          <select
+            focused={filterFocus === "scope"}
+            height={FILTER_SCOPES.length}
+            itemSpacing={0}
+            options={FILTER_SCOPES.map((s) => ({ name: s, description: "" }))}
+            selectedIndex={Math.max(0, FILTER_SCOPES.indexOf(filterScope))}
+            showDescription={false}
+            backgroundColor={theme.background}
+            textColor={theme.textMuted}
+            focusedBackgroundColor={theme.background}
+            focusedTextColor={theme.text}
+            selectedBackgroundColor={theme.backgroundElement}
+            selectedTextColor={theme.selectedForeground}
+            onChange={(i: number) => setFilterScope(FILTER_SCOPES[i])}
+          />
+          <text fg={theme.textMuted} marginTop={1}>query</text>
+          <input
+            focused={filterFocus === "query"}
+            value={filterDraft}
+            onInput={(v: string) => setFilterDraft(v)}
+            onSubmit={() => {
+              setFilter(filterDraft.trim() === "" ? null : { scope: filterScope, query: filterDraft })
+              setOverlay("none")
+            }}
+            backgroundColor={theme.bg}
+            textColor={theme.fg}
+            focusedBackgroundColor={theme.selBg}
+            focusedTextColor={theme.selFg}
+          />
+          <text fg={theme.dim} marginTop={1}>Tab switch scope/query · Enter apply · Esc cancel</text>
         </Overlay>
       )}
 
       {overlay === "sort" && (
         <Overlay>
           <text fg={theme.title}>Sort by</text>
-          <box flexDirection="column" marginTop={1}>
-            {SORT_OPTS.map((s, i) => (
-              <PickRow
-                key={`${s.key}-${s.dir}`}
-                label={`${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`}
-                active={i === sortIdx}
-              />
-            ))}
-          </box>
-          <text fg={theme.dim} marginTop={1}>j/k or Tab move · Enter apply · Esc cancel</text>
+          <select
+            focused
+            marginTop={1}
+            height={SORT_OPTS.length}
+            itemSpacing={0}
+            options={SORT_OPTS.map((s) => ({
+              name: `${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`,
+              description: ""
+            }))}
+            selectedIndex={sortIdx}
+            showDescription={false}
+            backgroundColor={theme.background}
+            textColor={theme.textMuted}
+            focusedBackgroundColor={theme.background}
+            focusedTextColor={theme.text}
+            selectedBackgroundColor={theme.backgroundElement}
+            selectedTextColor={theme.selectedForeground}
+            onChange={(i: number) => setSortIdx(i)}
+            onSelect={(i: number) => {
+              setSort(SORT_OPTS[i])
+              setOverlay("none")
+            }}
+          />
+          <text fg={theme.dim} marginTop={1}>j/k move · Enter apply · Esc cancel</text>
         </Overlay>
       )}
 
@@ -664,7 +660,24 @@ function SessionView({
             {traces.length === 0 ? (
               <text fg={theme.dim}>No patterns yet · n to add</text>
             ) : (
-              traces.map((t, i) => <RtpRow key={t.id} rtp={t} active={i === rtpSel} />)
+              <select
+                focused={rtpModal.kind === "none"}
+                height={traces.length}
+                itemSpacing={0}
+                options={traces.map((t) => ({
+                  name: `${t.enabled ? "[x]" : "[ ]"} ${t.text}`,
+                  description: ""
+                }))}
+                selectedIndex={rtpSel}
+                showDescription={false}
+                backgroundColor={theme.background}
+                textColor={theme.textMuted}
+                focusedBackgroundColor={theme.background}
+                focusedTextColor={theme.text}
+                selectedBackgroundColor={theme.backgroundElement}
+                selectedTextColor={theme.selectedForeground}
+                onChange={(i: number) => setRtpSel(i)}
+              />
             )}
           </box>
           <text fg={theme.dim} marginTop={1}>j/k move · space toggle · n add · e edit · d del · Ctrl+W save preset · esc close</text>
@@ -718,10 +731,10 @@ function SessionView({
           <box
             border
             borderStyle={PANEL_BORDER}
-            borderColor={theme.title}
-            backgroundColor={theme.overlay}
-            title="Detail (zoom · esc close · v view)"
-            titleColor={theme.title}
+            borderColor={theme.borderActive}
+            backgroundColor={theme.backgroundPanel}
+            title="detail · esc close · v view"
+            titleColor={theme.textMuted}
             flexDirection="column"
             paddingTop={1}
             paddingBottom={1}
@@ -729,15 +742,16 @@ function SessionView({
             paddingRight={2}
             minWidth={70}
           >
-            {detailLines(selectedEvent)
-              .slice(detailScroll)
-              .map((ln, i) =>
-                ln.term ? (
-                  <TermLine key={i} line={ln.text} bg={theme.overlay} />
-                ) : (
-                  <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
-                )
-              )}
+            <DetailMeta ev={selectedEvent} />
+            <text fg={theme.textMuted} marginTop={1}>
+              {selectedEvent.kind === "call" ? "args" : selectedEvent.kind === "retn" ? "return" : "payload"}
+            </text>
+            <code
+              content={selectedEvent.info}
+              filetype="elixir"
+              syntaxStyle={elixirStyle}
+              treeSitterClient={tsClient}
+            />
           </box>
         </box>
       )}
@@ -826,81 +840,42 @@ function Cell({
   )
 }
 
-function DetailPane({
-  ev,
-  scroll,
-  focused
-}: {
-  ev: TraceEvent
-  scroll: number
-  focused: boolean
-}) {
+function DetailMeta({ ev }: { ev: TraceEvent }) {
+  const sym = kindSym[ev.kind] ?? "?"
+  return (
+    <box flexDirection="column">
+      <text fg={theme.text}>{`kind  ${sym} ${ev.kind}`}</text>
+      <text fg={theme.text}>{`ts    ${ev.ts}`}</text>
+      <text fg={theme.text}>{`pid   ${ev.pid}`}</text>
+      <text fg={theme.text}>{`name  ${ev.name || "-"}`}</text>
+      <text fg={theme.text}>{`mfa   ${ev.mfa || "-"}`}</text>
+    </box>
+  )
+}
+
+function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
+  const payloadLabel =
+    ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
   return (
     <box
       border
       borderStyle={PANEL_BORDER}
-      borderColor={focused ? theme.title : theme.border}
-      backgroundColor={theme.bg}
-      title="Detail (z zoom · v view)"
-      titleColor={theme.title}
+      borderColor={focused ? theme.borderActive : theme.borderSubtle}
+      backgroundColor={theme.background}
+      title="detail"
+      titleColor={theme.textMuted}
       width={46}
       flexDirection="column"
       padding={1}
     >
-      {detailLines(ev)
-        .slice(scroll)
-        .map((ln, i) =>
-          ln.term ? (
-            <TermLine key={i} line={ln.text} />
-          ) : (
-            <text key={i} fg={ln.dim ? theme.dim : theme.fg}>{ln.text}</text>
-          )
-        )}
-    </box>
-  )
-}
-
-function detailLines(ev: TraceEvent): { text: string; dim?: boolean; term?: boolean }[] {
-  const sym = kindSym[ev.kind] ?? "?"
-  const payloadLabel =
-    ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
-  return [
-    { text: `kind: ${sym} ${ev.kind}` },
-    { text: `ts:   ${ev.ts}` },
-    { text: `pid:  ${ev.pid}` },
-    { text: `name: ${ev.name || "-"}` },
-    { text: `mfa:  ${ev.mfa || "-"}` },
-    { text: `${payloadLabel}:`, dim: true },
-    ...wrap(ev.info, 42).map((t) => ({ text: t, term: true }))
-  ]
-}
-
-function RtpRow({ rtp, active }: { rtp: Rtp; active: boolean }) {
-  const bg = active ? theme.selBg : theme.overlay
-  const fg = active ? theme.selFg : theme.fg
-  const mark = rtp.enabled ? "[x]" : "[ ]"
-  const markColor = rtp.enabled ? theme.on : theme.dim
-  return (
-    <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={markColor}>{`${mark} `}</text>
-      <text bg={bg} fg={rtp.enabled ? fg : theme.dim}>{rtp.text}</text>
-    </box>
-  )
-}
-
-function FilterScopePicker({
-  scope,
-  onPick
-}: {
-  scope: FilterScope
-  onPick: (s: FilterScope) => void
-}) {
-  void onPick
-  return (
-    <box flexDirection="row">
-      {FILTER_SCOPES.map((s) => (
-        <text key={s} fg={s === scope ? theme.title : theme.dim}>{`[${s}] `}</text>
-      ))}
+      <DetailMeta ev={ev} />
+      <text fg={theme.textMuted} marginTop={1}>{payloadLabel}</text>
+      <code
+        content={ev.info}
+        filetype="elixir"
+        syntaxStyle={elixirStyle}
+        treeSitterClient={tsClient}
+      />
     </box>
   )
 }
@@ -1015,13 +990,6 @@ function segs(text: string, query: string): { t: string; hit: boolean }[] {
     i = idx + q.length
   }
   return out.length === 0 ? [{ t: text, hit: false }] : out
-}
-
-function wrap(s: string, width: number): string[] {
-  if (s.length <= width) return [s]
-  const out: string[] = []
-  for (let i = 0; i < s.length; i += width) out.push(s.slice(i, i + width))
-  return out
 }
 
 function clamp(n: number, lo: number, hi: number): number {

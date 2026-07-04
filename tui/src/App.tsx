@@ -12,8 +12,8 @@ import {
   useMusubiRoot,
   useMusubiSnapshot
 } from "./musubi"
-import { theme, setTheme, PANEL_BORDER } from "./theme"
-import { Header, HelpOverlay, HintProvider, Notice, Overlay, PickRow, StatusBar, TextField, useSpinner } from "./ui"
+import { theme, setTheme } from "./theme"
+import { Divider, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, useSpinner } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -187,6 +187,15 @@ function S1View({
   // preset options for the new-session picker: "blank" + each preset
   const presetList = presetsSnap?.presets ?? []
 
+  // commit the new-session picker at a chosen index (0 = blank, 1..N = presets)
+  const commitPreset = (index: number) => {
+    if (modal.kind !== "newSessionPreset") return
+    const fromPresetId = index === 0 ? null : presetList[index - 1]?.id ?? null
+    const np = nodeProxyById(modal.nodeId)
+    if (np) dispatcher(np)("createSession", { name: modal.name, from_preset_id: fromPresetId })
+    setModal({ kind: "none" })
+  }
+
   const openNewNode = () => {
     if (envMode) return
     setNameDraft("")
@@ -219,20 +228,10 @@ function S1View({
         }
         return
 
-      case "newSessionPreset": {
-        const max = presetList.length // index 0 = blank, 1..N = presets
-        if (name === "j" || name === "down") setPresetIdx((i) => Math.min(i + 1, max))
-        else if (name === "k" || name === "up") setPresetIdx((i) => Math.max(i - 1, 0))
-        else if (name === "escape") setModal({ kind: "none" })
-        else if (name === "return") {
-          const fromPresetId = presetIdx === 0 ? null : presetList[presetIdx - 1].id
-          const np = nodeProxyById(modal.nodeId)
-          if (np)
-            dispatcher(np)("createSession", { name: modal.name, from_preset_id: fromPresetId })
-          setModal({ kind: "none" })
-        }
+      case "newSessionPreset":
+        // <select> owns j/k/return; only Esc closes the overlay
+        if (name === "escape") setModal({ kind: "none" })
         return
-      }
 
       case "newNode":
       case "editNode":
@@ -393,21 +392,9 @@ function S1View({
   })
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title="redbug · nodes ▸ sessions" />
-
-      <box flexDirection="row" flexGrow={1} gap={1}>
-        <box
-          border
-          borderStyle={PANEL_BORDER}
-          borderColor={focus === "nodes" ? theme.title : theme.border}
-          backgroundColor={theme.bg}
-          title={`Nodes (${nodeList.length})`}
-          titleColor={theme.title}
-          width={38}
-          flexDirection="column"
-          padding={1}
-        >
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <box flexDirection="row" flexGrow={1} paddingTop={1}>
+        <Panel heading={`nodes · ${nodeList.length}`} active={focus === "nodes"} width={40}>
           {nodeList.length === 0 ? (
             <EmptyTree />
           ) : (
@@ -415,38 +402,26 @@ function S1View({
               <NodeRow key={n.id} node={n} active={i === nodeIdx} />
             ))
           )}
-        </box>
+        </Panel>
 
-        <box
-          border
-          borderStyle={PANEL_BORDER}
-          borderColor={focus === "sessions" ? theme.title : theme.border}
-          backgroundColor={theme.bg}
-          title={node ? `${node.name} — sessions` : "—"}
-          titleColor={theme.title}
-          flexGrow={1}
-          flexBasis={0}
-          flexDirection="column"
-          padding={1}
-        >
+        <Divider />
+
+        <Panel heading={node ? node.name : "—"} active={focus === "sessions"} grow>
           {node && <NodeDetailBand node={node} error={nodeError} />}
           {!node ? (
-            <text fg={theme.dim}>Select a node</text>
+            <text fg={theme.textMuted}>Select a node</text>
           ) : sessions.length === 0 ? (
-            <text fg={theme.dim}>No sessions · s to add</text>
+            <text fg={theme.textMuted}>No sessions · s to add</text>
           ) : (
             sessions.map((s, i) => (
               <SessionRow key={s.id} session={s} active={focus === "sessions" && i === sessIdx} />
             ))
           )}
-        </box>
+        </Panel>
       </box>
 
       <StatusBar
-        statusText={
-          `${"▮".repeat(connCount)}${"▯".repeat(Math.max(0, nodeList.length - connCount))} ` +
-          `${connCount}/${nodeList.length} up`
-        }
+        statusText={`${connCount}/${nodeList.length} connected`}
         hints={
           focus === "nodes"
             ? envMode
@@ -476,6 +451,8 @@ function S1View({
           onSshHost={setSshHostDraft}
           onSshUser={setSshUserDraft}
           onContainer={setContainerDraft}
+          onPresetChange={setPresetIdx}
+          onPickPreset={commitPreset}
           onCommit={(m, payload) => {
             if (m === "newSessionName")
               setModal({ kind: "newSessionPreset", nodeId: (modal as any).nodeId, name: payload })
@@ -505,40 +482,41 @@ function EmptyTree() {
 }
 
 function NodeRow({ node, active }: { node: Node; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
-  const fg = active ? theme.selFg : theme.fg
-  // 1-wide status glyph: spinner while connecting (circleHalves keeps the column
-  // from shifting), else ●/✖/○ for connected/error/idle.
-  const spin = useSpinner(node.status === "connecting", "circle")
-  const glyph =
+  const bg = active ? theme.backgroundElement : theme.background
+  // color-weight: connected node reads bright, others muted. A small status dot
+  // carries the state; a braille spinner while connecting.
+  const spin = useSpinner(node.status === "connecting", "braille")
+  // only surface exceptions: idle nodes get no glyph (just alignment space);
+  // connected/connecting/error carry a colored dot.
+  const dot =
     node.status === "connected" ? "●"
     : node.status === "connecting" ? spin
-    : node.status === "error" ? "✖"
-    : "○"
-  const glyphColor =
-    node.status === "connected" ? theme.on
-    : node.status === "connecting" ? theme.warn
-    : node.status === "error" ? theme.err
-    : theme.off
+    : node.status === "error" ? "●"
+    : " "
+  const dotColor =
+    node.status === "connected" ? theme.success
+    : node.status === "connecting" ? theme.warning
+    : node.status === "error" ? theme.error
+    : theme.textMuted
+  const nameColor = active || node.status === "connected" ? theme.text : theme.textMuted
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={glyphColor}>{`${glyph} `}</text>
-      <text bg={bg} fg={fg}>{node.name}</text>
-      <text bg={bg} fg={theme.dim}>{`  (${node.sessions.length})`}</text>
-      {node.source === "env" && <text bg={bg} fg={theme.dim}>{"  env"}</text>}
+      <text bg={bg} fg={dotColor}>{`  ${dot} `}</text>
+      <text bg={bg} fg={nameColor}>{node.name}</text>
+      <text bg={bg} fg={theme.textMuted}>{`   ${node.sessions.length}`}</text>
+      {node.source === "env" && <text bg={bg} fg={theme.textMuted}>{"  env"}</text>}
     </box>
   )
 }
 
-// Meta strip atop the sessions panel. Normal: SSH route + env badge (skipped
-// when there's nothing to show). On a node connect error it turns red and shows
-// the message + retry hint, replacing the old floating Flash.
+// Meta line under the sessions heading: SSH route + env badge, or the connect
+// error (muted, not a framed banner — the error color carries the weight).
 function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppError | null }) {
   if (error) {
     return (
-      <box flexDirection="column" marginBottom={1}>
-        <text fg={theme.err}>{`✖ ${error.message}`}</text>
-        <text fg={theme.dim}>{"c retry"}</text>
+      <box flexDirection="row" marginBottom={1}>
+        <text fg={theme.error}>{error.message}</text>
+        <text fg={theme.textMuted}>{"  · c retry"}</text>
       </box>
     )
   }
@@ -550,19 +528,17 @@ function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppE
   if (parts.length === 0) return null
   return (
     <box flexDirection="row" marginBottom={1}>
-      <text fg={theme.dim}>{parts.join("  ·  ")}</text>
+      <text fg={theme.textMuted}>{parts.join("  ·  ")}</text>
     </box>
   )
 }
 
 function SessionRow({ session, active }: { session: Session; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
-  const fg = active ? theme.selFg : theme.fg
+  const bg = active ? theme.backgroundElement : theme.background
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={active ? theme.accent : theme.dim}>{active ? "► " : "  "}</text>
-      <text bg={bg} fg={fg}>{session.name}</text>
-      <text bg={bg} fg={theme.dim}>{`  [${session.status}]`}</text>
+      <text bg={bg} fg={theme.text}>{`  ${session.name}`}</text>
+      <text bg={bg} fg={theme.textMuted}>{`  ${session.status}`}</text>
     </box>
   )
 }
@@ -582,6 +558,8 @@ function ModalLayer({
   onSshHost,
   onSshUser,
   onContainer,
+  onPresetChange,
+  onPickPreset,
   onCommit
 }: {
   modal: Modal
@@ -598,6 +576,8 @@ function ModalLayer({
   onSshHost: (v: string) => void
   onSshUser: (v: string) => void
   onContainer: (v: string) => void
+  onPresetChange: (index: number) => void
+  onPickPreset: (index: number) => void
   onCommit: (kind: Modal["kind"], value: string) => void
 }) {
   const box = (title: string, children: ReactNode) => (
@@ -694,10 +674,25 @@ function ModalLayer({
       return box(
         `Session "${modal.name}" — init from`,
         <>
-          <PickRow label="(blank)" active={presetIdx === 0} />
-          {presetList.map((p, i) => (
-            <PickRow key={p.id} label={p.name} active={presetIdx === i + 1} />
-          ))}
+          <select
+            focused
+            height={presetList.length + 1}
+            itemSpacing={0}
+            options={[
+              { name: "(blank)", description: "" },
+              ...presetList.map((p) => ({ name: p.name, description: "" }))
+            ]}
+            selectedIndex={presetIdx}
+            showDescription={false}
+            backgroundColor={theme.background}
+            textColor={theme.textMuted}
+            focusedBackgroundColor={theme.background}
+            focusedTextColor={theme.text}
+            selectedBackgroundColor={theme.backgroundElement}
+            selectedTextColor={theme.selectedForeground}
+            onChange={(i: number) => onPresetChange(i)}
+            onSelect={(i: number) => onPickPreset(i)}
+          />
           <text fg={theme.dim} marginTop={1}>j/k move · Enter create · Esc cancel</text>
         </>
       )

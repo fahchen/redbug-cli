@@ -5,8 +5,9 @@ import type { StoreProxy } from "@musubi/react"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
-import { theme, PANEL_BORDER } from "./theme"
-import { HelpOverlay, Overlay, PickRow, RootGate, StatusBar, TermLine } from "./ui"
+import { theme } from "./theme"
+import { elixirStyle, tsClient } from "./treesitter"
+import { HelpOverlay, Overlay, RootGate, StatusBar } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -17,7 +18,7 @@ type ExecStatus = "running" | "ok" | "error" | "stopped" | "timeout"
 const STATUS_GLYPH: Record<ExecStatus, string> = {
   running: "⟳",
   ok: "✓",
-  error: "✗",
+  error: "✖",
   stopped: "⊘",
   timeout: "⧖"
 }
@@ -29,14 +30,14 @@ function statusGlyph(status: string): string {
 function statusColor(status: string): string {
   switch (status as ExecStatus) {
     case "ok":
-      return theme.on
+      return theme.success
     case "error":
     case "timeout":
-      return theme.off
+      return theme.error
     case "running":
-      return theme.warn
+      return theme.warning
     default:
-      return theme.dim
+      return theme.textMuted
   }
 }
 
@@ -108,15 +109,8 @@ function ConsoleView({
     }
 
     if (modal.kind === "pickSnippet") {
-      const max = snippets.length // 0 = blank, 1..N = snippets
-      if (n === "j" || n === "down") setPick((i) => Math.min(i + 1, max))
-      else if (n === "k" || n === "up") setPick((i) => Math.max(i - 1, 0))
-      else if (n === "escape") setModal({ kind: "none" })
-      else if (n === "return") {
-        const snip = pick === 0 ? null : snippets[pick - 1]
-        setModal({ kind: "none" })
-        composeAndRun(snip?.code ?? "", snip?.name ?? null)
-      }
+      // <select> owns j/k/return; only Esc closes the overlay
+      if (n === "escape") setModal({ kind: "none" })
       return
     }
 
@@ -180,44 +174,28 @@ function ConsoleView({
   })
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <box flexDirection="row" flexGrow={1} gap={1}>
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <box flexDirection="row" flexGrow={1}>
         <box
-          border
-          borderStyle={PANEL_BORDER}
-          borderColor={theme.title}
-          backgroundColor={theme.bg}
-          title={`History (${history.length})`}
-          titleColor={theme.title}
           width={38}
           flexDirection="column"
-          padding={1}
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={1}
         >
+          <text fg={theme.primary} marginBottom={1}>{`console · ${history.length}`}</text>
           {history.length === 0 ? (
-            <text fg={theme.dim}>No executions yet · n to run</text>
+            <text fg={theme.textMuted}>No executions yet · n to run</text>
           ) : (
-            history.map((e, i) => <HistoryRow key={e.id} exec={e} active={i === sel} />)
+            <scrollbox scrollY stickyStart="top" flexGrow={1}>
+              {history.map((e, i) => (
+                <HistoryRow key={e.id} exec={e} active={i === sel} />
+              ))}
+            </scrollbox>
           )}
         </box>
 
-        <box
-          border
-          borderStyle={PANEL_BORDER}
-          borderColor={theme.border}
-          backgroundColor={theme.bg}
-          title={cur ? `${cur.name || "execution"} — ${cur.status}` : "—"}
-          titleColor={theme.title}
-          flexGrow={1}
-          flexBasis={0}
-          flexDirection="column"
-          padding={1}
-        >
-          {!cur ? (
-            <text fg={theme.dim}>Select an execution</text>
-          ) : (
-            <ExecDetail exec={cur} />
-          )}
-        </box>
+        {cur && <ExecDetail exec={cur} />}
       </box>
 
       <StatusBar
@@ -253,25 +231,44 @@ function ConsoleView({
 
       {modal.kind === "pickSnippet" && (
         <Overlay title="New execution — start from">
-          <PickRow label="(blank)" active={pick === 0} />
-          {snippets.map((s, i) => (
-            <PickRow key={s.id} label={s.name} active={pick === i + 1} />
-          ))}
-          <text fg={theme.dim} marginTop={1}>j/k move · Enter compose in $EDITOR · Esc cancel</text>
+          <select
+            focused
+            height={snippets.length + 1}
+            itemSpacing={0}
+            options={[
+              { name: "(blank)", description: "" },
+              ...snippets.map((s) => ({ name: s.name, description: "" }))
+            ]}
+            selectedIndex={pick}
+            showDescription={false}
+            backgroundColor={theme.background}
+            textColor={theme.textMuted}
+            focusedBackgroundColor={theme.background}
+            focusedTextColor={theme.text}
+            selectedBackgroundColor={theme.backgroundElement}
+            selectedTextColor={theme.selectedForeground}
+            onChange={(i: number) => setPick(i)}
+            onSelect={(i: number) => {
+              const snip = i === 0 ? null : snippets[i - 1]
+              setModal({ kind: "none" })
+              composeAndRun(snip?.code ?? "", snip?.name ?? null)
+            }}
+          />
+          <text fg={theme.textMuted} marginTop={1}>j/k move · Enter compose in $EDITOR · Esc cancel</text>
         </Overlay>
       )}
 
       {modal.kind === "confirmStop" && (
         <Overlay>
-          <text fg={theme.fg}>Force-stop (kill) this running execution?</text>
-          <text fg={theme.dim} marginTop={1}>side effects already run cannot be undone · y = yes · n/Esc = no</text>
+          <text fg={theme.text}>Force-stop (kill) this running execution?</text>
+          <text fg={theme.textMuted} marginTop={1}>side effects already run cannot be undone · y = yes · n/Esc = no</text>
         </Overlay>
       )}
 
       {modal.kind === "confirmClear" && (
         <Overlay>
-          <text fg={theme.fg}>Clear the entire execution history?</text>
-          <text fg={theme.dim} marginTop={1}>history is server-held, not just this view · y = yes · n/Esc = no</text>
+          <text fg={theme.text}>Clear the entire execution history?</text>
+          <text fg={theme.textMuted} marginTop={1}>history is server-held, not just this view · y = yes · n/Esc = no</text>
         </Overlay>
       )}
     </box>
@@ -279,15 +276,14 @@ function ConsoleView({
 }
 
 function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
-  const fg = active ? theme.selFg : theme.fg
+  const bg = active ? theme.backgroundElement : theme.background
+  const fg = active ? theme.text : theme.textMuted
   const glyph = statusGlyph(exec.status)
   const label = exec.name?.trim() ? exec.name : firstLine(exec.code)
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={active ? theme.accent : theme.bg}>{active ? "►" : " "}</text>
       <text bg={bg} fg={statusColor(exec.status)}>{`${glyph} `}</text>
-      <text bg={bg} fg={theme.dim}>{`${exec.ts} `}</text>
+      <text bg={bg} fg={theme.textMuted}>{`${exec.ts} `}</text>
       <text bg={bg} fg={fg}>{label}</text>
     </box>
   )
@@ -295,30 +291,39 @@ function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
 
 function ExecDetail({ exec }: { exec: Exec }) {
   const dur = exec.duration_ms == null ? "—" : `${exec.duration_ms}ms`
+  const code = exec.code.split("\n").slice(0, 12).join("\n")
   return (
-    <box flexDirection="column">
+    <box
+      flexGrow={1}
+      flexBasis={0}
+      flexDirection="column"
+      paddingLeft={2}
+      paddingRight={2}
+      paddingTop={1}
+    >
       <text fg={statusColor(exec.status)}>{`${statusGlyph(exec.status)} ${exec.status} · ${exec.ts} · ${dur}`}</text>
-      <text fg={theme.dim} marginTop={1}>code</text>
-      {wrap(exec.code, 60).slice(0, 12).map((l, i) => (
-        <text key={`c${i}`} fg={theme.fg}>{l}</text>
-      ))}
+      <text fg={theme.textMuted} marginTop={1}>code</text>
+      <code content={code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
       {exec.result?.trim() !== "" && (
         <>
-          <text fg={theme.dim} marginTop={1}>result</text>
-          {wrap(exec.result, 60).slice(0, 10).map((l, i) => (
-            <TermLine key={`r${i}`} line={l} />
-          ))}
+          <text fg={theme.textMuted} marginTop={1}>result</text>
+          <code
+            content={exec.result.split("\n").slice(0, 10).join("\n")}
+            filetype="elixir"
+            syntaxStyle={elixirStyle}
+            treeSitterClient={tsClient}
+          />
         </>
       )}
       {exec.output?.trim() !== "" && (
         <>
-          <text fg={theme.dim} marginTop={1}>stdout</text>
+          <text fg={theme.textMuted} marginTop={1}>stdout</text>
           {wrap(exec.output, 60).slice(0, 10).map((l, i) => (
-            <text key={`o${i}`} fg={theme.dim}>{l}</text>
+            <text key={`o${i}`} fg={theme.textMuted}>{l}</text>
           ))}
         </>
       )}
-      <text fg={theme.dim} marginTop={1}>v opens full code + output in $EDITOR</text>
+      <text fg={theme.textMuted} marginTop={1}>v opens full code + output in $EDITOR</text>
     </box>
   )
 }
