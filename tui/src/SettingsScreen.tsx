@@ -101,19 +101,19 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
   return (
     <>
       <Overlay title="Settings" minWidth={66}>
-        <SettingRow label="theme" value={curTheme} active={sel === 0} />
-        <SettingRow label="default sort" value={curSort} active={sel === 1} />
-        <SettingRow label="col · name" value={cols.name ? "[x]" : "[ ]"} active={sel === 2} spacedAbove />
-        <SettingRow label="col · pid" value={cols.pid ? "[x]" : "[ ]"} active={sel === 3} />
-        <SettingRow label="col · mfa" value={cols.mfa ? "[x]" : "[ ]"} active={sel === 4} />
-        <SettingRow label="col · info" value={cols.info ? "[x]" : "[ ]"} active={sel === 5} />
+        <SettingRow label="Theme" value={curTheme} active={sel === 0} />
+        <SettingRow label="Default sort" value={curSort} active={sel === 1} />
+        <SettingRow label="Col · name" value={cols.name ? "[x]" : "[ ]"} active={sel === 2} spacedAbove />
+        <SettingRow label="Col · pid" value={cols.pid ? "[x]" : "[ ]"} active={sel === 3} />
+        <SettingRow label="Col · mfa" value={cols.mfa ? "[x]" : "[ ]"} active={sel === 4} />
+        <SettingRow label="Col · info" value={cols.info ? "[x]" : "[ ]"} active={sel === 5} />
         <SettingRow
-          label="default limits"
+          label="Default limits"
           value={`keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}
           active={sel === 6}
           spacedAbove
         />
-        <SettingRow label="show hints" value={showHints ? "[x]" : "[ ]"} active={sel === 7} spacedAbove />
+        <SettingRow label="Show hints" value={showHints ? "[x]" : "[ ]"} active={sel === 7} spacedAbove />
         <box flexDirection="row" marginTop={1}>
           <text fg={theme.dim}>{fit("$EDITOR", 16)}</text>
           <text fg={theme.dim}>{`${editor} (read-only · set via env)`}</text>

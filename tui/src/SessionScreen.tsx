@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor, PANEL_BORDER } from "./theme"
-import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, InfoPeek, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
+import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 import { elixirStyle, tsClient } from "./treesitter"
@@ -51,6 +51,14 @@ const SORT_OPTS: Sort[] = [
 
 const FILTER_SCOPES: FilterScope[] = ["all", "mfa", "pid", "info"]
 const GROUP_CYCLE: GroupKey[] = ["none", "pid", "mfa", "kind"]
+
+// Cheat-sheet shown in the trace editor: redbug RTP patterns in Elixir syntax.
+const RTP_EXAMPLES: [string, string][] = [
+  ["Enum.map/2 -> return", "call args + return value"],
+  ["MyMod.func -> return;stack", "+ call stack"],
+  ["Demo.tick when '$1' > 100 -> return", "guard on 1st arg"],
+  ["Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"]
+]
 
 const COL = { ts: 12, k: 1, name: 16, pid: 11, mfa: 22, info: 44 }
 const COLGAP = 2
@@ -295,7 +303,6 @@ function SessionView({
 
     // list focus
     if (key.ctrl) {
-      if (n === "left" || n === "right") return setTab("console")
       if (n === "l") return dispatch("clearEvents")
       if (n === "s") return dispatch("applyRestart")
       if (detailOpen && (n === "j" || n === "down")) return moveSel(1)
@@ -303,9 +310,7 @@ function SessionView({
       return
     }
 
-    // vim-directional tab switch (Shift+L/H); lowercase l/h collide (l = limits).
-    if (n === "L" || n === "H" || (key.shift && (n === "l" || n === "h")))
-      return setTab("console")
+    // tab switch (Events ⇄ Console) is owned by the <tab-select> header via [ / ].
 
     switch (n) {
       case "escape":
@@ -396,7 +401,14 @@ function SessionView({
       case "escape":
         setOverlay("none")
         break
-      // j/k/up/down owned by the <select> below
+      case "j":
+      case "down":
+        setRtpSel((i) => (traces.length === 0 ? 0 : Math.min(i + 1, traces.length - 1)))
+        break
+      case "k":
+      case "up":
+        setRtpSel((i) => Math.max(i - 1, 0))
+        break
       case "space":
         if (rtpCur) dispatch("toggleTrace", { trace_id: rtpCur.id })
         break
@@ -418,17 +430,6 @@ function SessionView({
   // row. Connected is silent (only exceptions surface); connecting/error take
   // over the title (and error tints the whole frame red), dropping the
   // sort/group meta since a down node has no events to sort anyway.
-  const metaText =
-    `sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"} · ` +
-    `filter:${filter ? `${filter.scope}/${filter.query}` : "-"} · ` +
-    `group:${group}`
-
-  const statusSeg =
-    nodeStatus === "error" && nodeError ? ` · ✖ ${nodeError.message} — c retry`
-    : nodeStatus === "connecting" ? ` · ${nodeSpin} connecting…`
-    : ""
-  const eventsTitleColor =
-    nodeStatus === "error" ? theme.error : nodeStatus === "connecting" ? theme.warning : theme.textMuted
   const eventsBorderColor =
     nodeStatus === "error" ? theme.error
     : nodeStatus === "connecting" ? theme.warning
@@ -437,22 +438,34 @@ function SessionView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      <box backgroundColor={theme.background} paddingLeft={2} paddingRight={2} paddingTop={1} flexDirection="row">
+      <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
         <text fg={theme.text}>{snap?.name ?? "session"}</text>
         {dirty && <text fg={theme.warning}>{" ⚠ unapplied (⌃S)"}</text>}
         <box flexGrow={1} backgroundColor={theme.background} />
-        <text fg={tab === "events" ? theme.primary : theme.textMuted}>{"Events"}</text>
-        <text fg={theme.textMuted}>{"   "}</text>
-        <text fg={tab === "console" ? theme.primary : theme.textMuted}>{"Console"}</text>
+        <tab-select
+          focused={overlay === "none" && !zoom}
+          width={18}
+          tabWidth={9}
+          showDescription={false}
+          showScrollArrows={false}
+          showUnderline={false}
+          wrapSelection
+          options={[
+            { name: "Events", description: "" },
+            { name: "Console", description: "" }
+          ]}
+          backgroundColor={theme.background}
+          textColor={theme.textMuted}
+          focusedBackgroundColor={theme.background}
+          focusedTextColor={theme.textMuted}
+          selectedBackgroundColor={theme.background}
+          selectedTextColor={theme.primary}
+          onChange={(i: number) => setTab(i === 0 ? "events" : "console")}
+        />
       </box>
 
       {tab === "console" ? (
-        <ConsoleTab
-          nodeId={nodeId}
-          sessionId={sessionId}
-          onSwitchToEvents={() => setTab("events")}
-          onBack={onBack}
-        />
+        <ConsoleTab nodeId={nodeId} sessionId={sessionId} onBack={onBack} />
       ) : (
       <>
       {!zoom && (
@@ -461,20 +474,19 @@ function SessionView({
           border
           borderStyle={PANEL_BORDER}
           borderColor={eventsBorderColor}
-          title={` events · ${count}${statusSeg} `}
-          titleColor={eventsTitleColor}
+          title={
+            detailOpen
+              ? undefined
+              : ` Sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"} · Filter:${filter ? `${filter.scope}/${filter.query}` : "-"} · Group:${group} `
+          }
+          titleAlignment="right"
+          titleColor={theme.textMuted}
           backgroundColor={theme.background}
           flexGrow={1}
           flexBasis={0}
           flexDirection="column"
-          paddingLeft={2}
-          paddingRight={2}
-          paddingTop={1}
+          padding={1}
         >
-          <box flexDirection="row" marginBottom={1}>
-            <box flexGrow={1} />
-            <text fg={theme.textMuted}>{metaText}</text>
-          </box>
           <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
             <text fg={theme.textMuted}>No events yet · ⇧S to start</text>
@@ -516,17 +528,19 @@ function SessionView({
 
       {error && <Flash error={error} />}
 
-      {!detailOpen && !zoom && selectedEvent && selectedEvent.info.length > COL.info && (
-        <InfoPeek text={selectedEvent.info} />
-      )}
-
       <StatusBar
-        statusText={
-          `${count} · ${events.length}/${limits.keep}` +
-          (running && buckets.current.some((v) => v > 0) ? ` ${sparkline(buckets.current)}` : "")
+        statChip={
+          nodeStatus === "error" && nodeError ? (
+            <text fg={theme.error}>{`✖ ${nodeError.message} · c retry`}</text>
+          ) : nodeStatus === "connecting" ? (
+            <text fg={theme.warning}>{`${nodeSpin} connecting…`}</text>
+          ) : (
+            <text fg={theme.textMuted}>
+              {`${running && buckets.current.some((v) => v > 0) ? `${sparkline(buckets.current)}  ` : ""}${events.length}/${limits.keep}`}
+            </text>
+          )
         }
-        tone={running ? "on" : "dim"}
-        hints="j/k move · enter detail · t traces · ⇧S/X run/stop · ? help · esc back"
+        hints="j/k move · enter detail · t traces · ⇧S/X run/stop · [/] tabs · ? help · esc back"
       />
 
       {overlay === "errorDetail" && error && (
@@ -563,7 +577,7 @@ function SessionView({
             {
               title: "tabs",
               lines: [
-                ["L / ⌃→", "switch to Console"],
+                ["[ / ]", "switch Events ⇄ Console"],
                 ["esc", "back"]
               ]
             }
@@ -574,7 +588,7 @@ function SessionView({
       {overlay === "filter" && (
         <Overlay>
           <text fg={theme.title}>Filter events</text>
-          <text fg={theme.textMuted} marginTop={1}>scope</text>
+          <text fg={theme.textMuted} marginTop={1}>Scope</text>
           <select
             focused={filterFocus === "scope"}
             height={FILTER_SCOPES.length}
@@ -590,7 +604,7 @@ function SessionView({
             selectedTextColor={theme.selectedForeground}
             onChange={(i: number) => setFilterScope(FILTER_SCOPES[i])}
           />
-          <text fg={theme.textMuted} marginTop={1}>query</text>
+          <text fg={theme.textMuted} marginTop={1}>Query</text>
           <input
             focused={filterFocus === "query"}
             value={filterDraft}
@@ -663,68 +677,69 @@ function SessionView({
         </Overlay>
       )}
 
-      {overlay === "editor" && (
+      {overlay === "editor" && rtpModal.kind === "none" && (
+        // Level 1 — trace list: select / toggle / delete. New & edit open a
+        // second page (below) so this stays clean; examples live on that page.
         <Overlay>
-          <text fg={theme.title}>{`Traces — ${snap?.name ?? ""}`}</text>
+          <text fg={theme.title}>{"Traces"}</text>
           <box flexDirection="column" marginTop={1}>
             {traces.length === 0 ? (
               <text fg={theme.dim}>No patterns yet · n to add</text>
             ) : (
-              <select
-                focused={rtpModal.kind === "none"}
-                height={traces.length}
-                itemSpacing={0}
-                options={traces.map((t) => ({
-                  name: `${t.enabled ? "[x]" : "[ ]"} ${t.text}`,
-                  description: ""
-                }))}
-                selectedIndex={rtpSel}
-                showDescription={false}
-                backgroundColor={theme.overlay}
-                textColor={theme.textMuted}
-                focusedBackgroundColor={theme.overlay}
-                focusedTextColor={theme.text}
-                selectedBackgroundColor={theme.backgroundElement}
-                selectedTextColor={theme.selectedForeground}
-                onChange={(i: number) => setRtpSel(i)}
-              />
+              // manual list (not <select>): highlight = selection, no ► marker
+              traces.map((t, i) => {
+                const on = i === rtpSel
+                const bg = on ? theme.backgroundElement : theme.overlay
+                return (
+                  <box key={t.id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+                    <text bg={bg} fg={t.enabled ? theme.success : theme.textMuted}>{t.enabled ? "[x] " : "[ ] "}</text>
+                    <text bg={bg} fg={on ? theme.text : theme.textMuted}>{t.text}</text>
+                  </box>
+                )
+              })
             )}
           </box>
-          <text fg={theme.dim} marginTop={1}>j/k move · space toggle · n add · e edit · d del · Ctrl+W save preset · esc close</text>
-          {rtpModal.kind === "add" && (
-            <TextField
-              key="rtp-add"
-              label="New RTP:"
-              hint="redbug spec, e.g. lists:seq/2 -> return"
-              onSubmit={(v) => {
-                if (v.trim() !== "") dispatch("addTrace", { text: v })
-                setRtpModal({ kind: "none" })
-              }}
-            />
-          )}
-          {rtpModal.kind === "edit" && (
-            <TextField
-              key="rtp-edit"
-              label="Edit RTP:"
-              hint="redbug spec, e.g. lists:seq/2 -> return"
-              initial={rtpModal.text}
-              onSubmit={(v) => {
-                dispatch("updateTrace", { trace_id: rtpModal.id, text: v })
-                setRtpModal({ kind: "none" })
-              }}
-            />
-          )}
-          {rtpModal.kind === "savePreset" && (
-            <TextField
-              key="rtp-savePreset"
-              label="Save as preset — name:"
-              hint="reusable template (traces + limits)"
-              onSubmit={(v) => {
-                if (v.trim() !== "") dispatch("saveAsPreset", { name: v })
-                setRtpModal({ kind: "none" })
-              }}
-            />
-          )}
+          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · space toggle · ⌃W save preset · esc close</text>
+        </Overlay>
+      )}
+
+      {overlay === "editor" && (rtpModal.kind === "add" || rtpModal.kind === "edit") && (
+        // Level 2 — new / edit form. Input on top, RTP cheat-sheet as reference.
+        <Overlay>
+          <TextField
+            key={rtpModal.kind === "edit" ? "rtp-edit" : "rtp-add"}
+            label={rtpModal.kind === "edit" ? "Edit RTP:" : "New RTP:"}
+            hint="redbug spec, e.g. lists:seq/2 -> return"
+            initial={rtpModal.kind === "edit" ? rtpModal.text : undefined}
+            onSubmit={(v) => {
+              if (rtpModal.kind === "edit") dispatch("updateTrace", { trace_id: rtpModal.id, text: v })
+              else if (v.trim() !== "") dispatch("addTrace", { text: v })
+              setRtpModal({ kind: "none" })
+            }}
+          />
+          <box flexDirection="column" marginTop={1}>
+            <text fg={theme.textMuted}>Common RTP rules (Elixir)</text>
+            {RTP_EXAMPLES.map(([pat, desc]) => (
+              <box key={pat} flexDirection="row">
+                <text fg={theme.dim}>{pat.padEnd(38)}</text>
+                <text fg={theme.dim}>{desc}</text>
+              </box>
+            ))}
+          </box>
+        </Overlay>
+      )}
+
+      {overlay === "editor" && rtpModal.kind === "savePreset" && (
+        <Overlay>
+          <TextField
+            key="rtp-savePreset"
+            label="Save as preset — name:"
+            hint="reusable template (traces + limits)"
+            onSubmit={(v) => {
+              if (v.trim() !== "") dispatch("saveAsPreset", { name: v })
+              setRtpModal({ kind: "none" })
+            }}
+          />
         </Overlay>
       )}
 
@@ -751,12 +766,12 @@ function SessionView({
 function ColumnHeader({ cols, pidWidth }: { cols: Cols; pidWidth: number }) {
   return (
     <box flexDirection="row">
-      <text fg={theme.dim} marginRight={COLGAP}>{fit("ts", COL.ts)}</text>
+      <text fg={theme.dim} marginRight={COLGAP}>{fit("Ts", COL.ts)}</text>
       <text fg={theme.dim} marginRight={COLGAP}>{" k "}</text>
-      {cols.name && <text fg={theme.dim} marginRight={COLGAP}>{fit("name", COL.name)}</text>}
-      {cols.pid && <text fg={theme.dim} marginRight={COLGAP}>{fit("pid", pidWidth)}</text>}
-      {cols.mfa && <text fg={theme.dim} marginRight={COLGAP}>{fit("mfa", COL.mfa)}</text>}
-      {cols.info && <text fg={theme.dim}>{fit("info", COL.info)}</text>}
+      {cols.name && <text fg={theme.dim} marginRight={COLGAP}>{fit("Name", COL.name)}</text>}
+      {cols.pid && <text fg={theme.dim} marginRight={COLGAP}>{fit("Pid", pidWidth)}</text>}
+      {cols.mfa && <text fg={theme.dim} marginRight={COLGAP}>{fit("Mfa", COL.mfa)}</text>}
+      {cols.info && <text fg={theme.dim}>{fit("Info", COL.info)}</text>}
     </box>
   )
 }
@@ -781,9 +796,9 @@ function EventRow({
   if (ev.kind === "restart")
     return <text fg={theme.dim}>{`── ${ev.info} ──`}</text>
 
-  const bg = active ? theme.selBg : theme.bg
-  const fg = active ? theme.selFg : theme.fg
-  const kc = kindColor[ev.kind] ?? theme.fg
+  const bg = active ? theme.backgroundElement : theme.background
+  const fg = active ? theme.selectedForeground : theme.text
+  const kc = kindColor[ev.kind] ?? theme.text
   const sym = kindSym[ev.kind] ?? "?"
   const hl = (scope: FilterScope) =>
     filter && (filter.scope === scope || filter.scope === "all") ? filter.query : ""
@@ -831,11 +846,11 @@ function DetailMeta({ ev }: { ev: TraceEvent }) {
   const sym = kindSym[ev.kind] ?? "?"
   return (
     <box flexDirection="row" flexWrap="wrap">
-      <Chip label="kind" value={`${sym} ${ev.kind}`} />
-      <Chip label="ts" value={ev.ts} />
-      <Chip label="pid" value={ev.pid} />
-      <Chip label="name" value={ev.name || "-"} />
-      <Chip label="mfa" value={ev.mfa || "-"} />
+      <Chip label="Kind" value={`${sym} ${ev.kind}`} />
+      <Chip label="Ts" value={ev.ts} />
+      <Chip label="Pid" value={ev.pid} />
+      <Chip label="Name" value={ev.name || "-"} />
+      <Chip label="Mfa" value={ev.mfa || "-"} />
     </box>
   )
 }

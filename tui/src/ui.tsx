@@ -50,10 +50,12 @@ export function HintProvider({ show, children }: { show: boolean; children: Reac
 // lives in each screen's `?` overlay.
 export function StatusBar({
   statusText,
+  statChip,
   tone = "dim",
   hints
 }: {
   statusText?: string
+  statChip?: ReactNode
   tone?: keyof Theme
   hints?: string
 }) {
@@ -67,6 +69,7 @@ export function StatusBar({
   const segs = hintText === "" ? [] : hintText.split(" · ")
   return (
     <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} flexDirection="row">
+      {statChip}
       {left !== "" && (
         <text bg={theme.background} fg={theme[tone]}>
           {left}
@@ -88,17 +91,6 @@ export function StatusBar({
   )
 }
 
-// One-line peek of the selected row's full value, shown above the StatusBar when
-// the list column truncated it. Cheap progressive disclosure: read the whole
-// payload without opening (and later closing) the Detail pane.
-export function InfoPeek({ text }: { text: string }) {
-  const { width } = useTerminalDimensions()
-  return (
-    <box backgroundColor={theme.overlay} paddingLeft={1} paddingRight={1} flexDirection="row">
-      <text bg={theme.overlay} fg={theme.dim}>{truncate(`▸ ${text}`, Math.max(0, width - 2))}</text>
-    </box>
-  )
-}
 
 // Top title bar shared by every screen. `children` carry per-screen status/info
 // chips that sit to the right of the title.

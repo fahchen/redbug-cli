@@ -44,20 +44,16 @@ function statusColor(status: string): string {
 export function ConsoleTab({
   nodeId,
   sessionId,
-  onSwitchToEvents,
   onBack
 }: {
   nodeId: string
   sessionId: string
-  onSwitchToEvents: () => void
   onBack: () => void
 }) {
   const root = useMusubiRoot(consoleRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading console…" errorLabel="Console">
-      {(store) => (
-        <ConsoleView store={store} onSwitchToEvents={onSwitchToEvents} onBack={onBack} />
-      )}
+      {(store) => <ConsoleView store={store} onBack={onBack} />}
     </RootGate>
   )
 }
@@ -71,11 +67,9 @@ type Modal =
 
 function ConsoleView({
   store,
-  onSwitchToEvents,
   onBack
 }: {
   store: ConsoleStore
-  onSwitchToEvents: () => void
   onBack: () => void
 }) {
   const snap = useMusubiSnapshot(store)
@@ -130,12 +124,6 @@ function ConsoleView({
       return
     }
 
-    // tab switch back to Events: vim-directional (Shift+H/L) or Ctrl+←/→
-    if (n === "L" || n === "H" || (key.shift && (n === "l" || n === "h")) || (key.ctrl && (n === "left" || n === "right"))) {
-      onSwitchToEvents()
-      return
-    }
-
     switch (n) {
       case "escape":
         onBack()
@@ -180,14 +168,12 @@ function ConsoleView({
           border
           borderStyle={PANEL_BORDER}
           borderColor={theme.borderActive}
-          title={` console · ${history.length} `}
+          title={` Console · ${history.length} `}
           titleColor={theme.primary}
           backgroundColor={theme.background}
           width={38}
           flexDirection="column"
-          paddingLeft={2}
-          paddingRight={2}
-          paddingTop={1}
+          padding={1}
         >
           {history.length === 0 ? (
             <text fg={theme.textMuted}>No executions yet · n to run</text>
@@ -205,7 +191,7 @@ function ConsoleView({
 
       <StatusBar
         statusText={`${history.length} runs`}
-        hints="j/k move · n new · r run · s stop · ? help · esc back"
+        hints="j/k move · n new · r run · s stop · [/] tabs · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -226,7 +212,7 @@ function ConsoleView({
             {
               title: "tabs",
               lines: [
-                ["H / ⌃←", "switch to Events"],
+                ["[ / ]", "switch Events ⇄ Console"],
                 ["esc", "back"]
               ]
             }
@@ -286,7 +272,7 @@ function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
   const glyph = statusGlyph(exec.status)
   const label = exec.name?.trim() ? exec.name : firstLine(exec.code)
   return (
-    <box backgroundColor={bg} flexDirection="row">
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={statusColor(exec.status)}>{`${glyph} `}</text>
       <text bg={bg} fg={theme.textMuted}>{`${exec.ts} `}</text>
       <text bg={bg} fg={fg}>{label}</text>
@@ -308,15 +294,13 @@ function ExecDetail({ exec }: { exec: Exec }) {
       flexGrow={1}
       flexBasis={0}
       flexDirection="column"
-      paddingLeft={2}
-      paddingRight={2}
-      paddingTop={1}
+      padding={1}
     >
-      <text fg={theme.textMuted}>code</text>
+      <text fg={theme.textMuted}>Code</text>
       <code content={code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
       {exec.result?.trim() !== "" && (
         <>
-          <text fg={theme.textMuted} marginTop={1}>result</text>
+          <text fg={theme.textMuted} marginTop={1}>Result</text>
           <code
             content={exec.result.split("\n").slice(0, 10).join("\n")}
             filetype="elixir"
@@ -327,7 +311,7 @@ function ExecDetail({ exec }: { exec: Exec }) {
       )}
       {exec.output?.trim() !== "" && (
         <>
-          <text fg={theme.textMuted} marginTop={1}>stdout</text>
+          <text fg={theme.textMuted} marginTop={1}>Stdout</text>
           {wrap(exec.output, 60).slice(0, 10).map((l, i) => (
             <text key={`o${i}`} fg={theme.textMuted}>{l}</text>
           ))}

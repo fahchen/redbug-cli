@@ -431,7 +431,7 @@ function S1View({
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
-        <Panel heading="nodes" active={focus === "nodes"} width={40}>
+        <Panel heading="Nodes" active={focus === "nodes"} width={40}>
           {nodeList.length === 0 ? (
             <EmptyTree />
           ) : (
@@ -564,23 +564,23 @@ function redactCookie(c: string | null | undefined): string {
 function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppError | null }) {
   const host = node.ssh_host || (node.name.includes("@") ? node.name.split("@")[1] : node.name)
   const rows: [string, string][] = [
-    ["host", host],
-    ["cookie", redactCookie(node.cookie)]
+    ["Host", host],
+    ["Cookie", redactCookie(node.cookie)]
   ]
   if (node.ssh_host) {
     rows.push([
-      "ssh",
+      "SSH",
       `${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}` +
         (node.container ? ` · ${node.container}` : "")
     ])
   }
-  if (node.source === "env") rows.push(["source", "env (read-only)"])
+  if (node.source === "env") rows.push(["Source", "env (read-only)"])
   return (
     <box flexDirection="row" flexWrap="wrap" marginBottom={1}>
       {rows.map(([k, v]) => (
         <Chip key={k} label={k} value={v} />
       ))}
-      {error && <Chip label="error" value={`${error.message} · c retry`} tone="error" />}
+      {error && <Chip label="Error" value={`${error.message} · c retry`} tone="error" />}
     </box>
   )
 }
@@ -698,57 +698,57 @@ function ModalLayer({
         modal.kind === "newNode" ? "New node" : "Edit node",
         <>
           <Field
-            label="name"
+            label="Name"
             hint="myapp"
             value={nameDraft}
             onInput={onName}
             focused={nodeField === 0}
           />
           <Field
-            label="host"
+            label="Host"
             hint="127.0.0.1"
             value={hostDraft}
             onInput={onHost}
             focused={nodeField === 1}
           />
           <Field
-            label="port"
+            label="Port"
             hint="(optional — direct dist port)"
             value={portDraft}
             onInput={onPort}
             focused={nodeField === 2}
           />
           <Field
-            label="cookie"
+            label="Cookie"
             hint="secretcookie"
             value={cookieDraft}
             onInput={onCookie}
             focused={nodeField === 3}
           />
-          <text fg={theme.dim} marginTop={1}>over SSH (optional — leave blank to dial directly)</text>
+          <text fg={theme.dim} marginTop={1}>Over SSH (optional — leave blank to dial directly)</text>
           <Field
-            label="ssh host"
+            label="SSH host"
             hint="prod-1.example.com"
             value={sshHostDraft}
             onInput={onSshHost}
             focused={nodeField === 4}
           />
           <Field
-            label="ssh port"
+            label="SSH port"
             hint="22"
             value={sshPortDraft}
             onInput={onSshPort}
             focused={nodeField === 5}
           />
           <Field
-            label="ssh user"
+            label="SSH user"
             hint="deploy"
             value={sshUserDraft}
             onInput={onSshUser}
             focused={nodeField === 6}
           />
           <Field
-            label="container"
+            label="Container"
             hint="myapp"
             value={containerDraft}
             onInput={onContainer}
