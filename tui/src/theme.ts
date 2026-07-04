@@ -90,10 +90,10 @@ const semantic = (t: BaseTheme): Theme => ({
 
 const def = (over: Partial<BaseTheme>): Theme => semantic({ ...base, ...over })
 
-// Border style for framed panels/overlays. "heavy" reads as a chunky 8-bit
-// cartridge frame; opentui also offers "single" | "double" | "rounded".
+// Border style for framed panels/overlays: a single hairline (opentui also
+// offers "double" | "rounded" | "heavy").
 export type PanelBorder = "single" | "double" | "rounded" | "heavy"
-export const PANEL_BORDER: PanelBorder = "double"
+export const PANEL_BORDER: PanelBorder = "single"
 
 export const themes: Record<string, Theme> = {
   // 8-bit / PICO-8 arcade palette: dark blue-black base, saturated status hues.

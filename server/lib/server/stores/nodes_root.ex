@@ -23,7 +23,9 @@ defmodule Server.Stores.NodesRoot do
     payload do
       field(:name, String.t())
       field(:cookie, String.t())
+      field(:port, String.t() | nil)
       field(:ssh_host, String.t() | nil)
+      field(:ssh_port, String.t() | nil)
       field(:ssh_user, String.t() | nil)
       field(:container, String.t() | nil)
     end
@@ -54,7 +56,9 @@ defmodule Server.Stores.NodesRoot do
       Config.add_node(%{
         name: get(payload, "name", ""),
         cookie: get(payload, "cookie", ""),
+        port: get(payload, "port", nil),
         ssh_host: get(payload, "ssh_host", nil),
+        ssh_port: get(payload, "ssh_port", nil),
         ssh_user: get(payload, "ssh_user", nil),
         container: get(payload, "container", nil)
       })

@@ -23,7 +23,9 @@ defmodule Server.Stores.NodeStore do
     field(:cookie, String.t())
     field(:status, String.t())
     field(:source, :config | :env)
+    field(:port, String.t() | nil)
     field(:ssh_host, String.t() | nil)
+    field(:ssh_port, String.t() | nil)
     field(:ssh_user, String.t() | nil)
     field(:container, String.t() | nil)
     field(:error, Server.Schema.AppError.t() | nil)
@@ -34,7 +36,9 @@ defmodule Server.Stores.NodeStore do
     payload do
       field(:name, String.t() | nil)
       field(:cookie, String.t() | nil)
+      field(:port, String.t() | nil)
       field(:ssh_host, String.t() | nil)
+      field(:ssh_port, String.t() | nil)
       field(:ssh_user, String.t() | nil)
       field(:container, String.t() | nil)
     end
@@ -83,7 +87,9 @@ defmodule Server.Stores.NodeStore do
       cookie: n.cookie,
       status: Map.get(n, :status, "idle"),
       source: Map.get(n, :source, "config"),
+      port: Map.get(n, :port),
       ssh_host: Map.get(n, :ssh_host),
+      ssh_port: Map.get(n, :ssh_port),
       ssh_user: Map.get(n, :ssh_user),
       container: Map.get(n, :container),
       error: Map.get(n, :error),
@@ -101,7 +107,9 @@ defmodule Server.Stores.NodeStore do
         %{}
         |> put_if(payload, "name", :name)
         |> put_if(payload, "cookie", :cookie)
+        |> put_if(payload, "port", :port)
         |> put_if(payload, "ssh_host", :ssh_host)
+        |> put_if(payload, "ssh_port", :ssh_port)
         |> put_if(payload, "ssh_user", :ssh_user)
         |> put_if(payload, "container", :container)
 

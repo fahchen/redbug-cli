@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
-import { useState } from "react"
+import { useRef, useState } from "react"
 import type { ReactNode } from "react"
-import { useKeyboard } from "@opentui/react"
+import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
 import {
@@ -13,7 +13,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Divider, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, useSpinner } from "./ui"
+import { Chip, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, truncate, useSpinner } from "./ui"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -143,6 +143,10 @@ function S1View({
 }) {
   const nodesSnap = useMusubiSnapshot(nodesStore)
   const presetsSnap = useMusubiSnapshot(presetsStore)
+  const { width: termWidth } = useTerminalDimensions()
+  // session name column width: total minus the nodes pane (40) and the frame /
+  // padding / number-column chrome around the name. Truncated with an ellipsis.
+  const sessNameWidth = Math.max(8, termWidth - 40 - 12)
 
   const nodeList = nodesSnap?.nodes ?? []
   // env mode is mutually exclusive: if any node is env-injected, all are, and the
@@ -152,16 +156,23 @@ function S1View({
 
   const [nodeSel, setNodeSel] = useState(0)
   const [sessSel, setSessSel] = useState(0)
+  // number-nav for the session list: accumulate typed digits (so 10+ is
+  // reachable), jump to that 1-based session, reset the buffer after a pause.
+  const sessNumBuf = useRef("")
+  const sessNumTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [focus, setFocus] = useState<Focus>("nodes")
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
   const [nameDraft, setNameDraft] = useState("")
+  const [hostDraft, setHostDraft] = useState("")
+  const [portDraft, setPortDraft] = useState("")
   const [cookieDraft, setCookieDraft] = useState("")
   const [sshHostDraft, setSshHostDraft] = useState("")
+  const [sshPortDraft, setSshPortDraft] = useState("")
   const [sshUserDraft, setSshUserDraft] = useState("")
   const [containerDraft, setContainerDraft] = useState("")
   const [nodeField, setNodeField] = useState(0)
-  const NODE_FIELDS = 5
+  const NODE_FIELDS = 8
 
   const nodeIdx = Math.min(nodeSel, Math.max(0, nodeList.length - 1))
   const node = nodeList[nodeIdx] ?? null
@@ -199,8 +210,11 @@ function S1View({
   const openNewNode = () => {
     if (envMode) return
     setNameDraft("")
+    setHostDraft("")
+    setPortDraft("")
     setCookieDraft("")
     setSshHostDraft("")
+    setSshPortDraft("")
     setSshUserDraft("")
     setContainerDraft("")
     setNodeField(0)
@@ -244,10 +258,15 @@ function S1View({
             sshHostDraft.trim() !== "" ||
             (nameDraft.trim() !== "" && cookieDraft.trim() !== "")
           if (ok) {
+            // the Erlang node name is name@host; recombine the split fields.
+            const fullName =
+              hostDraft.trim() !== "" ? `${nameDraft.trim()}@${hostDraft.trim()}` : nameDraft
             const payload = {
-              name: nameDraft,
+              name: fullName,
               cookie: cookieDraft,
+              port: portDraft,
               ssh_host: sshHostDraft,
+              ssh_port: sshPortDraft,
               ssh_user: sshUserDraft,
               container: containerDraft
             }
@@ -289,7 +308,8 @@ function S1View({
           break
         case "k":
         case "up":
-          setSessSel((i) => Math.max(i - 1, 0))
+          // wrap up past the first item to the last
+          setSessSel((i) => (i <= 0 ? Math.max(0, sessions.length - 1) : i - 1))
           break
         case "return":
           if (node && session) onOpenSession(node.id, session.id)
@@ -309,6 +329,18 @@ function S1View({
           break
         case "?":
           setModal({ kind: "help" })
+          break
+        default:
+          // digit → jump to that 1-based session; accumulate for 10+, clamp to last
+          if (/^[0-9]$/.test(name) && sessions.length > 0) {
+            if (sessNumTimer.current) clearTimeout(sessNumTimer.current)
+            sessNumBuf.current += name
+            const n = parseInt(sessNumBuf.current, 10)
+            setSessSel(Math.min(Math.max(n - 1, 0), sessions.length - 1))
+            sessNumTimer.current = setTimeout(() => {
+              sessNumBuf.current = ""
+            }, 800)
+          }
           break
       }
       return
@@ -343,9 +375,14 @@ function S1View({
       case "e":
         // env nodes are read-only
         if (node && node.source !== "env") {
-          setNameDraft(node.name)
+          // node.name is name@host; split back into the two form fields.
+          const at = node.name.indexOf("@")
+          setNameDraft(at >= 0 ? node.name.slice(0, at) : node.name)
+          setHostDraft(at >= 0 ? node.name.slice(at + 1) : "")
+          setPortDraft(node.port ?? "")
           setCookieDraft(node.cookie)
           setSshHostDraft(node.ssh_host ?? "")
+          setSshPortDraft(node.ssh_port ?? "")
           setSshUserDraft(node.ssh_user ?? "")
           setContainerDraft(node.container ?? "")
           setNodeField(0)
@@ -394,7 +431,7 @@ function S1View({
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
-        <Panel heading={`nodes · ${nodeList.length}`} active={focus === "nodes"} width={40}>
+        <Panel heading="nodes" active={focus === "nodes"} width={40}>
           {nodeList.length === 0 ? (
             <EmptyTree />
           ) : (
@@ -404,8 +441,6 @@ function S1View({
           )}
         </Panel>
 
-        <Divider />
-
         <Panel heading={node ? node.name : "—"} active={focus === "sessions"} grow>
           {node && <NodeDetailBand node={node} error={nodeError} />}
           {!node ? (
@@ -414,7 +449,7 @@ function S1View({
             <text fg={theme.textMuted}>No sessions · s to add</text>
           ) : (
             sessions.map((s, i) => (
-              <SessionRow key={s.id} session={s} active={focus === "sessions" && i === sessIdx} />
+              <SessionRow key={s.id} session={s} index={i + 1} nameWidth={sessNameWidth} active={focus === "sessions" && i === sessIdx} />
             ))
           )}
         </Panel>
@@ -441,14 +476,20 @@ function S1View({
           presetList={presetList}
           presetIdx={presetIdx}
           nameDraft={nameDraft}
+          hostDraft={hostDraft}
+          portDraft={portDraft}
           cookieDraft={cookieDraft}
           sshHostDraft={sshHostDraft}
+          sshPortDraft={sshPortDraft}
           sshUserDraft={sshUserDraft}
           containerDraft={containerDraft}
           nodeField={nodeField}
           onName={setNameDraft}
+          onHost={setHostDraft}
+          onPort={setPortDraft}
           onCookie={setCookieDraft}
           onSshHost={setSshHostDraft}
+          onSshPort={setSshPortDraft}
           onSshUser={setSshUserDraft}
           onContainer={setContainerDraft}
           onPresetChange={setPresetIdx}
@@ -491,7 +532,7 @@ function NodeRow({ node, active }: { node: Node; active: boolean }) {
   const dot =
     node.status === "connected" ? "●"
     : node.status === "connecting" ? spin
-    : node.status === "error" ? "●"
+    : node.status === "error" ? "✖"
     : " "
   const dotColor =
     node.status === "connected" ? theme.success
@@ -500,45 +541,70 @@ function NodeRow({ node, active }: { node: Node; active: boolean }) {
     : theme.textMuted
   const nameColor = active || node.status === "connected" ? theme.text : theme.textMuted
   return (
-    <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={dotColor}>{`  ${dot} `}</text>
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+      <text bg={bg} fg={dotColor}>{`${dot} `}</text>
       <text bg={bg} fg={nameColor}>{node.name}</text>
-      <text bg={bg} fg={theme.textMuted}>{`   ${node.sessions.length}`}</text>
       {node.source === "env" && <text bg={bg} fg={theme.textMuted}>{"  env"}</text>}
+      <box flexGrow={1} backgroundColor={bg} />
+      <text bg={bg} fg={theme.textMuted}>{`${node.sessions.length}`}</text>
     </box>
   )
 }
 
-// Meta line under the sessions heading: SSH route + env badge, or the connect
-// error (muted, not a framed banner — the error color carries the weight).
+// Redact a cookie to first-2 + last-2, masking the middle. A cookie is an RCE
+// credential, so never render it in full — enough to recognize, not to reuse.
+function redactCookie(c: string | null | undefined): string {
+  if (!c) return "—"
+  if (c.length <= 4) return "•".repeat(c.length)
+  return `${c.slice(0, 2)}••••${c.slice(-2)}`
+}
+
+// Detail block at the top of the sessions pane: host / cookie(redacted) / ssh
+// route, aligned key–value rows. The connect error (if any) rides underneath.
 function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppError | null }) {
-  if (error) {
-    return (
-      <box flexDirection="row" marginBottom={1}>
-        <text fg={theme.error}>{error.message}</text>
-        <text fg={theme.textMuted}>{"  · c retry"}</text>
-      </box>
-    )
+  const host = node.ssh_host || (node.name.includes("@") ? node.name.split("@")[1] : node.name)
+  const rows: [string, string][] = [
+    ["host", host],
+    ["cookie", redactCookie(node.cookie)]
+  ]
+  if (node.ssh_host) {
+    rows.push([
+      "ssh",
+      `${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}` +
+        (node.container ? ` · ${node.container}` : "")
+    ])
   }
-  const ssh = node.ssh_host
-    ? `ssh ${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}` +
-      (node.container ? ` · ${node.container}` : "")
-    : null
-  const parts = [ssh, node.source === "env" ? "env" : null].filter(Boolean)
-  if (parts.length === 0) return null
+  if (node.source === "env") rows.push(["source", "env (read-only)"])
   return (
-    <box flexDirection="row" marginBottom={1}>
-      <text fg={theme.textMuted}>{parts.join("  ·  ")}</text>
+    <box flexDirection="row" flexWrap="wrap" marginBottom={1}>
+      {rows.map(([k, v]) => (
+        <Chip key={k} label={k} value={v} />
+      ))}
+      {error && <Chip label="error" value={`${error.message} · c retry`} tone="error" />}
     </box>
   )
 }
 
-function SessionRow({ session, active }: { session: Session; active: boolean }) {
+// Session-number style: "period" = `1.`, "dot" = `1 ·`.
+const SESSION_NUM_STYLE: "period" | "dot" = "dot"
+
+function SessionRow({
+  session,
+  index,
+  nameWidth,
+  active
+}: {
+  session: Session
+  index: number
+  nameWidth: number
+  active: boolean
+}) {
   const bg = active ? theme.backgroundElement : theme.background
+  const num = SESSION_NUM_STYLE === "dot" ? `${index} ·` : `${index}.`
   return (
-    <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.text}>{`  ${session.name}`}</text>
-      <text bg={bg} fg={theme.textMuted}>{`  ${session.status}`}</text>
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+      <text bg={bg} fg={theme.textMuted}>{num.padStart(4)}</text>
+      <text bg={bg} fg={active ? theme.text : theme.textMuted}>{`  ${truncate(session.name, nameWidth)}`}</text>
     </box>
   )
 }
@@ -548,14 +614,20 @@ function ModalLayer({
   presetList,
   presetIdx,
   nameDraft,
+  hostDraft,
+  portDraft,
   cookieDraft,
   sshHostDraft,
+  sshPortDraft,
   sshUserDraft,
   containerDraft,
   nodeField,
   onName,
+  onHost,
+  onPort,
   onCookie,
   onSshHost,
+  onSshPort,
   onSshUser,
   onContainer,
   onPresetChange,
@@ -566,14 +638,20 @@ function ModalLayer({
   presetList: readonly Server.Schema.Preset[]
   presetIdx: number
   nameDraft: string
+  hostDraft: string
+  portDraft: string
   cookieDraft: string
   sshHostDraft: string
+  sshPortDraft: string
   sshUserDraft: string
   containerDraft: string
   nodeField: number
   onName: (v: string) => void
+  onHost: (v: string) => void
+  onPort: (v: string) => void
   onCookie: (v: string) => void
   onSshHost: (v: string) => void
+  onSshPort: (v: string) => void
   onSshUser: (v: string) => void
   onContainer: (v: string) => void
   onPresetChange: (index: number) => void
@@ -588,7 +666,7 @@ function ModalLayer({
     case "help":
       return (
         <HelpOverlay
-          title="redbug · nodes ▸ sessions"
+          title="help"
           sections={[
             {
               lines: [
@@ -621,39 +699,60 @@ function ModalLayer({
         <>
           <Field
             label="name"
-            hint="name@host, e.g. myapp@127.0.0.1 (auto-discovered for SSH nodes)"
+            hint="myapp"
             value={nameDraft}
             onInput={onName}
             focused={nodeField === 0}
           />
           <Field
+            label="host"
+            hint="127.0.0.1"
+            value={hostDraft}
+            onInput={onHost}
+            focused={nodeField === 1}
+          />
+          <Field
+            label="port"
+            hint="(optional — direct dist port)"
+            value={portDraft}
+            onInput={onPort}
+            focused={nodeField === 2}
+          />
+          <Field
             label="cookie"
-            hint="distribution cookie; must match target (auto-read for SSH nodes)"
+            hint="secretcookie"
             value={cookieDraft}
             onInput={onCookie}
-            focused={nodeField === 1}
+            focused={nodeField === 3}
           />
           <text fg={theme.dim} marginTop={1}>over SSH (optional — leave blank to dial directly)</text>
           <Field
             label="ssh host"
-            hint="the server to SSH into, e.g. prod-1.example.com"
+            hint="prod-1.example.com"
             value={sshHostDraft}
             onInput={onSshHost}
-            focused={nodeField === 2}
+            focused={nodeField === 4}
+          />
+          <Field
+            label="ssh port"
+            hint="22"
+            value={sshPortDraft}
+            onInput={onSshPort}
+            focused={nodeField === 5}
           />
           <Field
             label="ssh user"
-            hint="SSH login user (defaults to $USER)"
+            hint="deploy"
             value={sshUserDraft}
             onInput={onSshUser}
-            focused={nodeField === 3}
+            focused={nodeField === 6}
           />
           <Field
             label="container"
-            hint="Kamal service / container name on the host"
+            hint="myapp"
             value={containerDraft}
             onInput={onContainer}
-            focused={nodeField === 4}
+            focused={nodeField === 7}
           />
           <text fg={theme.dim} marginTop={1}>Tab switch field · Enter save · Esc cancel</text>
         </>
@@ -665,7 +764,7 @@ function ModalLayer({
         <TextField
           key="newSessionName"
           label="name"
-          hint="a label for this trace session"
+          hint="checkout-flow"
           onSubmit={(v) => onCommit("newSessionName", v)}
         />
       )
@@ -684,9 +783,9 @@ function ModalLayer({
             ]}
             selectedIndex={presetIdx}
             showDescription={false}
-            backgroundColor={theme.background}
+            backgroundColor={theme.overlay}
             textColor={theme.textMuted}
-            focusedBackgroundColor={theme.background}
+            focusedBackgroundColor={theme.overlay}
             focusedTextColor={theme.text}
             selectedBackgroundColor={theme.backgroundElement}
             selectedTextColor={theme.selectedForeground}
@@ -726,12 +825,12 @@ function Field({
 }) {
   return (
     <box flexDirection="column" marginBottom={1}>
-      <text fg={focused ? theme.title : theme.dim}>{`${focused ? "› " : "  "}${label}`}</text>
-      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
+      <text fg={focused ? theme.title : theme.dim}>{label}</text>
       <input
         focused={focused}
         value={value}
         onInput={onInput}
+        placeholder={hint}
         backgroundColor={theme.bg}
         textColor={theme.fg}
         focusedBackgroundColor={theme.selBg}

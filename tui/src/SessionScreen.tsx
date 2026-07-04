@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor, PANEL_BORDER } from "./theme"
-import { ErrorDetailOverlay, Flash, HelpOverlay, InfoPeek, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
+import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, InfoPeek, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 import { editInEditor } from "./editor"
 import { elixirStyle, tsClient } from "./treesitter"
@@ -429,6 +429,11 @@ function SessionView({
     : ""
   const eventsTitleColor =
     nodeStatus === "error" ? theme.error : nodeStatus === "connecting" ? theme.warning : theme.textMuted
+  const eventsBorderColor =
+    nodeStatus === "error" ? theme.error
+    : nodeStatus === "connecting" ? theme.warning
+    : focus === "list" ? theme.borderActive
+    : theme.borderSubtle
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
@@ -453,6 +458,12 @@ function SessionView({
       {!zoom && (
       <box flexDirection="row" flexGrow={1}>
         <box
+          border
+          borderStyle={PANEL_BORDER}
+          borderColor={eventsBorderColor}
+          title={` events · ${count}${statusSeg} `}
+          titleColor={eventsTitleColor}
+          backgroundColor={theme.background}
           flexGrow={1}
           flexBasis={0}
           flexDirection="column"
@@ -461,7 +472,6 @@ function SessionView({
           paddingTop={1}
         >
           <box flexDirection="row" marginBottom={1}>
-            <text fg={eventsTitleColor}>{`events · ${count}${statusSeg}`}</text>
             <box flexGrow={1} />
             <text fg={theme.textMuted}>{metaText}</text>
           </box>
@@ -572,9 +582,9 @@ function SessionView({
             options={FILTER_SCOPES.map((s) => ({ name: s, description: "" }))}
             selectedIndex={Math.max(0, FILTER_SCOPES.indexOf(filterScope))}
             showDescription={false}
-            backgroundColor={theme.background}
+            backgroundColor={theme.overlay}
             textColor={theme.textMuted}
-            focusedBackgroundColor={theme.background}
+            focusedBackgroundColor={theme.overlay}
             focusedTextColor={theme.text}
             selectedBackgroundColor={theme.backgroundElement}
             selectedTextColor={theme.selectedForeground}
@@ -612,9 +622,9 @@ function SessionView({
             }))}
             selectedIndex={sortIdx}
             showDescription={false}
-            backgroundColor={theme.background}
+            backgroundColor={theme.overlay}
             textColor={theme.textMuted}
-            focusedBackgroundColor={theme.background}
+            focusedBackgroundColor={theme.overlay}
             focusedTextColor={theme.text}
             selectedBackgroundColor={theme.backgroundElement}
             selectedTextColor={theme.selectedForeground}
@@ -670,9 +680,9 @@ function SessionView({
                 }))}
                 selectedIndex={rtpSel}
                 showDescription={false}
-                backgroundColor={theme.background}
+                backgroundColor={theme.overlay}
                 textColor={theme.textMuted}
-                focusedBackgroundColor={theme.background}
+                focusedBackgroundColor={theme.overlay}
                 focusedTextColor={theme.text}
                 selectedBackgroundColor={theme.backgroundElement}
                 selectedTextColor={theme.selectedForeground}
@@ -719,41 +729,18 @@ function SessionView({
       )}
 
       {zoom && selectedEvent && (
-        <box
-          position="absolute"
-          top={0}
-          left={0}
-          right={0}
-          bottom={0}
-          justifyContent="center"
-          alignItems="center"
-        >
-          <box
-            border
-            borderStyle={PANEL_BORDER}
-            borderColor={theme.borderActive}
-            backgroundColor={theme.backgroundPanel}
-            title="detail · esc close · v view"
-            titleColor={theme.textMuted}
-            flexDirection="column"
-            paddingTop={1}
-            paddingBottom={1}
-            paddingLeft={2}
-            paddingRight={2}
-            minWidth={70}
-          >
-            <DetailMeta ev={selectedEvent} />
-            <text fg={theme.textMuted} marginTop={1}>
-              {selectedEvent.kind === "call" ? "args" : selectedEvent.kind === "retn" ? "return" : "payload"}
-            </text>
-            <code
-              content={selectedEvent.info}
-              filetype="elixir"
-              syntaxStyle={elixirStyle}
-              treeSitterClient={tsClient}
-            />
-          </box>
-        </box>
+        <Overlay title="detail · esc close · v view" minWidth={70}>
+          <DetailMeta ev={selectedEvent} />
+          <text fg={theme.textMuted} marginTop={1}>
+            {selectedEvent.kind === "call" ? "args" : selectedEvent.kind === "retn" ? "return" : "payload"}
+          </text>
+          <code
+            content={selectedEvent.info}
+            filetype="elixir"
+            syntaxStyle={elixirStyle}
+            treeSitterClient={tsClient}
+          />
+        </Overlay>
       )}
       </>
       )}
@@ -843,12 +830,12 @@ function Cell({
 function DetailMeta({ ev }: { ev: TraceEvent }) {
   const sym = kindSym[ev.kind] ?? "?"
   return (
-    <box flexDirection="column">
-      <text fg={theme.text}>{`kind  ${sym} ${ev.kind}`}</text>
-      <text fg={theme.text}>{`ts    ${ev.ts}`}</text>
-      <text fg={theme.text}>{`pid   ${ev.pid}`}</text>
-      <text fg={theme.text}>{`name  ${ev.name || "-"}`}</text>
-      <text fg={theme.text}>{`mfa   ${ev.mfa || "-"}`}</text>
+    <box flexDirection="row" flexWrap="wrap">
+      <Chip label="kind" value={`${sym} ${ev.kind}`} />
+      <Chip label="ts" value={ev.ts} />
+      <Chip label="pid" value={ev.pid} />
+      <Chip label="name" value={ev.name || "-"} />
+      <Chip label="mfa" value={ev.mfa || "-"} />
     </box>
   )
 }
@@ -862,7 +849,7 @@ function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
       borderStyle={PANEL_BORDER}
       borderColor={focused ? theme.borderActive : theme.borderSubtle}
       backgroundColor={theme.background}
-      title="detail"
+      title=" detail "
       titleColor={theme.textMuted}
       width={46}
       flexDirection="column"

@@ -169,7 +169,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           border
           borderColor={focus === "list" ? theme.title : theme.border}
           backgroundColor={theme.bg}
-          title={`Presets (${presets.length})`}
+          title={` Presets (${presets.length}) `}
           titleColor={theme.title}
           width={36}
           flexDirection="column"
@@ -188,7 +188,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           border
           borderColor={focus === "detail" ? theme.title : theme.border}
           backgroundColor={theme.bg}
-          title={cur ? `${cur.name} — traces` : "—"}
+          title={cur ? ` ${cur.name} — traces ` : " — "}
           titleColor={theme.title}
           flexGrow={1}
           flexBasis={0}

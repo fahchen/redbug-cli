@@ -92,7 +92,9 @@ defmodule Server.Config do
           name: nd.name,
           cookie: nd.cookie,
           source: "env",
+          port: nil,
           ssh_host: nil,
+          ssh_port: nil,
           ssh_user: nil,
           container: nil,
           sessions: Map.get(by_name, nd.name, [])
@@ -265,7 +267,9 @@ defmodule Server.Config do
       id: gen_id(),
       name: Map.get(attrs, :name, ""),
       cookie: Map.get(attrs, :cookie, ""),
+      port: blank_to_nil(Map.get(attrs, :port)),
       ssh_host: blank_to_nil(Map.get(attrs, :ssh_host)),
+      ssh_port: blank_to_nil(Map.get(attrs, :ssh_port)),
       ssh_user: blank_to_nil(Map.get(attrs, :ssh_user)),
       container: blank_to_nil(Map.get(attrs, :container)),
       sessions: []
@@ -283,7 +287,9 @@ defmodule Server.Config do
           node
           |> maybe_put(:name, attrs)
           |> maybe_put(:cookie, attrs)
+          |> maybe_put_opt(:port, attrs)
           |> maybe_put_opt(:ssh_host, attrs)
+          |> maybe_put_opt(:ssh_port, attrs)
           |> maybe_put_opt(:ssh_user, attrs)
           |> maybe_put_opt(:container, attrs)
         end)
@@ -757,7 +763,9 @@ defmodule Server.Config do
       id: Map.get(j, "id", gen_id()),
       name: Map.get(j, "name", ""),
       cookie: Map.get(j, "cookie", ""),
+      port: blank_to_nil(Map.get(j, "port")),
       ssh_host: blank_to_nil(Map.get(j, "ssh_host")),
+      ssh_port: blank_to_nil(Map.get(j, "ssh_port")),
       ssh_user: blank_to_nil(Map.get(j, "ssh_user")),
       container: blank_to_nil(Map.get(j, "container")),
       sessions: j |> Map.get("sessions", []) |> Enum.map(&session_from_json/1)

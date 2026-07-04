@@ -2,8 +2,13 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
+import { RGBA } from "@opentui/core"
 
 import { theme, type Theme, PANEL_BORDER } from "./theme"
+
+// Translucent scrim drawn behind every modal so the content underneath dims and
+// stops competing for focus (opentui alpha-composites this over the buffer below).
+const SCRIM = RGBA.fromValues(0, 0, 0, 0.78)
 
 // ora spinner frames. `dots` (simpleDotsScrolling) is a 3-wide text spinner for
 // inline "connecting…" labels; `circle` (circleHalves) is a 1-wide glyph that
@@ -61,21 +66,21 @@ export function StatusBar({
   // in the title hue, the rest stays dim. Segments split on " · ".
   const segs = hintText === "" ? [] : hintText.split(" · ")
   return (
-    <box backgroundColor={theme.overlay} paddingLeft={1} paddingRight={1} flexDirection="row">
+    <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} flexDirection="row">
       {left !== "" && (
-        <text bg={theme.overlay} fg={theme[tone]}>
+        <text bg={theme.background} fg={theme[tone]}>
           {left}
         </text>
       )}
-      {segs.length > 0 && <text bg={theme.overlay} fg={theme.dim}>{left !== "" ? "   " : ""}</text>}
+      {segs.length > 0 && <text bg={theme.background} fg={theme.dim}>{left !== "" ? "   " : ""}</text>}
       {segs.map((seg, i) => {
         const sp = seg.indexOf(" ")
         const key = sp < 0 ? seg : seg.slice(0, sp)
         const label = sp < 0 ? "" : seg.slice(sp)
         return (
-          <box key={i} flexDirection="row" backgroundColor={theme.overlay}>
-            <text bg={theme.overlay} fg={theme.title}>{key}</text>
-            <text bg={theme.overlay} fg={theme.dim}>{label}{i < segs.length - 1 ? " · " : ""}</text>
+          <box key={i} flexDirection="row" backgroundColor={theme.background}>
+            <text bg={theme.background} fg={theme.title}>{key}</text>
+            <text bg={theme.background} fg={theme.dim}>{label}{i < segs.length - 1 ? " · " : ""}</text>
           </box>
         )
       })}
@@ -106,9 +111,9 @@ export function Header({ title, children }: { title: string; children?: ReactNod
   )
 }
 
-// Frameless pane (opencode style): no box, just padding for rhythm. Focus is
-// signalled by the heading brightening (primary vs textMuted), not a border.
-// Panes are separated by a single <Divider/>, not per-pane frames.
+// Framed pane: a bordered box whose `heading` rides the top border line (opentui
+// box title). Focus brightens both the title and the border (primary/borderActive
+// vs textMuted/borderSubtle).
 export function Panel({
   heading,
   active = false,
@@ -124,28 +129,41 @@ export function Panel({
 }) {
   return (
     <box
+      border
+      borderStyle={PANEL_BORDER}
+      borderColor={active ? theme.borderActive : theme.borderSubtle}
+      title={heading !== undefined ? ` ${heading} ` : undefined}
+      titleColor={active ? theme.primary : theme.textMuted}
       backgroundColor={theme.background}
       width={width}
       flexGrow={grow ? 1 : undefined}
       flexBasis={grow ? 0 : undefined}
       flexDirection="column"
-      paddingLeft={3}
-      paddingRight={2}
-      paddingTop={1}
+      padding={1}
     >
-      {heading !== undefined && (
-        <text fg={active ? theme.primary : theme.textMuted} marginBottom={2}>{heading}</text>
-      )}
       {children}
     </box>
   )
 }
 
-// A single hairline vertical separator between panes (one subtle line, not a
-// pair of gutters).
-export function Divider() {
+// A key–value chip: two adjoining background blocks — a brighter label block and
+// a dimmer value block — reading as one pill. Used wherever compact labeled
+// metadata appears in a row (node detail, event detail, panel meta).
+export function Chip({
+  label,
+  value,
+  tone = "default"
+}: {
+  label: string
+  value: string
+  tone?: "default" | "error"
+}) {
+  const valueFg = tone === "error" ? theme.error : theme.text
   return (
-    <box border={["left"]} borderStyle="single" borderColor={theme.borderSubtle} />
+    <box flexDirection="row" marginRight={1}>
+      <text bg={theme.backgroundElement} fg={theme.textMuted}>{` ${label} `}</text>
+      <text bg={theme.backgroundPanel} fg={valueFg}>{` ${value} `}</text>
+    </box>
   )
 }
 
@@ -160,6 +178,8 @@ export function Overlay({
   minWidth?: number
   children: ReactNode
 }) {
+  // Modals are frameless: a filled panel floating on the dimmed scrim, no border
+  // (the scrim + panel bg carry the separation).
   return (
     <box
       position="absolute"
@@ -167,13 +187,11 @@ export function Overlay({
       left={0}
       right={0}
       bottom={0}
+      backgroundColor={SCRIM}
       justifyContent="center"
       alignItems="center"
     >
       <box
-        border
-        borderStyle={PANEL_BORDER}
-        borderColor={theme.title}
         backgroundColor={theme.overlay}
         flexDirection="column"
         paddingTop={1}
@@ -234,13 +252,13 @@ export function TextField({
   const [value, setValue] = useState(initial ?? "")
   return (
     <box flexDirection="column">
-      <text fg={theme.title}>{`› ${label}`}</text>
-      {hint && <text fg={theme.dim}>{`  ${hint}`}</text>}
+      <text fg={theme.title}>{label}</text>
       <input
         focused
         value={value}
         onInput={(v: string) => setValue(v)}
         onSubmit={() => onSubmit(value)}
+        placeholder={hint}
         backgroundColor={theme.bg}
         textColor={theme.fg}
         focusedBackgroundColor={theme.selBg}

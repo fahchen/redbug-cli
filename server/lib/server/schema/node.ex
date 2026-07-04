@@ -24,7 +24,13 @@ defmodule Server.Schema.Node do
     field(:status, String.t())
     field(:source, :config | :env)
     field(:sessions, list(Session.t()))
+    # `port` = distribution port for a direct (non-SSH) dial; `ssh_port` = the SSH
+    # port of the tunnel host. Both optional strings.
+    # ponytail: stored + round-tripped now; the dial path (Config/SshTunnel) does
+    # not yet honor them — wire when manual-port dialing is needed.
+    field(:port, String.t() | nil)
     field(:ssh_host, String.t() | nil)
+    field(:ssh_port, String.t() | nil)
     field(:ssh_user, String.t() | nil)
     field(:container, String.t() | nil)
   end

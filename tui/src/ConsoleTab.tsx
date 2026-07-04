@@ -5,7 +5,7 @@ import type { StoreProxy } from "@musubi/react"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
-import { theme } from "./theme"
+import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { HelpOverlay, Overlay, RootGate, StatusBar } from "./ui"
 
@@ -175,15 +175,20 @@ function ConsoleView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      <box flexDirection="row" flexGrow={1}>
+      <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <box
+          border
+          borderStyle={PANEL_BORDER}
+          borderColor={theme.borderActive}
+          title={` console · ${history.length} `}
+          titleColor={theme.primary}
+          backgroundColor={theme.background}
           width={38}
           flexDirection="column"
           paddingLeft={2}
           paddingRight={2}
           paddingTop={1}
         >
-          <text fg={theme.primary} marginBottom={1}>{`console · ${history.length}`}</text>
           {history.length === 0 ? (
             <text fg={theme.textMuted}>No executions yet · n to run</text>
           ) : (
@@ -241,9 +246,9 @@ function ConsoleView({
             ]}
             selectedIndex={pick}
             showDescription={false}
-            backgroundColor={theme.background}
+            backgroundColor={theme.overlay}
             textColor={theme.textMuted}
-            focusedBackgroundColor={theme.background}
+            focusedBackgroundColor={theme.overlay}
             focusedTextColor={theme.text}
             selectedBackgroundColor={theme.backgroundElement}
             selectedTextColor={theme.selectedForeground}
@@ -294,6 +299,12 @@ function ExecDetail({ exec }: { exec: Exec }) {
   const code = exec.code.split("\n").slice(0, 12).join("\n")
   return (
     <box
+      border
+      borderStyle={PANEL_BORDER}
+      borderColor={theme.borderSubtle}
+      title={` ${statusGlyph(exec.status)} ${exec.name || "execution"} · ${exec.status} · ${dur} `}
+      titleColor={statusColor(exec.status)}
+      backgroundColor={theme.background}
       flexGrow={1}
       flexBasis={0}
       flexDirection="column"
@@ -301,8 +312,7 @@ function ExecDetail({ exec }: { exec: Exec }) {
       paddingRight={2}
       paddingTop={1}
     >
-      <text fg={statusColor(exec.status)}>{`${statusGlyph(exec.status)} ${exec.status} · ${exec.ts} · ${dur}`}</text>
-      <text fg={theme.textMuted} marginTop={1}>code</text>
+      <text fg={theme.textMuted}>code</text>
       <code content={code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
       {exec.result?.trim() !== "" && (
         <>
