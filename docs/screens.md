@@ -436,7 +436,7 @@ Overlay, entered from S1 `n` (new) / `e` (edit node). Add/edit a connection targ
 │   |myapp@127.0.0.1_                               │
 │   cookie  Erlang distribution cookie; must match  │
 │   |______                                         │
-│ Tab switch field · Enter save · Esc cancel        │
+│ Tab/Shift+Tab switch field · Enter save · Esc cancel │
 └──────────────────────────────────────────────────┘
 ```
 Both `name` and `cookie` are required (Enter is a no-op until both are non-empty).

@@ -97,7 +97,7 @@ ssh port   [ 22 ]           ← SSH 端口（可选）
 ssh user   [ deploy ]
 container  [ myapp ]
 
-Tab switch field · Enter save · Esc cancel
+Tab/Shift+Tab switch field · Enter save · Esc cancel
 ```
 
 - `name` + `host` 拆开编辑，保存拼回 `name@host`（编辑已有节点时反向拆开）。

@@ -174,6 +174,9 @@ function S1View({
   const [nodeField, setNodeField] = useState(0)
   const [nodeErr, setNodeErr] = useState<string | null>(null)
   const NODE_FIELDS = 8
+  const moveNodeField = (delta: number) => {
+    setNodeField((f) => (f + delta + NODE_FIELDS) % NODE_FIELDS)
+  }
 
   const nodeIdx = Math.min(nodeSel, Math.max(0, nodeList.length - 1))
   const node = nodeList[nodeIdx] ?? null
@@ -253,7 +256,7 @@ function S1View({
         if (name === "escape") {
           setNodeErr(null)
           setModal({ kind: "none" })
-        } else if (name === "tab") setNodeField((f) => (f + 1) % NODE_FIELDS)
+        } else if (name === "tab") moveNodeField(key.shift ? -1 : 1)
         else if (name === "return") {
           // ssh nodes auto-discover their name + cookie/host, so validation only
           // applies to a directly-dialed node (name@host must be a real Erlang name).
@@ -780,7 +783,7 @@ function ModalLayer({
             focused={nodeField === 7}
           />
           {nodeErr && <text fg={theme.error} marginTop={1}>{`✗ ${nodeErr}`}</text>}
-          <text fg={theme.dim} marginTop={1}>Tab switch field · Enter save · Esc cancel</text>
+          <text fg={theme.dim} marginTop={1}>Tab/Shift+Tab switch field · Enter save · Esc cancel</text>
         </>
       )
 
