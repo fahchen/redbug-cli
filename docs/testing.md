@@ -75,6 +75,7 @@ Quitting the TUI (`q`) tears the controller down. Stop ttyd with `Ctrl-C` (or `p
 
 ### Agent note
 
-An agent can automate step 2 end to end with the `chrome-devtools` MCP: `new_page` →
-`resize_page` → `press_key`/`type_text` to drive the TUI → `take_screenshot --filePath`. ttyd's
-xterm.js forwards browser key events to the pty, so `press_key`/`type_text` reach the TUI directly.
+An agent can automate step 2 end to end with the browser automation MCP/CLI:
+open `http://localhost:7681`, resize the page, send keys/text to drive the TUI,
+then capture a screenshot. ttyd's xterm.js forwards browser key events to the
+pty, so browser key input reaches the TUI directly.
