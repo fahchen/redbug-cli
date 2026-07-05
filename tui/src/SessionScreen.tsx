@@ -63,7 +63,7 @@ const RTP_EXAMPLES: [string, string][] = [
 
 const COL = { ts: 12, k: 1, name: 16, pid: 11, mfa: 22, info: 44 }
 const COLGAP = 2
-const SPARK_N = 24
+const SPARK_N = 12
 const SPARK_RAMP = "▁▂▃▄▅▆▇█"
 
 export function SessionScreen({
@@ -149,7 +149,14 @@ function SessionView({
   const seenMaxId = useRef(0)
   // ticks a rerender each second while running so the sparkline advances (the
   // value itself is unused; only the state update matters).
-  const [, setNowTick] = useState(() => Date.now())
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const runningSince = useRef<number | null>(null)
+  if (running && runningSince.current === null) runningSince.current = nowTick
+  if (!running && runningSince.current !== null) runningSince.current = null
+  const remainingSec =
+    running && runningSince.current !== null ?
+      Math.max(0, limits.time - Math.floor((nowTick - runningSince.current) / 1000))
+    : null
   // Detect new events by max id, NOT array length: the buffer is capped (keep),
   // so once it fills, length stops growing while events still stream in. Length
   // would then falsely read as "idle".
@@ -567,7 +574,7 @@ function SessionView({
       {error && <Flash error={error} />}
 
       <StatusBar
-        statChip={<SessionStat state={sessionState} nodeSpin={nodeSpin} endedLimit={endedLimit} dirty={dirty} spark={running && buckets.current.some((v) => v > 0) ? sparkline(buckets.current) : ""} count={events.length} limits={limits} />}
+        statChip={<SessionStat state={sessionState} nodeSpin={nodeSpin} endedLimit={endedLimit} dirty={dirty} spark={running && buckets.current.some((v) => v > 0) ? sparkline(buckets.current) : ""} count={events.length} limits={limits} remainingSec={remainingSec} />}
         hints={eventsHints}
       />
 
@@ -878,7 +885,8 @@ function SessionStat({
   dirty,
   spark,
   count,
-  limits
+  limits,
+  remainingSec
 }: {
   state: "connecting" | "unreachable" | "idle" | "running" | "ended"
   nodeSpin: string
@@ -887,6 +895,7 @@ function SessionStat({
   spark: string
   count: number
   limits: { keep: number; time: number; msgs: number }
+  remainingSec: number | null
 }) {
   switch (state) {
     case "connecting":
@@ -904,7 +913,7 @@ function SessionStat({
     case "running":
       return (
         <box flexDirection="row">
-          <text fg={theme.success}>{`● ${spark ? `${spark} ` : ""}${count}/${limits.keep}`}</text>
+          <text fg={theme.success}>{`● ${spark ? `${spark} ` : ""}${count}/${limits.keep}${remainingSec === null ? "" : ` · ${remainingSec}s`}`}</text>
           {dirty && <text fg={theme.warning}>{"  ⚠ unapplied"}</text>}
         </box>
       )
