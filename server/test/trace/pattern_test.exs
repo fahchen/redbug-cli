@@ -28,6 +28,11 @@ defmodule Server.Trace.PatternTest do
       assert Pattern.to_redbug("Demo.add(1, X) -> return") == "'Elixir.Demo':add(1, X) -> return"
     end
 
+    test "leaves return stack actions untouched" do
+      assert Pattern.to_redbug("Date.shift/2 -> return;stack") ==
+               "'Elixir.Date':shift/2 -> return;stack"
+    end
+
     test "translates Elixir erlang-module notation to Erlang form" do
       assert Pattern.to_redbug(":lists.reverse/1") == "lists:reverse/1"
     end

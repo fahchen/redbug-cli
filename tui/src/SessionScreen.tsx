@@ -781,15 +781,7 @@ function SessionView({
       {zoom && selectedEvent && (
         <Overlay title="Detail · esc close · v view" minWidth={70}>
           <DetailMeta ev={selectedEvent} />
-          <text fg={theme.textMuted} marginTop={1}>
-            {selectedEvent.kind === "call" ? "args" : selectedEvent.kind === "retn" ? "return" : "payload"}
-          </text>
-          <code
-            content={selectedEvent.info}
-            filetype="elixir"
-            syntaxStyle={elixirStyle}
-            treeSitterClient={tsClient}
-          />
+          <EventDetailBody ev={selectedEvent} />
         </Overlay>
       )}
       </>
@@ -933,8 +925,6 @@ function DetailMeta({ ev }: { ev: TraceEvent }) {
 }
 
 function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
-  const payloadLabel =
-    ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
   return (
     <box
       border
@@ -948,18 +938,57 @@ function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
       padding={1}
     >
       <DetailMeta ev={ev} />
-      <text fg={theme.textMuted} marginTop={1}>{payloadLabel}</text>
-      <code
-        content={ev.info}
-        filetype="elixir"
-        syntaxStyle={elixirStyle}
-        treeSitterClient={tsClient}
-      />
+      <EventDetailBody ev={ev} />
     </box>
   )
 }
 
+function EventDetailBody({ ev }: { ev: TraceEvent }) {
+  const { payload, stack } = splitEventInfo(ev)
+  const payloadLabel = ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
+
+  return (
+    <>
+      <text fg={theme.textMuted} marginTop={1}>{payloadLabel}</text>
+      <code
+        content={payload}
+        filetype="elixir"
+        syntaxStyle={elixirStyle}
+        treeSitterClient={tsClient}
+      />
+      {stack.length > 0 && (
+        <>
+          <text fg={theme.textMuted} marginTop={1}>stack</text>
+          <box flexDirection="column">
+            {stack.map((line, i) => (
+              <box key={`${i}-${line}`} flexDirection="row">
+                <text fg={theme.dim}>{`${i + 1}. `.padStart(4)}</text>
+                <text fg={theme.textMuted}>{line}</text>
+              </box>
+            ))}
+          </box>
+        </>
+      )}
+    </>
+  )
+}
+
 // --- pure helpers ---
+
+function splitEventInfo(ev: TraceEvent): { payload: string; stack: string[] } {
+  if (ev.kind !== "call") return { payload: ev.info, stack: [] }
+
+  const lines = ev.info.split("\n")
+  const stack = lines.filter(isStackLine)
+  if (stack.length === 0) return { payload: ev.info, stack: [] }
+
+  const payload = lines.filter((line) => !isStackLine(line)).join("\n").trimEnd()
+  return { payload, stack }
+}
+
+function isStackLine(line: string): boolean {
+  return line.includes("cp = ") || line.includes("Return addr")
+}
 
 function processEvents(
   events: readonly TraceEvent[],
@@ -1096,14 +1125,25 @@ async function openInEditor(
 }
 
 function elixirTerm(ev: TraceEvent): string {
-  return [
+  const { payload, stack } = splitEventInfo(ev)
+  const lines = [
     "%{",
     `  kind: ${JSON.stringify(ev.kind)},`,
     `  ts: ${JSON.stringify(ev.ts)},`,
     `  pid: ${JSON.stringify(ev.pid)},`,
     `  name: ${JSON.stringify(ev.name)},`,
     `  mfa: ${JSON.stringify(ev.mfa)},`,
-    `  payload: ${ev.info}`,
+    `  payload: ${payload}${stack.length > 0 ? "," : ""}`
+  ]
+
+  if (stack.length > 0) {
+    lines.push("  stack: [")
+    lines.push(...stack.map((line) => `    ${JSON.stringify(line)},`))
+    lines.push("  ]")
+  }
+
+  return [
+    ...lines,
     "}",
     ""
   ].join("\n")

@@ -176,7 +176,7 @@ defmodule Server.Trace.Runner do
         time: session.limits.time * 1000,
         msgs: session.limits.msgs,
         print_fun: print_fun(self())
-      ]
+      ] ++ stack_opts(enabled)
 
       # redbug returns {ProcName, matched_functions, matched_procs} on success and
       # {:argument_error, reason} on a bad pattern. A pattern whose module/function/
@@ -270,6 +270,13 @@ defmodule Server.Trace.Runner do
 
   defp print_fun(runner), do: fn msg -> send(runner, {:redbug, msg}) end
 
+  @doc false
+  def stack_opts(traces) do
+    if Enum.any?(traces, &(String.contains?(&1.text, "stack"))),
+      do: [max_msg_size: 2_000_000],
+      else: []
+  end
+
   defp redbug_error({:argument_error, :no_matching_functions}), do: :no_matching_functions
   defp redbug_error({:argument_error, reason}), do: "redbug: #{inspect(reason)}"
   defp redbug_error(other) when is_atom(other), do: other
@@ -308,12 +315,20 @@ defmodule Server.Trace.Runner do
   defp status_payload(state, ended \\ nil),
     do: %{status: state.status, applied_sig: state.applied_sig, ended: ended}
 
-  # Which cap fired when redbug clean-exited: msgs if the count reached it, else time.
-  defp which_limit(%{applied_limits: nil}), do: "time"
+  # Which cap fired when redbug clean-exited: msgs if the count reached it, time
+  # if the run lived long enough. A short clean exit is an external stop/restart,
+  # not a limit.
+  @doc false
+  def which_limit(%{applied_limits: nil}), do: nil
 
-  defp which_limit(%{applied_limits: limits} = state) do
+  def which_limit(%{applied_limits: limits} = state) do
     elapsed = System.monotonic_time(:millisecond) - (state.started_at || 0)
-    if state.event_count >= limits.msgs, do: "msgs", else: (if elapsed >= limits.time * 1000, do: "time", else: "time")
+
+    cond do
+      state.event_count >= limits.msgs -> "msgs"
+      elapsed >= limits.time * 1000 -> "time"
+      true -> nil
+    end
   end
 
   defp broadcast(session_id, message) do
@@ -351,11 +366,30 @@ defmodule Server.Trace.Runner do
 
   defp to_event(_other), do: nil
 
-  defp describe(:call, {{m, f, args}, _stack}), do: {fmt_mf(m, f, length(args)), inspect(args)}
+  defp describe(:call, {{m, f, args}, stack}) do
+    info =
+      case stack_info(stack) do
+        "" -> inspect(args)
+        s -> inspect(args) <> "\n" <> s
+      end
+
+    {fmt_mf(m, f, length(args)), info}
+  end
+
   defp describe(:retn, {{m, f, a}, ret}), do: {fmt_mf(m, f, a), inspect(ret)}
   defp describe(:send, {message, to}), do: {"send", "→ #{inspect(to)}: #{inspect(message)}"}
   defp describe(:recv, message), do: {"recv", inspect(message)}
   defp describe(tag, payload), do: {Atom.to_string(tag), inspect(payload)}
+
+  defp stack_info(<<>>), do: ""
+  defp stack_info(stack) when is_binary(stack) do
+    stack
+    |> String.split("\n")
+    |> Enum.filter(&(String.contains?(&1, "cp = ") or String.contains?(&1, "Return addr")))
+    |> Enum.take(8)
+    |> Enum.join("\n")
+  end
+  defp stack_info(_), do: ""
 
   defp fmt_mf(m, f, a), do: "#{inspect(m)}.#{f}/#{a}"
 
