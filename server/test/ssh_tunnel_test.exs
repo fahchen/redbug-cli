@@ -22,6 +22,21 @@ defmodule Server.SshTunnelTest do
     end
   end
 
+  describe "discover_cmd/1" do
+    test "blank container discovers a host-native beam without docker lookup" do
+      assert {:ok, cmd} = SshTunnel.discover_cmd(%{name: "loyalty@10.0.0.8", container: nil})
+      cmd = to_string(cmd)
+
+      assert cmd =~ ~s(grep -- "loyalty")
+      refute cmd =~ "docker ps"
+    end
+
+    test "filled container keeps docker discovery" do
+      assert {:ok, cmd} = SshTunnel.discover_cmd(%{name: "loyalty@10.0.0.8", container: "loyalty"})
+      assert to_string(cmd) =~ "docker ps --filter label=service=loyalty"
+    end
+  end
+
   test "parse_ip pulls the first dotted-quad from mixed output" do
     out = "172.18.0.4\nepmd: up and running on port 4369 with data:\nname app at port 44001\n"
     assert SshTunnel.parse_ip(out) == {:ok, "172.18.0.4"}

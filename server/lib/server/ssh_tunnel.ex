@@ -99,7 +99,7 @@ defmodule Server.SshTunnel do
     with {:ok, host} <- require_field(node[:ssh_host], :no_ssh_host),
          user = node[:ssh_user] || System.get_env("USER") || "",
          {:ok, conn} <- ssh_connect(host, user),
-         {:ok, info} <- discover(conn, node[:container]),
+         {:ok, info} <- discover(conn, node),
          :ok <- check_name_mode(info.mode),
          name = resolve_name(node, info),
          {:ok, lport} <- forward(conn, info.ip, info.port) do
@@ -201,12 +201,12 @@ defmodule Server.SshTunnel do
   # --- discovery (over the same ssh connection) ---
 
   # The node runs either in a container (Kamal/Docker) or straight on the host (a
-  # release under systemd, etc.). One command decides: if docker is present and a
-  # container matches, discover from it; otherwise find the beam on the host. Kept
-  # to a single exec (one channel), which some sshd setups need.
-  defp discover(conn, container) do
-    with {:ok, svc} <- safe_container(container),
-         {:ok, out, 0} <- exec(conn, discover_cmd(svc)),
+  # release under systemd, etc.). A filled `container` uses docker discovery;
+  # blank means host-native discovery. Each path stays a single exec (one
+  # channel), which some sshd setups need.
+  defp discover(conn, node) do
+    with {:ok, cmd} <- discover_cmd(node),
+         {:ok, out, 0} <- exec(conn, cmd),
          {:ok, ip} <- parse_ip(out),
          own = own_shortname(out),
          {:ok, port} <- parse_port(out, own) do
@@ -229,9 +229,12 @@ defmodule Server.SshTunnel do
 
   # Emits (either branch): the dial IP, the beam's own args (`-name`/`-sname`/
   # `-setcookie`), `epmd -names` (port), `HOST=<short hostname>`, and — docker
-  # only — `COOKIE=<release cookie file>`. `svc` is validated before interpolation.
-  defp discover_cmd(svc) do
-    ~c"""
+  # only — `COOKIE=<release cookie file>`. Interpolated search terms are
+  # validated before command construction.
+  @doc false
+  def discover_cmd(%{container: c}) when is_binary(c) and c != "" do
+    with {:ok, svc} <- safe_container(c) do
+      cmd = """
     set -e
     C=
     if command -v docker >/dev/null 2>&1; then
@@ -255,6 +258,26 @@ defmodule Server.SshTunnel do
       echo "HOST=$(hostname -s 2>/dev/null)"
     fi
     """
+      {:ok, String.to_charlist(cmd)}
+    end
+  end
+
+  def discover_cmd(node) do
+    key = host_search_key(node)
+
+    cmd = """
+    set -e
+    echo 127.0.0.1
+    A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | grep -- "#{key}" | head -1)
+    [ -n "$A" ] || A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | head -1)
+    [ -n "$A" ] || { echo "no beam for #{key}" >&2; exit 3; }
+    echo "$A"
+    B=$(printf '%s' "$A" | grep -oE '[-]bindir [^ ]+' | awk '{print $2}')
+    { [ -n "$B" ] && "$B/epmd" -names 2>/dev/null; } || epmd -names 2>/dev/null
+    echo "HOST=$(hostname -s 2>/dev/null)"
+    """
+
+    {:ok, String.to_charlist(cmd)}
   end
 
   defp exec(conn, cmd) do
@@ -278,6 +301,21 @@ defmodule Server.SshTunnel do
   end
 
   # --- pure parsing (see ssh_tunnel_test) ---
+
+  defp host_search_key(node) do
+    node
+    |> Map.get(:name, "")
+    |> to_string()
+    |> String.split("@", parts: 2)
+    |> hd()
+    |> safe_host_search_key()
+  end
+
+  defp safe_host_search_key(key) do
+    if Regex.match?(~r/\A[A-Za-z0-9._-]+\z/, key),
+      do: key,
+      else: ""
+  end
 
   @doc false
   def safe_container(c) when is_binary(c) do

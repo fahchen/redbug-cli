@@ -596,10 +596,10 @@ function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppE
   if (node.ssh_host) {
     rows.push([
       "SSH",
-      `${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}` +
-        (node.container ? ` · ${node.container}` : "")
+      `${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}`
     ])
   }
+  if (node.container) rows.push(["Container", node.container])
   if (node.source === "env") rows.push(["Source", "env (read-only)"])
   return (
     <box flexDirection="row" flexWrap="wrap" marginBottom={1}>
@@ -753,7 +753,7 @@ function ModalLayer({
             onInput={onCookie}
             focused={nodeField === 3}
           />
-          <text fg={theme.dim} marginTop={1}>Over SSH (optional — leave blank to dial directly)</text>
+          <text fg={theme.dim} marginTop={1}>SSH (optional — leave blank to dial directly)</text>
           <Field
             label="SSH host"
             hint="prod-1.example.com"
@@ -775,6 +775,7 @@ function ModalLayer({
             onInput={onSshUser}
             focused={nodeField === 6}
           />
+          <text fg={theme.dim} marginTop={1}>Container (optional — leave blank for a host process)</text>
           <Field
             label="Container"
             hint="myapp"
