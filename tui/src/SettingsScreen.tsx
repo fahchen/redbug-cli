@@ -34,13 +34,15 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
   const curTheme = s?.theme ?? "dark"
   const curSort = s?.default_sort ?? "ts_desc"
   const showHints = s?.show_hints ?? true
+  const consoleTimeout = s?.console_timeout ?? 15000
   const editor = editorName()
 
   const [sel, setSel] = useState(0)
   const [limitsDraft, setLimitsDraft] = useState<string | null>(null)
+  const [timeoutDraft, setTimeoutDraft] = useState<string | null>(null)
   const [help, setHelp] = useState(false)
 
-  const rowCount = 8 // theme, sort, 4 columns, limits, show hints
+  const rowCount = 9 // theme, sort, 4 columns, limits, show hints, console timeout
 
   const send = dispatcher(store)
   const dispatch = (payload: any) => send("updateSettings", payload)
@@ -60,6 +62,9 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
       setLimitsDraft(formatLimits(limits))
     } else if (sel === 7) {
       dispatch({ show_hints: !showHints })
+    } else if (sel === 8) {
+      // open empty (current shown as placeholder) so typing replaces, not appends
+      setTimeoutDraft("")
     }
   }
 
@@ -71,6 +76,10 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
     }
     if (limitsDraft !== null) {
       if (n === "escape") setLimitsDraft(null)
+      return
+    }
+    if (timeoutDraft !== null) {
+      if (n === "escape") setTimeoutDraft(null)
       return
     }
     if (n === "?") {
@@ -114,6 +123,12 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
           spacedAbove
         />
         <SettingRow label="Show hints" value={showHints ? "[x]" : "[ ]"} active={sel === 7} spacedAbove />
+        <SettingRow
+          label="Console timeout"
+          value={`${Math.round(consoleTimeout / 1000)}s`}
+          active={sel === 8}
+          spacedAbove
+        />
         <box flexDirection="row" marginTop={1}>
           <text fg={theme.dim}>{fit("$EDITOR", 16)}</text>
           <text fg={theme.dim}>{`${editor} (read-only · set via env)`}</text>
@@ -151,6 +166,23 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
               const p = parseLimits(v)
               if (p) dispatch({ default_limits: p })
               setLimitsDraft(null)
+            }}
+          />
+        </Overlay>
+      )}
+
+      {timeoutDraft !== null && (
+        <Overlay>
+          <TextField
+            label={`Console timeout — seconds (current ${Math.round(consoleTimeout / 1000)}s · blank = keep):`}
+            hint={String(Math.round(consoleTimeout / 1000))}
+            onSubmit={(v) => {
+              const t = v.trim()
+              if (t !== "") {
+                const secs = parseInt(t, 10)
+                if (Number.isFinite(secs) && secs > 0) dispatch({ console_timeout: secs * 1000 })
+              }
+              setTimeoutDraft(null)
             }}
           />
         </Overlay>

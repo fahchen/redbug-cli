@@ -21,7 +21,7 @@ defmodule Server.Remote.Worker do
   with `{:console_result, exec_id, {:ok | :error, result_string}, output}`.
   """
   def run(reply_to, exec_id, code) do
-    collector = spawn(fn -> collect([]) end)
+    collector = spawn(fn -> collect(reply_to, exec_id, []) end)
     prev_gl = Process.group_leader()
     Process.group_leader(self(), collector)
 
@@ -83,24 +83,33 @@ defmodule Server.Remote.Worker do
 
   defp fmt(format, args), do: :erlang.iolist_to_binary(:io_lib.format(format, args))
 
-  # Minimal IO server: accumulate put_chars, reply ok, hand back on :drain.
-  defp collect(acc) do
+  # Minimal IO server: accumulate put_chars AND stream each chunk back to the
+  # controller (`{:console_chunk, ...}`) so stdout shows up live, not only at the
+  # end. Still keeps the full buffer to hand back on :drain (authoritative final).
+  defp collect(reply_to, exec_id, acc) do
     receive do
       {:io_request, from, ref, {:put_chars, _enc, chars}} ->
         send(from, {:io_reply, ref, :ok})
-        collect([acc, chars])
+        emit(reply_to, exec_id, chars)
+        collect(reply_to, exec_id, [acc, chars])
 
       {:io_request, from, ref, {:put_chars, _enc, m, f, a}} ->
         send(from, {:io_reply, ref, :ok})
-        collect([acc, apply(m, f, a)])
+        chars = apply(m, f, a)
+        emit(reply_to, exec_id, chars)
+        collect(reply_to, exec_id, [acc, chars])
 
       {:io_request, from, ref, _other} ->
         send(from, {:io_reply, ref, :ok})
-        collect(acc)
+        collect(reply_to, exec_id, acc)
 
       {:drain, from} ->
         send(from, {:drained, :erlang.iolist_to_binary(acc)})
     end
+  end
+
+  defp emit(reply_to, exec_id, chars) do
+    send(reply_to, {:console_chunk, exec_id, :erlang.iolist_to_binary(chars)})
   end
 
   defp drain(collector) do

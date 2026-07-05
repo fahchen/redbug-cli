@@ -26,9 +26,12 @@ defmodule Server.Trace.Runner do
     :session_id,
     :target,
     :redbug_ref,
+    :started_at,
+    :applied_limits,
     status: "stopped",
     buffer: [],
     keep: 500,
+    event_count: 0,
     applied_sig: nil
   ]
 
@@ -122,7 +125,7 @@ defmodule Server.Trace.Runner do
         {:noreply, state}
 
       event ->
-        new_state = push_event(state, event)
+        new_state = %{push_event(state, event) | event_count: state.event_count + 1}
         broadcast(state.session_id, {:trace_event, event})
         {:noreply, new_state}
     end
@@ -133,10 +136,12 @@ defmodule Server.Trace.Runner do
   # stop it), or crashed. redbug never routes this through print_fun, so without
   # this the session would keep showing a stale "running" with no new events.
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{redbug_ref: ref} = state) do
+    # :normal = redbug hit its time/msgs cap (expected terminal); other reasons = crash.
+    ended = if reason == :normal, do: which_limit(state), else: nil
     Config.set_session_status(state.session_id, "stopped")
     new_state = %{state | status: "stopped", redbug_ref: nil}
-    broadcast(state.session_id, {:trace_status, status_payload(new_state)})
-    broadcast(state.session_id, {:trace_error, ended_error(reason)})
+    broadcast(state.session_id, {:trace_status, status_payload(new_state, ended)})
+    if ended == nil, do: broadcast(state.session_id, {:trace_error, ended_error(reason)})
     {:noreply, new_state}
   end
 
@@ -184,6 +189,9 @@ defmodule Server.Trace.Runner do
             |> Map.put(:target, target)
             |> Map.put(:status, "running")
             |> Map.put(:keep, session.limits.keep)
+            |> Map.put(:started_at, System.monotonic_time(:millisecond))
+            |> Map.put(:applied_limits, session.limits)
+            |> Map.put(:event_count, 0)
             |> Map.put(:applied_sig, Server.Trace.Signature.compute(session.traces, session.limits))
             |> monitor_redbug(proc)
             |> maybe_separator(separator?)
@@ -288,9 +296,6 @@ defmodule Server.Trace.Runner do
 
   # A clean :normal exit is the time/msgs limit firing (expected); anything else
   # is a crash. Either way the trace is no longer live and the user should know.
-  defp ended_error(:normal),
-    do: Server.Errors.humanize("Trace stopped — time/msgs limit reached, press s to restart")
-
   defp ended_error(reason),
     do: Server.Errors.humanize("Trace ended on the target: #{inspect(reason)}")
 
@@ -300,7 +305,16 @@ defmodule Server.Trace.Runner do
     %{state | buffer: Enum.take([event | state.buffer], state.keep)}
   end
 
-  defp status_payload(state), do: %{status: state.status, applied_sig: state.applied_sig}
+  defp status_payload(state, ended \\ nil),
+    do: %{status: state.status, applied_sig: state.applied_sig, ended: ended}
+
+  # Which cap fired when redbug clean-exited: msgs if the count reached it, else time.
+  defp which_limit(%{applied_limits: nil}), do: "time"
+
+  defp which_limit(%{applied_limits: limits} = state) do
+    elapsed = System.monotonic_time(:millisecond) - (state.started_at || 0)
+    if state.event_count >= limits.msgs, do: "msgs", else: (if elapsed >= limits.time * 1000, do: "time", else: "time")
+  end
 
   defp broadcast(session_id, message) do
     Phoenix.PubSub.broadcast(@pubsub, Server.Trace.topic(session_id), message)

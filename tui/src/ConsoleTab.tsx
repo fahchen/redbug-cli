@@ -7,7 +7,7 @@ import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./mus
 import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { HelpOverlay, Overlay, RootGate, StatusBar } from "./ui"
+import { Chip, HelpOverlay, Overlay, RootGate, StatusBar } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -44,16 +44,18 @@ function statusColor(status: string): string {
 export function ConsoleTab({
   nodeId,
   sessionId,
+  onSwitchToEvents,
   onBack
 }: {
   nodeId: string
   sessionId: string
+  onSwitchToEvents: () => void
   onBack: () => void
 }) {
   const root = useMusubiRoot(consoleRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading console…" errorLabel="Console">
-      {(store) => <ConsoleView store={store} onBack={onBack} />}
+      {(store) => <ConsoleView store={store} onSwitchToEvents={onSwitchToEvents} onBack={onBack} />}
     </RootGate>
   )
 }
@@ -67,9 +69,11 @@ type Modal =
 
 function ConsoleView({
   store,
+  onSwitchToEvents,
   onBack
 }: {
   store: ConsoleStore
+  onSwitchToEvents: () => void
   onBack: () => void
 }) {
   const snap = useMusubiSnapshot(store)
@@ -83,6 +87,7 @@ function ConsoleView({
   const [modal, setModal] = useState<Modal>({ kind: "none" })
 
   const cur = history[Math.min(sel, history.length - 1)] ?? null
+  const runningCount = history.filter((e) => e.status === "running").length
 
   const composeAndRun = (seed: string, name: string | null) => {
     void (async () => {
@@ -121,6 +126,12 @@ function ConsoleView({
         dispatch("clearHistory")
         setModal({ kind: "none" })
       } else if (n === "n" || n === "escape") setModal({ kind: "none" })
+      return
+    }
+
+    // [ switches back to Events ([ / ] tab nav; ] is a no-op here — already Console)
+    if (n === "[") {
+      onSwitchToEvents()
       return
     }
 
@@ -168,7 +179,7 @@ function ConsoleView({
           border
           borderStyle={PANEL_BORDER}
           borderColor={theme.borderActive}
-          title={` Console · ${history.length} `}
+          title=" Console "
           titleColor={theme.primary}
           backgroundColor={theme.background}
           width={38}
@@ -186,11 +197,11 @@ function ConsoleView({
           )}
         </box>
 
-        {cur && <ExecDetail exec={cur} />}
+        <ExecDetail exec={cur} />
       </box>
 
       <StatusBar
-        statusText={`${history.length} runs`}
+        statusText={`${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`}
         hints="j/k move · n new · r run · s stop · [/] tabs · ? help · esc back"
       />
 
@@ -280,23 +291,42 @@ function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
   )
 }
 
-function ExecDetail({ exec }: { exec: Exec }) {
-  const dur = exec.duration_ms == null ? "—" : `${exec.duration_ms}ms`
-  const code = exec.code.split("\n").slice(0, 12).join("\n")
+function ExecDetail({ exec }: { exec: Exec | null }) {
   return (
     <box
       border
       borderStyle={PANEL_BORDER}
       borderColor={theme.borderSubtle}
-      title={` ${statusGlyph(exec.status)} ${exec.name || "execution"} · ${exec.status} · ${dur} `}
-      titleColor={statusColor(exec.status)}
+      title=" Detail "
+      titleColor={theme.textMuted}
       backgroundColor={theme.background}
       flexGrow={1}
       flexBasis={0}
       flexDirection="column"
       padding={1}
     >
-      <text fg={theme.textMuted}>Code</text>
+      {exec === null ? (
+        <text fg={theme.textMuted}>No execution selected · n to run</text>
+      ) : (
+        <ExecDetailBody exec={exec} />
+      )}
+    </box>
+  )
+}
+
+function ExecDetailBody({ exec }: { exec: Exec }) {
+  const dur = exec.duration_ms == null ? "—" : `${exec.duration_ms}ms`
+  const code = exec.code.split("\n").slice(0, 12).join("\n")
+  const errTone = exec.status === "error" || exec.status === "timeout"
+  return (
+    <>
+      <box flexDirection="row" flexWrap="wrap">
+        <Chip label="Status" value={`${statusGlyph(exec.status)} ${exec.status}`} tone={errTone ? "error" : "default"} />
+        <Chip label="Duration" value={dur} />
+        {exec.name?.trim() ? <Chip label="Name" value={exec.name} /> : null}
+        <Chip label="Ts" value={exec.ts} />
+      </box>
+      <text fg={theme.textMuted} marginTop={1}>Code</text>
       <code content={code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
       {exec.result?.trim() !== "" && (
         <>
@@ -318,7 +348,7 @@ function ExecDetail({ exec }: { exec: Exec }) {
         </>
       )}
       <text fg={theme.textMuted} marginTop={1}>v opens full code + output in $EDITOR</text>
-    </box>
+    </>
   )
 }
 

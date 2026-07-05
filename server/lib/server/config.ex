@@ -38,7 +38,8 @@ defmodule Server.Config do
     default_sort: "ts_desc",
     default_limits: %{keep: 500, time: 900, msgs: 10_000},
     theme: "tokyo-night",
-    show_hints: true
+    show_hints: true,
+    console_timeout: 15_000
   }
 
   # --- lifecycle ---

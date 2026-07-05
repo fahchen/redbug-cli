@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
+import type { TabSelectRenderable } from "@opentui/core"
 
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
@@ -22,7 +23,7 @@ type FilterScope = "all" | "mfa" | "pid" | "info"
 type Filter = { scope: FilterScope; query: string }
 type GroupKey = "none" | "pid" | "mfa" | "kind"
 
-type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help" | "errorDetail"
+type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help" | "errorDetail" | "confirmExit"
 type Focus = "list" | "detail"
 type Cols = { name: boolean; pid: boolean; mfa: boolean; info: boolean }
 
@@ -106,6 +107,13 @@ function SessionView({
   onBack: () => void
 }) {
   const [tab, setTab] = useState<"events" | "console">("events")
+  // tab-select is display-only (not focused, so it never steals keys from the
+  // list or a console sub-picker). We drive switching via [ / ] in the keymaps
+  // and keep the tab-select's highlight in sync imperatively.
+  const tabRef = useRef<TabSelectRenderable>(null)
+  useEffect(() => {
+    tabRef.current?.setSelectedIndex(tab === "events" ? 0 : 1)
+  }, [tab])
   const snap = useMusubiSnapshot(store)
   const cols = settings?.columns ?? ALL_COLS
   const renderer = useRenderer()
@@ -119,8 +127,18 @@ function SessionView({
   // Node connection status (auto-connected on entry by SessionRoot). Drives the
   // breadcrumb glyph and the connect-error banner in the events pane.
   const nodeStatus = snap?.node_status ?? "idle"
-  const nodeError = snap?.node_error ?? null
   const nodeSpin = useSpinner(nodeStatus === "connecting", "block")
+
+  // One consolidated lifecycle state the UI reads (folds node connection + trace
+  // run + limit-stop into a single axis). Space is the sole "go" action per state
+  // (retry/start/restart); x stops. See docs/screens/02-session-events.md.
+  const endedLimit = (snap?.ended ?? null) as "time" | "msgs" | null
+  const sessionState: "connecting" | "unreachable" | "idle" | "running" | "ended" =
+    nodeStatus === "error" ? "unreachable"
+    : nodeStatus !== "connected" ? "connecting"
+    : running ? "running"
+    : endedLimit ? "ended"
+    : "idle"
 
   // Liveness: a running session that traces nothing looks identical to a healthy
   // one. Track wall-clock age since the event buffer last grew and tick a clock
@@ -259,6 +277,13 @@ function SessionView({
       return
     }
 
+    if (overlay === "confirmExit") {
+      // y leaves the screen; unmounting the SessionRoot stops the trace server-side.
+      if (n === "y") onBack()
+      else if (n === "n" || n === "escape") setOverlay("none")
+      return
+    }
+
     if (overlay === "editor") {
       handleEditorKeys(key)
       return
@@ -310,11 +335,14 @@ function SessionView({
       return
     }
 
-    // tab switch (Events ⇄ Console) is owned by the <tab-select> header via [ / ].
+    // tab switch (Events ⇄ Console) via [ / ]; the <tab-select> header mirrors it.
+    if (n === "]") return setTab("console")
+    if (n === "[") return setTab("events")
 
     switch (n) {
       case "escape":
         if (detailOpen) setDetailOpen(false)
+        else if (sessionState === "running") setOverlay("confirmExit")
         else onBack()
         break
       case "j":
@@ -365,15 +393,14 @@ function SessionView({
       case "v":
         exportSelected()
         break
-      case "s":
-        if (key.shift) dispatch("startTrace")
+      case "space":
+        // single context "go" action — never destructive (retry / start / restart)
+        if (sessionState === "unreachable") dispatch("reconnect")
+        else if (sessionState === "idle" || sessionState === "ended") dispatch("startTrace")
         break
       case "x":
-        if (key.shift) dispatch("stopTrace")
-        break
-      case "c":
-        // manual retry after the node connect gave up (:error)
-        if (nodeStatus === "error") dispatch("reconnect")
+        // abort a running trace: destructive, so its own key (not Space)
+        if (sessionState === "running") dispatch("stopTrace")
         break
       case "e":
         if (error?.detail) setOverlay("errorDetail")
@@ -436,36 +463,47 @@ function SessionView({
     : focus === "list" ? theme.borderActive
     : theme.borderSubtle
 
+  // Footer hints: the Space-action label follows the current state (self-documenting).
+  const spaceAction =
+    sessionState === "unreachable" ? "space retry"
+    : sessionState === "idle" ? "space start"
+    : sessionState === "ended" ? "space restart"
+    : sessionState === "running" ? (dirty ? "x stop · ⌃S apply" : "x stop")
+    : ""
+  const eventsHints = ["j/k move", "enter detail", "t traces", spaceAction, "[/] tabs", "? help", "esc back"]
+    .filter((s) => s !== "")
+    .join(" · ")
+
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
         <text fg={theme.text}>{snap?.name ?? "session"}</text>
-        {dirty && <text fg={theme.warning}>{" ⚠ unapplied (⌃S)"}</text>}
         <box flexGrow={1} backgroundColor={theme.background} />
         <tab-select
-          focused={overlay === "none" && !zoom}
+          ref={tabRef}
           width={18}
           tabWidth={9}
           showDescription={false}
           showScrollArrows={false}
           showUnderline={false}
-          wrapSelection
           options={[
             { name: "Events", description: "" },
             { name: "Console", description: "" }
           ]}
           backgroundColor={theme.background}
           textColor={theme.textMuted}
-          focusedBackgroundColor={theme.background}
-          focusedTextColor={theme.textMuted}
           selectedBackgroundColor={theme.background}
           selectedTextColor={theme.primary}
-          onChange={(i: number) => setTab(i === 0 ? "events" : "console")}
         />
       </box>
 
       {tab === "console" ? (
-        <ConsoleTab nodeId={nodeId} sessionId={sessionId} onBack={onBack} />
+        <ConsoleTab
+          nodeId={nodeId}
+          sessionId={sessionId}
+          onSwitchToEvents={() => setTab("events")}
+          onBack={onBack}
+        />
       ) : (
       <>
       {!zoom && (
@@ -489,7 +527,7 @@ function SessionView({
         >
           <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
-            <text fg={theme.textMuted}>No events yet · ⇧S to start</text>
+            <text fg={theme.textMuted}>No events yet · space to start</text>
           ) : (
             <scrollbox scrollY stickyStart="top" flexGrow={1}>
               {(() => {
@@ -529,22 +567,19 @@ function SessionView({
       {error && <Flash error={error} />}
 
       <StatusBar
-        statChip={
-          nodeStatus === "error" && nodeError ? (
-            <text fg={theme.error}>{`✖ ${nodeError.message} · c retry`}</text>
-          ) : nodeStatus === "connecting" ? (
-            <text fg={theme.warning}>{`${nodeSpin} connecting…`}</text>
-          ) : (
-            <text fg={theme.textMuted}>
-              {`${running && buckets.current.some((v) => v > 0) ? `${sparkline(buckets.current)}  ` : ""}${events.length}/${limits.keep}`}
-            </text>
-          )
-        }
-        hints="j/k move · enter detail · t traces · ⇧S/X run/stop · [/] tabs · ? help · esc back"
+        statChip={<SessionStat state={sessionState} nodeSpin={nodeSpin} endedLimit={endedLimit} dirty={dirty} spark={running && buckets.current.some((v) => v > 0) ? sparkline(buckets.current) : ""} count={events.length} limits={limits} />}
+        hints={eventsHints}
       />
 
       {overlay === "errorDetail" && error && (
         <ErrorDetailOverlay body={error.detail ?? error.message} />
+      )}
+
+      {overlay === "confirmExit" && (
+        <Overlay>
+          <text fg={theme.text}>Stop trace and leave?</text>
+          <text fg={theme.textMuted} marginTop={1}>leaving stops the running trace · y = yes · n/Esc = stay</text>
+        </Overlay>
       )}
 
       {overlay === "help" && (
@@ -561,16 +596,16 @@ function SessionView({
                 ["/", "filter"],
                 ["g", "cycle grouping"],
                 ["l", "limits"],
-                ["c", "retry node connect"],
                 ["e / d", "error detail / dismiss"]
               ]
             },
             {
-              title: "traces",
+              title: "trace (space = context go, never destructive)",
               lines: [
+                ["space", "retry / start / restart (per state)"],
+                ["x", "stop trace"],
+                ["⌃S", "apply RTP edits (restart)"],
                 ["t", "edit traces (RTPs)"],
-                ["⇧S / ⇧X", "start / stop trace"],
-                ["⌃S", "apply (restart)"],
                 ["⌃L", "clear events"]
               ]
             },
@@ -744,7 +779,7 @@ function SessionView({
       )}
 
       {zoom && selectedEvent && (
-        <Overlay title="detail · esc close · v view" minWidth={70}>
+        <Overlay title="Detail · esc close · v view" minWidth={70}>
           <DetailMeta ev={selectedEvent} />
           <text fg={theme.textMuted} marginTop={1}>
             {selectedEvent.kind === "call" ? "args" : selectedEvent.kind === "retn" ? "return" : "payload"}
@@ -842,6 +877,48 @@ function Cell({
   )
 }
 
+// Bottom-left status: one glyph per lifecycle state so ● live / ◇ idle / ⧗ ended
+// are distinct at a glance. Running shows sparkline + count; ended names the cap.
+function SessionStat({
+  state,
+  nodeSpin,
+  endedLimit,
+  dirty,
+  spark,
+  count,
+  limits
+}: {
+  state: "connecting" | "unreachable" | "idle" | "running" | "ended"
+  nodeSpin: string
+  endedLimit: "time" | "msgs" | null
+  dirty: boolean
+  spark: string
+  count: number
+  limits: { keep: number; time: number; msgs: number }
+}) {
+  switch (state) {
+    case "connecting":
+      return <text fg={theme.warning}>{`${nodeSpin} connecting…`}</text>
+    case "unreachable":
+      return <text fg={theme.error}>{"✖ can't reach node"}</text>
+    case "idle":
+      return <text fg={theme.textMuted}>{"◇ idle"}</text>
+    case "ended":
+      return (
+        <text fg={theme.warning}>
+          {`⧗ ${endedLimit === "msgs" ? `msgs limit (${limits.msgs})` : `time limit (${limits.time}s)`}`}
+        </text>
+      )
+    case "running":
+      return (
+        <box flexDirection="row">
+          <text fg={theme.success}>{`● ${spark ? `${spark} ` : ""}${count}/${limits.keep}`}</text>
+          {dirty && <text fg={theme.warning}>{"  ⚠ unapplied"}</text>}
+        </box>
+      )
+  }
+}
+
 function DetailMeta({ ev }: { ev: TraceEvent }) {
   const sym = kindSym[ev.kind] ?? "?"
   return (
@@ -864,7 +941,7 @@ function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
       borderStyle={PANEL_BORDER}
       borderColor={focused ? theme.borderActive : theme.borderSubtle}
       backgroundColor={theme.background}
-      title=" detail "
+      title=" Detail "
       titleColor={theme.textMuted}
       width={46}
       flexDirection="column"

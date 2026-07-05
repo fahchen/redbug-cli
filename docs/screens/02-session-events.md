@@ -25,46 +25,34 @@ d                                         [ Events ] Console
   做 Elixir 高亮。
 - 列显隐（name/pid/mfa/info）在 Settings（`,`）里开关，`ts`/`k` 常显。
 
-## 不同状态
+## 状态机（连接 + trace + limit 整合成一条主状态线）
 
-空态（还没启动 trace）：
+左下一个 statChip，一 glyph 一状态；右侧 hint 动态标注 `Space` 当前语意。
+**`Space` = 唯一 go 键（永不破坏）**，`x` = stop（破坏性、独立键），`⌃S` = apply。
 
-```
-d                                         [ Events ] Console
-┌──────────────────────── sort:ts↓ · filter:- · group:none ┐
-│ ts    k  name    pid    mfa    info                       │
-│ No events yet · ⇧S to start                               │
-└───────────────────────────────────────────────────────────┘
- 0/500   j/k move · enter detail · ⇧S/X run/stop · ? help · esc back
-```
+| 状态 | 左下 statChip | Space | 右侧 hint |
+|------|--------------|-------|----------|
+| connecting | `▌ connecting…`（黄） | —（等） | — |
+| unreachable | `✖ can't reach node`（红） | retry | `space retry` |
+| idle | `◇ idle`（灰） | start | `space start` |
+| running | `● ▁▂▃ 8/500`（绿 + sparkline + 计数） | —（已跑，用 `x` 停） | `x stop` |
+| running + unapplied | `● ▁▂▃ 8/500  ⚠ unapplied` | — | `x stop · ⌃S apply` |
+| ended | `⧗ time limit (900s)` / `⧗ msgs limit (10000)`（黄） | restart | `space restart` |
 
-运行中（有事件、sparkline 走动）：
-
-```
-┌──────────────────────── sort:ts↓ · filter:- · group:none ┐
-│ 12:13:47 ↑ :erlang.apply/2 <…> Demo.tick/1  %{count:…}    │
-│ 12:13:47 ↓ :erlang.apply/2 <…> Demo.tick/1  [50356]       │
-└───────────────────────────────────────────────────────────┘
- ▁▂▃  8/500   …
-```
+- **idle vs ended**：idle = 没跑 / 手动 `x` 停了；ended = 跑满 time/msgs 上限自停（终态，Space 重启）。
+  `keep` 只是缓冲上限，**不停** trace。
+- **connect vs start**：connect（节点级）自动按需（Space 连不上先连再跑）；start（trace 级）由用户 Space 触发。用户只管 Space。
+- 离开 running 时弹「Stop trace and leave?」确认（y = 停并离开；离开即 `Trace.stop`）。
 
 detail 打开（右侧详情，meta 隐藏）：
 
 ```
-┌───────────────────────────────────┐┌ detail ───────────────┐
-│ 12:13 ↓ :erlang.apply/2 … [48997] ││ kind ↓call  ts 11:55… │
-│ ...                               ││ pid  <…>  name :erl…  │
+┌───────────────────────────────────┐┌ Detail ───────────────┐
+│ 12:13 ↓ :erlang.apply/2 … [48997] ││ Kind ↓call  Ts 11:55… │
+│ ...                               ││ Pid  <…>  Name :erl…  │
 │                                   ││ args                  │
 │                                   ││ [48997]               │
 └───────────────────────────────────┘└───────────────────────┘
-```
-
-连接中 / 报错（状态在**左下角**，与 events 计数互斥：连上显计数、异常显状态）：
-
-```
-连接中：  ▌ connecting…                        （黄）
-报错：    ✖ Can't reach node — check … · c retry （红）
-连上后：  ▁▂▃  8/500                            （dim，计数 + sparkline）
 ```
 
 ## 弹层（frameless + 压暗背景；sort/filter/preset 用 `<select>`，trace 用手写 list）
@@ -140,7 +128,10 @@ Enter apply (Ctrl+S to restart if running) · Esc cancel
 | 键 | 动作 |
 |-----|--------|
 | j/k | 移动 · enter 详情 |
-| ⇧S / ⇧X | 启动 / 停止 trace |
-| [ / ] | 切换 Events ⇄ Console（`<tab-select>` 头，focus 时收键） |
+| space | 上下文 go：retry / start / restart（永不破坏；自动按需 connect） |
+| x | stop（停 trace，破坏性、独立键） |
+| ⌃S | apply（改了 RTP 后重启生效） |
+| t | 编辑 traces（RTP）· l 会话上限 |
+| [ / ] | 切换 Events ⇄ Console（`<tab-select>` 头，受控 ref 同步） |
 | z | 放大详情 · v 导出到 $EDITOR |
-| esc | 关详情 / 返回 |
+| esc | 关详情 / 返回（running 时弹确认「Stop trace and leave?」） |

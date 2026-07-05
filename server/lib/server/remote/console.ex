@@ -103,6 +103,15 @@ defmodule Server.Remote.Console do
   end
 
   @impl true
+  # Live stdout: append each streamed chunk to the running exec and rebroadcast,
+  # so output shows up as it happens rather than only on completion.
+  def handle_info({:console_chunk, exec_id, chunk}, state) do
+    case Map.get(state.running, exec_id) do
+      nil -> {:noreply, state}
+      _meta -> {:noreply, append_output(state, exec_id, chunk)}
+    end
+  end
+
   def handle_info({:console_result, exec_id, result, output}, state) do
     case Map.get(state.running, exec_id) do
       nil ->
@@ -136,7 +145,9 @@ defmodule Server.Remote.Console do
       {exec_id, meta} ->
         cancel(meta)
         {status, text} = down_outcome(meta.cause, reason)
-        {:noreply, finalize(state, exec_id, status, text, "", meta)}
+        # nil output = keep whatever stdout was already streamed (stop/timeout
+        # mid-run shouldn't wipe the partial output the user saw live).
+        {:noreply, finalize(state, exec_id, status, text, nil, meta)}
     end
   end
 
@@ -157,7 +168,7 @@ defmodule Server.Remote.Console do
          :ok <- ensure_worker(target) do
       pid = Node.spawn(target, Server.Remote.Worker, :run, [self(), exec_id, code])
       ref = Process.monitor(pid)
-      timer = Process.send_after(self(), {:timeout, exec_id}, @timeout)
+      timer = Process.send_after(self(), {:timeout, exec_id}, timeout_ms())
       {:ok, %{pid: pid, ref: ref, timer: timer, started: mono(), cause: nil}}
     end
   end
@@ -191,7 +202,8 @@ defmodule Server.Remote.Console do
     history =
       Enum.map(state.history, fn e ->
         if e.id == exec_id do
-          %{e | status: status, result: text, output: output, duration_ms: duration}
+          # nil output keeps the already-streamed stdout (see :DOWN handler).
+          %{e | status: status, result: text, output: output || e.output, duration_ms: duration}
         else
           e
         end
@@ -202,6 +214,18 @@ defmodule Server.Remote.Console do
     %{state | history: history, running: Map.delete(state.running, exec_id)}
   end
 
+  # Append a streamed stdout chunk to a still-running exec and rebroadcast.
+  defp append_output(state, exec_id, chunk) do
+    history =
+      Enum.map(state.history, fn e ->
+        if e.id == exec_id, do: %{e | output: e.output <> chunk}, else: e
+      end)
+
+    entry = Enum.find(history, &(&1.id == exec_id))
+    if entry, do: broadcast(state, {:console_update, entry})
+    %{state | history: history}
+  end
+
   defp push(state, entry) do
     %{state | history: Enum.take([entry | state.history], @keep)}
   end
@@ -210,8 +234,12 @@ defmodule Server.Remote.Console do
   defp split({:error, text}), do: {"error", text}
 
   defp down_outcome("stopped", _reason), do: {"stopped", "stopped"}
-  defp down_outcome("timeout", _reason), do: {"timeout", "timed out after #{@timeout}ms"}
+  defp down_outcome("timeout", _reason), do: {"timeout", "timed out after #{timeout_ms()}ms"}
   defp down_outcome(_nil, reason), do: {"error", "process down: #{inspect(reason)}"}
+
+  # Console watchdog timeout (ms), user-configurable via Settings; @timeout is the
+  # fallback when a persisted settings map predates the field.
+  defp timeout_ms, do: Map.get(Config.settings(), :console_timeout, @timeout)
 
   defp find_by_ref(running, ref) do
     Enum.find_value(running, fn {id, meta} -> if meta.ref == ref, do: {id, meta} end)

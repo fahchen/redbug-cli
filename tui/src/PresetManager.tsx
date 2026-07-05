@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
-import { Header, HelpOverlay, Overlay, RootGate, StatusBar, TextField } from "./ui"
+import { Chip, HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type PresetProxy = StoreProxy<"Server.Stores.PresetStore", Musubi.Stores>
@@ -104,12 +104,6 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         case "up":
           setTraceSel((i) => Math.max(i - 1, 0))
           break
-        case "space":
-          if (cur && traceCur) {
-            const p = presetProxyById(cur.id)
-            if (p) dispatcher(p)("togglePresetTrace", { trace_id: traceCur.id })
-          }
-          break
         case "n":
           if (cur) setModal({ kind: "addTrace", presetId: cur.id })
           break
@@ -161,63 +155,46 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
   })
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title="Presets" />
-
-      <box flexDirection="row" flexGrow={1} gap={1}>
-        <box
-          border
-          borderColor={focus === "list" ? theme.title : theme.border}
-          backgroundColor={theme.bg}
-          title={` Presets (${presets.length}) `}
-          titleColor={theme.title}
-          width={36}
-          flexDirection="column"
-          padding={1}
-        >
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <box flexDirection="row" flexGrow={1} paddingTop={1}>
+        <Panel heading="Presets" active={focus === "list"} width={36}>
           {presets.length === 0 ? (
-            <text fg={theme.dim}>No presets yet · n to add</text>
+            <text fg={theme.textMuted}>No presets yet · n to add</text>
           ) : (
             presets.map((p, i) => (
               <PresetRow key={p.id} preset={p} active={i === sel} />
             ))
           )}
-        </box>
+        </Panel>
 
-        <box
-          border
-          borderColor={focus === "detail" ? theme.title : theme.border}
-          backgroundColor={theme.bg}
-          title={cur ? ` ${cur.name} — traces ` : " — "}
-          titleColor={theme.title}
-          flexGrow={1}
-          flexBasis={0}
-          flexDirection="column"
-          padding={1}
-        >
+        <Panel heading="Traces" active={focus === "detail"} grow>
           {!cur ? (
-            <text fg={theme.dim}>Select a preset</text>
+            <text fg={theme.textMuted}>Select a preset</text>
           ) : (
             <>
+              <box flexDirection="row" marginBottom={1}>
+                <Chip label="keep" value={`${cur.limits.keep}`} />
+                <Chip label="time" value={`${cur.limits.time}s`} />
+                <Chip label="msgs" value={`${cur.limits.msgs}`} />
+              </box>
               {traces.length === 0 ? (
-                <text fg={theme.dim}>No patterns yet · enter, then n to add</text>
+                <text fg={theme.textMuted}>No patterns yet · enter, then n to add</text>
               ) : (
                 traces.map((t, i) => (
                   <TraceRow key={t.id} rtp={t} active={focus === "detail" && i === traceSel} />
                 ))
               )}
-              <text fg={theme.dim} marginTop={1}>{`limits: keep ${cur.limits.keep} · time ${cur.limits.time}s · msgs ${cur.limits.msgs}`}</text>
             </>
           )}
-        </box>
+        </Panel>
       </box>
 
       <StatusBar
         statusText={`${presets.length} presets`}
         hints={
           focus === "list"
-            ? "j/k move · enter edit · n new · ? help · esc back"
-            : "j/k move · space toggle · n add · ? help · tab/esc back"
+            ? "j/k move · enter edit · n new · r rename · d del · ? help · esc back"
+            : "j/k move · n add · e edit · l limits · d del · ? help · tab/esc back"
         }
       />
 
@@ -239,7 +216,6 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               title: "traces (detail focus)",
               lines: [
                 ["j / k", "move"],
-                ["space", "toggle pattern"],
                 ["n", "add pattern"],
                 ["e", "edit pattern"],
                 ["l", "limits"],
@@ -339,25 +315,25 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
 }
 
 function PresetRow({ preset, active }: { preset: Preset; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
-  const fg = active ? theme.selFg : theme.fg
+  const bg = active ? theme.backgroundElement : theme.background
+  const fg = active ? theme.text : theme.textMuted
   return (
-    <box backgroundColor={bg} flexDirection="row">
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={fg}>{preset.name}</text>
-      <text bg={bg} fg={theme.dim}>{`  (${preset.traces.length})`}</text>
+      <box flexGrow={1} backgroundColor={bg} />
+      <text bg={bg} fg={theme.textMuted}>{preset.traces.length}</text>
     </box>
   )
 }
 
+// Preset traces are always active (no per-trace toggle): a preset is a template
+// where every pattern is meant to run. Drop it from the preset to exclude it.
 function TraceRow({ rtp, active }: { rtp: Rtp; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
-  const fg = active ? theme.selFg : theme.fg
-  const mark = rtp.enabled ? "[x]" : "[ ]"
-  const markColor = rtp.enabled ? theme.on : theme.dim
+  const bg = active ? theme.backgroundElement : theme.background
+  const fg = active ? theme.text : theme.textMuted
   return (
-    <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={markColor}>{`${mark} `}</text>
-      <text bg={bg} fg={rtp.enabled ? fg : theme.dim}>{rtp.text}</text>
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+      <text bg={bg} fg={fg}>{rtp.text}</text>
     </box>
   )
 }

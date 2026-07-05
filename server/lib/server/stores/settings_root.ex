@@ -16,6 +16,7 @@ defmodule Server.Stores.SettingsRoot do
       field(:columns, map() | nil)
       field(:default_limits, map() | nil)
       field(:show_hints, boolean() | nil)
+      field(:console_timeout, integer() | nil)
     end
   end
 
@@ -68,6 +69,7 @@ defmodule Server.Stores.SettingsRoot do
       "default_limits" -> :default_limits
       "theme" -> :theme
       "show_hints" -> :show_hints
+      "console_timeout" -> :console_timeout
       _ -> nil
     end
   end

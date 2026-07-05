@@ -28,6 +28,7 @@ defmodule Server.Stores.SessionRoot do
     field(:node_status, String.t())
     field(:node_error, Server.Schema.AppError.t() | nil)
     field(:dirty, boolean())
+    field(:ended, String.t() | nil)
     field(:error, Server.Schema.AppError.t() | nil)
     field(:traces, list(Server.Schema.Rtp.t()))
     field(:limits, Server.Schema.Limits.t())
@@ -132,6 +133,14 @@ defmodule Server.Stores.SessionRoot do
     {:ok, socket}
   end
 
+  # Leaving the session screen stops its trace (the client confirms first when
+  # running — see the exit prompt). Trace.stop is a no-op when nothing is running.
+  @impl true
+  def terminate(_reason, socket) do
+    Trace.stop(socket.assigns.session_id)
+    :ok
+  end
+
   @impl true
   def render(socket) do
     a = socket.assigns
@@ -144,6 +153,7 @@ defmodule Server.Stores.SessionRoot do
       node_status: a.node_status,
       node_error: Map.get(a, :node_error),
       dirty: a.dirty,
+      ended: Map.get(a, :ended),
       error: Map.get(a, :error),
       traces: a.traces,
       limits: a.limits,
@@ -167,10 +177,11 @@ defmodule Server.Stores.SessionRoot do
     {:noreply, stream(socket, :events, [], reset: true)}
   end
 
-  def handle_info({:trace_status, %{status: status, applied_sig: applied_sig}}, socket) do
+  def handle_info({:trace_status, %{status: status, applied_sig: applied_sig} = payload}, socket) do
     socket =
       socket
       |> assign(:applied_sig, applied_sig)
+      |> assign(:ended, Map.get(payload, :ended))
       |> put_status(status)
 
     {:noreply, socket}
@@ -291,6 +302,7 @@ defmodule Server.Stores.SessionRoot do
         |> assign(:limits, Config.settings().default_limits)
         |> assign_new(:status, fn -> "stopped" end)
         |> assign_new(:dirty, fn -> false end)
+        |> assign_new(:ended, fn -> nil end)
 
       session ->
         socket
@@ -299,6 +311,7 @@ defmodule Server.Stores.SessionRoot do
         |> assign(:limits, session.limits)
         |> assign_new(:status, fn -> "stopped" end)
         |> assign_new(:dirty, fn -> false end)
+        |> assign_new(:ended, fn -> nil end)
     end
   end
 
