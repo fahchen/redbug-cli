@@ -56,6 +56,19 @@ defmodule Server.Errors do
       detail: nil
     }
 
+  def humanize({:name_mode_mismatch, :short}),
+    do: %AppError{
+      message: "Node runs -sname (shortname); redbug's controller is -name (longname) — Erlang can't connect the two",
+      detail:
+        "Run the target with -name (e.g. Kamal RELEASE_DISTRIBUTION=name / -name app@<ip>), or run redbug in shortname mode. A single VM can only be one mode."
+    }
+
+  def humanize({:name_mode_mismatch, :long}),
+    do: %AppError{
+      message: "Node runs -name (longname); redbug's controller is -sname (shortname) — Erlang can't connect the two",
+      detail: "Run redbug in longname mode, or the target with -sname."
+    }
+
   def humanize(reason) do
     text = inspect(reason)
     %AppError{message: text |> String.split("\n", parts: 2) |> hd(), detail: text}

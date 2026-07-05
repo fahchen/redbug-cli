@@ -172,6 +172,7 @@ function S1View({
   const [sshUserDraft, setSshUserDraft] = useState("")
   const [containerDraft, setContainerDraft] = useState("")
   const [nodeField, setNodeField] = useState(0)
+  const [nodeErr, setNodeErr] = useState<string | null>(null)
   const NODE_FIELDS = 8
 
   const nodeIdx = Math.min(nodeSel, Math.max(0, nodeList.length - 1))
@@ -249,15 +250,26 @@ function S1View({
 
       case "newNode":
       case "editNode":
-        if (name === "escape") setModal({ kind: "none" })
-        else if (name === "tab") setNodeField((f) => (f + 1) % NODE_FIELDS)
+        if (name === "escape") {
+          setNodeErr(null)
+          setModal({ kind: "none" })
+        } else if (name === "tab") setNodeField((f) => (f + 1) % NODE_FIELDS)
         else if (name === "return") {
-          // ssh nodes auto-discover their name + cookie, so only require those
-          // two for a directly-dialed node.
-          const ok =
-            sshHostDraft.trim() !== "" ||
-            (nameDraft.trim() !== "" && cookieDraft.trim() !== "")
-          if (ok) {
+          // ssh nodes auto-discover their name + cookie/host, so validation only
+          // applies to a directly-dialed node (name@host must be a real Erlang name).
+          const isSsh = sshHostDraft.trim() !== ""
+          if (!isSsh) {
+            if (nameDraft.trim() === "" || cookieDraft.trim() === "") {
+              setNodeErr("Direct node needs a name and cookie")
+              break
+            }
+            if (!isValidHost(hostDraft)) {
+              setNodeErr("Host must be a hostname or IP (e.g. 127.0.0.1 or app.example.com), not a bare number")
+              break
+            }
+          }
+          setNodeErr(null)
+          {
             // the Erlang node name is name@host; recombine the split fields.
             const fullName =
               hostDraft.trim() !== "" ? `${nameDraft.trim()}@${hostDraft.trim()}` : nameDraft
@@ -484,6 +496,7 @@ function S1View({
           sshUserDraft={sshUserDraft}
           containerDraft={containerDraft}
           nodeField={nodeField}
+          nodeErr={nodeErr}
           onName={setNameDraft}
           onHost={setHostDraft}
           onPort={setPortDraft}
@@ -559,6 +572,16 @@ function redactCookie(c: string | null | undefined): string {
   return `${c.slice(0, 2)}••••${c.slice(-2)}`
 }
 
+// A directly-dialed node's host must be a real hostname or IP — a bare number like
+// "178" is neither a valid Erlang longname host (needs FQDN/IP) nor a shortname one.
+function isValidHost(h: string): boolean {
+  const s = h.trim()
+  if (s === "") return false
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return true
+  if (!/^[a-zA-Z0-9.\-]+$/.test(s)) return false
+  return /[a-zA-Z]/.test(s) || s.includes(".")
+}
+
 // Detail block at the top of the sessions pane: host / cookie(redacted) / ssh
 // route, aligned key–value rows. The connect error (if any) rides underneath.
 function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppError | null }) {
@@ -622,6 +645,7 @@ function ModalLayer({
   sshUserDraft,
   containerDraft,
   nodeField,
+  nodeErr,
   onName,
   onHost,
   onPort,
@@ -646,6 +670,7 @@ function ModalLayer({
   sshUserDraft: string
   containerDraft: string
   nodeField: number
+  nodeErr: string | null
   onName: (v: string) => void
   onHost: (v: string) => void
   onPort: (v: string) => void
@@ -754,6 +779,7 @@ function ModalLayer({
             onInput={onContainer}
             focused={nodeField === 7}
           />
+          {nodeErr && <text fg={theme.error} marginTop={1}>{`✗ ${nodeErr}`}</text>}
           <text fg={theme.dim} marginTop={1}>Tab switch field · Enter save · Esc cancel</text>
         </>
       )

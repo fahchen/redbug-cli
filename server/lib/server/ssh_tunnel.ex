@@ -100,6 +100,7 @@ defmodule Server.SshTunnel do
          user = node[:ssh_user] || System.get_env("USER") || "",
          {:ok, conn} <- ssh_connect(host, user),
          {:ok, info} <- discover(conn, node[:container]),
+         :ok <- check_name_mode(info.mode),
          name = resolve_name(node, info),
          {:ok, lport} <- forward(conn, info.ip, info.port) do
       node_atom = String.to_atom(name)
@@ -118,6 +119,19 @@ defmodule Server.SshTunnel do
       is_binary(info.name) and String.contains?(info.name, "@") -> info.name
       is_binary(short) and info.host not in [nil, ""] -> "#{short}@#{info.host}"
       true -> node.name
+    end
+  end
+
+  # Erlang can't connect a longname node to a shortname one (or vice versa) — it's
+  # a VM-global mode. Catch the mismatch here with a clear reason instead of letting
+  # Node.connect fail with an opaque "illegal hostname".
+  defp check_name_mode(mode) do
+    controller_long = :net_kernel.longnames()
+
+    cond do
+      mode == "short" and controller_long -> {:error, {:name_mode_mismatch, :short}}
+      mode == "long" and controller_long == false -> {:error, {:name_mode_mismatch, :long}}
+      true -> :ok
     end
   end
 
@@ -203,7 +217,8 @@ defmodule Server.SshTunnel do
          name: parse_name(out),
          sname: parse_sname(out),
          host: parse_host(out),
-         cookie: parse_cookie(out)
+         cookie: parse_cookie(out),
+         mode: parse_mode(out)
        }}
     else
       {:ok, _out, status} -> {:error, {:discovery_exit, status}}
@@ -325,6 +340,16 @@ defmodule Server.SshTunnel do
     case Regex.run(~r/ -s?name (\S+)/, out) do
       [_, name] -> name
       _ -> nil
+    end
+  end
+
+  # Distribution mode off the beam args: -sname = shortname, -name = longname.
+  @doc false
+  def parse_mode(out) do
+    cond do
+      Regex.match?(~r/ -sname /, out) -> "short"
+      Regex.match?(~r/ -name /, out) -> "long"
+      true -> nil
     end
   end
 
