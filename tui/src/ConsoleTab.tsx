@@ -135,6 +135,12 @@ function ConsoleView({
       return
     }
 
+    // ⌃L clears history (matches Events' ⌃L; keeps destructive clear off a bare key)
+    if (key.ctrl && n === "l") {
+      if (history.length > 0) setModal({ kind: "confirmClear" })
+      return
+    }
+
     switch (n) {
       case "escape":
         onBack()
@@ -160,11 +166,8 @@ function ConsoleView({
       case "r":
         if (cur) dispatch("run", { code: cur.code, name: cur.name || null })
         break
-      case "s":
+      case "x":
         if (cur && cur.status === "running") setModal({ kind: "confirmStop", id: cur.id })
-        break
-      case "c":
-        if (history.length > 0) setModal({ kind: "confirmClear" })
         break
       case "?":
         setModal({ kind: "help" })
@@ -202,7 +205,7 @@ function ConsoleView({
 
       <StatusBar
         statusText={`${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`}
-        hints="j/k move · n new · r run · s stop · [/] tabs · ? help · esc back"
+        hints="j/k move · n new · r run · x stop · [/] tabs · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -216,8 +219,8 @@ function ConsoleView({
                 ["e", "edit + run selected"],
                 ["v", "view full code + output in $EDITOR"],
                 ["r", "run selected as-is"],
-                ["s", "force-stop running execution"],
-                ["c", "clear history"]
+                ["x", "force-stop running execution"],
+                ["⌃L", "clear history"]
               ]
             },
             {
