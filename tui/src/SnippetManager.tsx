@@ -258,7 +258,7 @@ function SnippetRow({ snippet, active, index }: { snippet: Snippet; active: bool
   const fg = active ? theme.selFg : theme.fg
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.dim}>{`${index} · `}</text>
+      <text bg={bg} fg={theme.dim}>{`${String(index).padStart(2)} · `}</text>
       <text bg={bg} fg={fg}>{snippet.name}</text>
     </box>
   )
