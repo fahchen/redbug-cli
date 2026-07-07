@@ -177,7 +177,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
-        <Panel heading="Presets" active={focus === "list"} width={36}>
+        <Panel heading="Presets" active={focus === "list"} width={40}>
           {presets.length === 0 ? (
             <text fg={theme.textMuted}>No presets yet · n to add</text>
           ) : (
