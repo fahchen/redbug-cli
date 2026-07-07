@@ -347,6 +347,14 @@ function S1View({
             setModal({ kind: "renameSession", nodeId: node.id, sessionId: session.id })
           }
           break
+        case "g":
+          if (sessNumBuf.current !== "" && sessions.length > 0) {
+            const n = parseInt(sessNumBuf.current, 10)
+            if (n >= 1) setSessSel(Math.min(n - 1, sessions.length - 1))
+            sessNumBuf.current = ""
+            if (sessNumTimer.current) clearTimeout(sessNumTimer.current)
+          }
+          break
         case "d":
           if (node && session) {
             const proxy = sessionProxy
@@ -362,15 +370,13 @@ function S1View({
           setModal({ kind: "help" })
           break
         default:
-          // digit → jump to that 1-based session; accumulate for 10+, clamp to last
+          // digit → accumulate buffer; press g to jump
           if (/^[0-9]$/.test(name) && sessions.length > 0) {
             if (sessNumTimer.current) clearTimeout(sessNumTimer.current)
             sessNumBuf.current += name
-            const n = parseInt(sessNumBuf.current, 10)
-            setSessSel(Math.min(Math.max(n - 1, 0), sessions.length - 1))
             sessNumTimer.current = setTimeout(() => {
               sessNumBuf.current = ""
-            }, 800)
+            }, 2000)
           }
           break
       }
@@ -493,7 +499,7 @@ function S1View({
             ? envMode
               ? "j/k node · enter sessions · s session · c connect · env read-only · , settings · ? help · q quit"
               : "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · l snippets · , settings · ? help · q quit"
-            : "j/k session · enter open · r rename · s new · d del · tab/esc nodes · ? help"
+            : "j/k session · enter open · r rename · s new · d del · #g jump · tab/esc nodes · ? help"
         }
       />
 
