@@ -158,7 +158,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           backgroundColor={theme.background}
           title={` Snippets (${snippets.length}) `}
           titleColor={theme.title}
-          width={32}
+          width={40}
           flexDirection="column"
         >
           {snippets.length === 0 ? (
@@ -259,8 +259,8 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 }
 
 function SnippetRow({ snippet, active, index }: { snippet: Snippet; active: boolean; index: number }) {
-  const bg = active ? theme.selBg : theme.background
-  const fg = active ? theme.selFg : theme.fg
+  const bg = active ? theme.backgroundElement : theme.background
+  const fg = active ? theme.selectedForeground : theme.fg
   const numFg = active ? theme.accent : theme.dim
   return (
     <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
