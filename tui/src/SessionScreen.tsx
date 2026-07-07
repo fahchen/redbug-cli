@@ -223,10 +223,14 @@ function SessionView({
     | { kind: "edit"; id: string; text: string }
     | { kind: "savePreset" }
     | { kind: "savePresetOverwrite"; name: string }
-    | { kind: "pickPreset" }
-    | { kind: "importPreset"; presetId: string; selected: Set<number> }
   >({ kind: "none" })
   const [editingLimits, setEditingLimits] = useState(false)
+  const [importState, setImportState] = useState<{
+    presetIdx: number
+    selected: Set<number>
+    focus: "list" | "traces"
+    traceSel: number
+  } | null>(null)
 
   // Track the trace list as it was when last applied, so per-row * markers
   // show which RTPs differ from the live (running) config. Initialised on
@@ -461,20 +465,58 @@ function SessionView({
       }
       return
     }
-    if (rtpModal.kind === "pickPreset" || rtpModal.kind === "importPreset") {
-      if (n === "escape") { setRtpModal({ kind: "none" }); return }
-      if (rtpModal.kind === "importPreset") {
-        const p = presets.find((x) => x.id === (rtpModal as any).presetId)
-        if (!p) return
-        const sel = (rtpModal as any).selected as Set<number>
+    if (importState) {
+      if (n === "escape") { setImportState(null); return }
+      const p = presets[importState.presetIdx]
+      if (!p) { setImportState(null); return }
+      if (importState.focus === "traces") {
+        if (n === "escape" || n === "tab") {
+          setImportState({ ...importState, focus: "list" })
+          return
+        }
         if (n === "enter" || n === "return") {
+          // Import selected RTPs, dedup against existing traces
           const existing = new Set(traces.map((t) => t.text))
           for (let j = 0; j < p.traces.length; j++) {
-            if (sel.has(j) && !existing.has(p.traces[j].text)) {
+            if (importState.selected.has(j) && !existing.has(p.traces[j].text)) {
               dispatch("addTrace", { text: p.traces[j].text })
             }
           }
-          setRtpModal({ kind: "none" })
+          setImportState(null)
+          return
+        }
+        if (n === "space") {
+          const next = new Set(importState.selected)
+          if (next.has(importState.traceSel)) next.delete(importState.traceSel)
+          else next.add(importState.traceSel)
+          setImportState({ ...importState, selected: next })
+          return
+        }
+        if (n === "j" || n === "down") {
+          setImportState({ ...importState, traceSel: Math.min(importState.traceSel + 1, p.traces.length - 1) })
+          return
+        }
+        if (n === "k" || n === "up") {
+          setImportState({ ...importState, traceSel: Math.max(importState.traceSel - 1, 0) })
+          return
+        }
+      } else {
+        // list focus
+        if (n === "enter" || n === "return" || n === "tab" || n === "right") {
+          setImportState({ ...importState, focus: "traces", traceSel: 0 })
+          return
+        }
+        if (n === "j" || n === "down") {
+          const next = Math.min(importState.presetIdx + 1, presets.length - 1)
+          const np = presets[next]
+          setImportState({ presetIdx: next, selected: new Set(np.traces.map((_, j) => j)), focus: "list", traceSel: 0 })
+          return
+        }
+        if (n === "k" || n === "up") {
+          const next = Math.max(importState.presetIdx - 1, 0)
+          const np = presets[next]
+          setImportState({ presetIdx: next, selected: new Set(np.traces.map((_, j) => j)), focus: "list", traceSel: 0 })
+          return
         }
       }
       return
@@ -524,7 +566,9 @@ function SessionView({
         if (!editingLimits) setLimitsDraft(formatLimits(limits))
         break
       case "p":
-        if (presets.length > 0) setRtpModal({ kind: "pickPreset" })
+        if (presets.length > 0) {
+          setImportState({ presetIdx: 0, selected: new Set(presets[0].traces.map((_, j) => j)), focus: "list", traceSel: 0 })
+        }
         break
     }
   }
@@ -905,50 +949,51 @@ function SessionView({
         </Overlay>
       )}
 
-      {overlay === "editor" && rtpModal.kind === "pickPreset" && (
-        <Overlay title="Import from preset">
-          <select
-            focused
-            height={Math.min(presets.length, 10)}
-            itemSpacing={0}
-            options={presets.map((p) => ({ name: p.name, description: `${p.traces.length} traces` }))}
-            selectedIndex={0}
-            showDescription={true}
-            backgroundColor={theme.overlay}
-            textColor={theme.textMuted}
-            focusedBackgroundColor={theme.overlay}
-            focusedTextColor={theme.text}
-            selectedBackgroundColor={theme.backgroundElement}
-            selectedTextColor={theme.selectedForeground}
-            onSelect={(i: number) => {
-              const p = presets[i]
-              if (p) setRtpModal({ kind: "importPreset", presetId: p.id, selected: new Set(p.traces.map((_, j) => j)) })
-            }}
-          />
-          <text fg={theme.dim} marginTop={1}>j/k move · Enter pick · Esc cancel</text>
-        </Overlay>
-      )}
-
-      {overlay === "editor" && rtpModal.kind === "importPreset" && (() => {
-        const p = presets.find((x) => x.id === (rtpModal as any).presetId)
+      {overlay === "editor" && importState !== null && (() => {
+        const p = presets[importState.presetIdx]
         if (!p) return null
-        const sel = (rtpModal as any).selected as Set<number>
-        const toggle = (j: number) => {
-          const next = new Set(sel)
-          if (next.has(j)) next.delete(j); else next.add(j)
-          setRtpModal({ kind: "importPreset", presetId: p.id, selected: next })
-        }
+        const selCount = importState.selected.size
+        const totalCount = p.traces.length
         return (
-          <Overlay title={`Import from "${p.name}"`}>
-            <box flexDirection="column">
-              {p.traces.map((t, j) => (
-                <box key={t.id} flexDirection="row">
-                  <text fg={sel.has(j) ? theme.success : theme.textMuted}>{sel.has(j) ? "[x] " : "[ ] "}</text>
-                  <text fg={theme.text}>{t.text}</text>
-                </box>
-              ))}
+          <Overlay title="Import traces from preset">
+            <box flexDirection="row">
+              {/* Left: preset list */}
+              <box flexDirection="column" width={30} marginRight={2}>
+                {presets.map((pr, i) => {
+                  const active = i === importState.presetIdx && importState.focus === "list"
+                  const bg = active ? theme.backgroundElement : theme.overlay
+                  return (
+                    <box key={pr.id} backgroundColor={bg} flexDirection="row" paddingLeft={1}>
+                      <text bg={bg} fg={active ? theme.text : theme.textMuted}>
+                        {pr.name}
+                      </text>
+                      <box flexGrow={1} backgroundColor={bg} />
+                      <text bg={bg} fg={theme.dim}>{pr.traces.length}</text>
+                    </box>
+                  )
+                })}
+              </box>
+              {/* Right: RTP preview with checkboxes */}
+              <box flexDirection="column" flexGrow={1}>
+                <text fg={theme.title}>{p.name}</text>
+                <text fg={theme.dim} marginBottom={1}>{`${selCount}/${totalCount} selected`}</text>
+                {p.traces.map((t, j) => {
+                  const active = j === importState.traceSel && importState.focus === "traces"
+                  const bg = active ? theme.backgroundElement : theme.overlay
+                  return (
+                    <box key={t.id} backgroundColor={bg} flexDirection="row" paddingLeft={1}>
+                      <text bg={bg} fg={importState.selected.has(j) ? theme.success : theme.textMuted}>
+                        {importState.selected.has(j) ? "[x] " : "[ ] "}
+                      </text>
+                      <text bg={bg} fg={active ? theme.text : theme.textMuted}>{t.text}</text>
+                    </box>
+                  )
+                })}
+              </box>
             </box>
-            <text fg={theme.dim} marginTop={1}>j/k move · space toggle · Enter import · Esc cancel</text>
+            <text fg={theme.dim} marginTop={1}>
+              {importState.focus === "list" ? "j/k preset · Enter/tab → traces · Esc close" : "j/k trace · space toggle · Enter import · Esc/tab ← presets"}
+            </text>
           </Overlay>
         )
       })()}
