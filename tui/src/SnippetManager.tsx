@@ -160,14 +160,17 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <Panel heading={`Snippets (${snippets.length})`} active width={40}>
+          <scrollbox scrollY flexGrow={1}>
           {snippets.length === 0 ? (
             <text fg={theme.dim}>No snippets yet · n to add</text>
           ) : (
             snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} />)
           )}
+          </scrollbox>
         </Panel>
 
         <Panel heading={cur ? cur.name : "—"} grow>
+          <scrollbox scrollY flexGrow={1}>
           {!cur ? (
             <text fg={theme.dim}>Select a snippet</text>
           ) : cur.code.trim() === "" ? (
@@ -180,6 +183,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
               treeSitterClient={tsClient}
             />
           )}
+          </scrollbox>
         </Panel>
       </box>
 

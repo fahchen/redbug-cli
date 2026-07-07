@@ -494,6 +494,7 @@ function S1View({
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <Panel heading="Nodes" active={focus === "nodes"} width={40}>
+          <scrollbox scrollY flexGrow={1}>
           {nodeList.length === 0 ? (
             <EmptyTree />
           ) : (
@@ -501,10 +502,12 @@ function S1View({
               <NodeRow key={n.id} node={n} active={i === nodeIdx} />
             ))
           )}
+          </scrollbox>
         </Panel>
 
         <Panel heading={node ? node.name : "—"} active={focus === "sessions"} grow>
           {node && <NodeDetailBand node={node} error={nodeError} />}
+          <scrollbox scrollY flexGrow={1}>
           {!node ? (
             <text fg={theme.textMuted}>Select a node</text>
           ) : sessions.length === 0 ? (
@@ -514,6 +517,7 @@ function S1View({
               <SessionRow key={s.id} session={s} index={i + 1} nameWidth={sessNameWidth} active={focus === "sessions" && i === sessIdx} />
             ))
           )}
+          </scrollbox>
         </Panel>
       </box>
 

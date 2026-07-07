@@ -178,6 +178,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <Panel heading="Presets" active={focus === "list"} width={40}>
+          <scrollbox scrollY flexGrow={1}>
           {presets.length === 0 ? (
             <text fg={theme.textMuted}>No presets yet · n to add</text>
           ) : (
@@ -185,9 +186,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               <PresetRow key={p.id} preset={p} active={i === sel} />
             ))
           )}
+          </scrollbox>
         </Panel>
 
         <Panel heading="Traces" active={focus === "detail"} grow>
+          <scrollbox scrollY flexGrow={1}>
           {!cur ? (
             <text fg={theme.textMuted}>Select a preset</text>
           ) : (
@@ -206,6 +209,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               )}
             </>
           )}
+          </scrollbox>
         </Panel>
       </box>
 
