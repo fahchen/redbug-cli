@@ -117,12 +117,12 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   })
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <box flexDirection="row" flexGrow={1} gap={1}>
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <box flexDirection="row" flexGrow={1} gap={1} paddingTop={1}>
         <box
           border
           borderColor={theme.title}
-          backgroundColor={theme.bg}
+          backgroundColor={theme.background}
           title={` Snippets (${snippets.length}) `}
           titleColor={theme.title}
           width={32}
@@ -139,7 +139,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
         <box
           border
           borderColor={theme.border}
-          backgroundColor={theme.bg}
+          backgroundColor={theme.background}
           title={cur ? ` ${cur.name} ` : " — "}
           titleColor={theme.title}
           flexGrow={1}
