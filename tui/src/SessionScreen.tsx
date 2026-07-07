@@ -133,11 +133,12 @@ function SessionView({
   // run + limit-stop into a single axis). Space is the sole "go" action per state
   // (retry/start/restart); x stops. See docs/screens/02-session-events.md.
   const endedLimit = (snap?.ended ?? null) as "time" | "msgs" | null
-  const sessionState: "connecting" | "unreachable" | "idle" | "running" | "ended" =
+  const sessionState: "connecting" | "unreachable" | "idle" | "running" | "ended" | "failed" =
     nodeStatus === "error" ? "unreachable"
     : nodeStatus !== "connected" ? "connecting"
     : running ? "running"
     : endedLimit ? "ended"
+    : error ? "failed"
     : "idle"
 
   // Liveness: a running session that traces nothing looks identical to a healthy
@@ -422,7 +423,7 @@ function SessionView({
       case "space":
         // single context "go" action — never destructive (retry / start / restart)
         if (sessionState === "unreachable") dispatch("reconnect")
-        else if (sessionState === "idle" || sessionState === "ended") dispatch("startTrace")
+        else if (sessionState === "idle" || sessionState === "ended" || sessionState === "failed") dispatch("startTrace")
         break
       case "x":
         // abort a running trace: destructive, so its own key (not Space)
@@ -493,7 +494,7 @@ function SessionView({
   const spaceAction =
     sessionState === "unreachable" ? "space retry"
     : sessionState === "idle" ? "space start"
-    : sessionState === "ended" ? "space restart"
+    : sessionState === "ended" || sessionState === "failed" ? "space restart"
     : sessionState === "running" ? (dirty ? "x stop · ⌃S apply" : "x stop")
     : ""
   const eventsHints = ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
@@ -918,7 +919,7 @@ function SessionStat({
   limits,
   remainingSec
 }: {
-  state: "connecting" | "unreachable" | "idle" | "running" | "ended"
+  state: "connecting" | "unreachable" | "idle" | "running" | "ended" | "failed"
   nodeSpin: string
   endedLimit: "time" | "msgs" | null
   dirty: boolean
@@ -940,6 +941,8 @@ function SessionStat({
           {`⧗ ${endedLimit === "msgs" ? `msgs limit (${limits.msgs})` : `time limit (${limits.time}s)`}`}
         </text>
       )
+    case "failed":
+      return <text fg={theme.error}>{"✖ restart failed · space retry"}</text>
     case "running":
       return (
         <box flexDirection="row">
