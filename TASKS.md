@@ -8,8 +8,8 @@
 | — | fix kind column spacing + braille spinner | ✅ done |
 | — | pretty-print trace/console terms | ✅ done |
 | 3 | apply-failed state | ✅ done |
-| 4 | exit-while-unapplied prompt | ⏳ in progress |
-| 5 | inline limits-in-editor | ⬜ |
+| 4 | exit-while-unapplied prompt | ✅ done |
+| 5 | inline limits-in-editor | ⏳ in progress |
 | 6 | save-as-preset overwrite + confirm | ⬜ |
 | 7 | port / ssh_port dial logic | ⬜ |
 | 8 | SSH known_hosts verification | ⬜ |
