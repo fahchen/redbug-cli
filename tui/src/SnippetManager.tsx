@@ -40,6 +40,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   const cur = snippets[Math.min(sel, snippets.length - 1)] ?? null
   const numBuf = useRef("")
   const numTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [highlightIdx, setHighlightIdx] = useState(-1)
   const pendingSnippet = useRef<string | null>(null)
 
   // After creating a new snippet, auto-select and open $EDITOR.
@@ -136,8 +137,10 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           if (numTimer.current) clearTimeout(numTimer.current)
           numBuf.current += n
           const num = parseInt(numBuf.current, 10)
-          setSel(Math.min(Math.max(num - 1, 0), snippets.length - 1))
-          numTimer.current = setTimeout(() => { numBuf.current = "" }, 800)
+          const idx = Math.min(Math.max(num - 1, 0), snippets.length - 1)
+          setHighlightIdx(idx)
+          setSel(idx)
+          numTimer.current = setTimeout(() => { numBuf.current = ""; setHighlightIdx(-1) }, 800)
         }
         break
     }
@@ -159,7 +162,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           {snippets.length === 0 ? (
             <text fg={theme.dim}>No snippets yet · n to add</text>
           ) : (
-            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} />)
+            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} highlight={i === highlightIdx} />)
           )}
         </box>
 
@@ -253,12 +256,13 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   )
 }
 
-function SnippetRow({ snippet, active, index }: { snippet: Snippet; active: boolean; index: number }) {
+function SnippetRow({ snippet, active, index, highlight }: { snippet: Snippet; active: boolean; index: number; highlight: boolean }) {
   const bg = active ? theme.selBg : theme.background
   const fg = active ? theme.selFg : theme.fg
+  const numFg = highlight ? theme.accent : theme.dim
   return (
     <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.dim}>{`${String(index).padStart(2)} · `}</text>
+      <text bg={bg} fg={numFg}>{`${String(index).padStart(2)} · `}</text>
       <text bg={bg} fg={fg}>{snippet.name}</text>
     </box>
   )
