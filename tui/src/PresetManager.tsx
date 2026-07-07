@@ -15,6 +15,14 @@ type Rtp = Server.Schema.Rtp
 
 type Focus = "list" | "detail"
 
+// Cheat-sheet for add/edit RTP dialogs, matching the trace editor in SessionScreen.
+const RTP_EXAMPLES: [string, string][] = [
+  ["Enum.map/2 -> return", "call args + return value"],
+  ["MyMod.func -> return;stack", "+ call stack"],
+  ["Demo.tick when '$1' > 100 -> return", "guard on 1st arg"],
+  ["Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"]
+]
+
 type Modal =
   | { kind: "none" }
   | { kind: "help" }
@@ -264,6 +272,15 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
+          <box flexDirection="column" marginTop={1}>
+            <text fg={theme.textMuted}>Common RTP rules (Elixir)</text>
+            {RTP_EXAMPLES.map(([pat, desc]) => (
+              <box key={pat} flexDirection="row">
+                <text fg={theme.dim}>{pat.padEnd(38)}</text>
+                <text fg={theme.dim}>{desc}</text>
+              </box>
+            ))}
+          </box>
         </Overlay>
       )}
 
@@ -279,6 +296,15 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
+          <box flexDirection="column" marginTop={1}>
+            <text fg={theme.textMuted}>Common RTP rules (Elixir)</text>
+            {RTP_EXAMPLES.map(([pat, desc]) => (
+              <box key={pat} flexDirection="row">
+                <text fg={theme.dim}>{pat.padEnd(38)}</text>
+                <text fg={theme.dim}>{desc}</text>
+              </box>
+            ))}
+          </box>
         </Overlay>
       )}
 
