@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
@@ -40,6 +40,22 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   const cur = snippets[Math.min(sel, snippets.length - 1)] ?? null
   const numBuf = useRef("")
   const numTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSnippet = useRef<string | null>(null)
+
+  // After creating a new snippet, auto-select and open $EDITOR.
+  useEffect(() => {
+    if (!pendingSnippet.current) return
+    const idx = snippets.findIndex((s) => s.name === pendingSnippet.current)
+    if (idx >= 0) {
+      setSel(idx)
+      pendingSnippet.current = null
+      // Need to wait for the state update before opening editor
+      setTimeout(() => {
+        const snip = snippets[idx]
+        if (snip) editCode(snip)
+      }, 100)
+    }
+  }, [snippets])
 
   // createSnippet is the only root command; snippet-scoped mutations dispatch on
   // the matching child proxy (store path is the routing — no snippet_id payload).
@@ -202,7 +218,11 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           <TextField
             label="New snippet — name:"
             onSubmit={(v) => {
-              if (v.trim() !== "") createSnippet("createSnippet", { name: v })
+              const name = v.trim()
+              if (name !== "") {
+                pendingSnippet.current = name
+                createSnippet("createSnippet", { name })
+              }
               setModal({ kind: "none" })
             }}
           />
