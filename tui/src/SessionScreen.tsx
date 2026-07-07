@@ -537,6 +537,7 @@ function SessionView({
         <ConsoleTab
           nodeId={nodeId}
           sessionId={sessionId}
+          nodeStatus={nodeStatus}
           onSwitchToEvents={() => setTab("events")}
           onBack={onBack}
         />

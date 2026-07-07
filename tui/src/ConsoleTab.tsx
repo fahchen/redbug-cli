@@ -7,7 +7,7 @@ import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./mus
 import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { Chip, HelpOverlay, Overlay, RootGate, StatusBar } from "./ui"
+import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, useSpinner } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -44,18 +44,20 @@ function statusColor(status: string): string {
 export function ConsoleTab({
   nodeId,
   sessionId,
+  nodeStatus,
   onSwitchToEvents,
   onBack
 }: {
   nodeId: string
   sessionId: string
+  nodeStatus: string
   onSwitchToEvents: () => void
   onBack: () => void
 }) {
   const root = useMusubiRoot(consoleRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading console…" errorLabel="Console">
-      {(store) => <ConsoleView store={store} onSwitchToEvents={onSwitchToEvents} onBack={onBack} />}
+      {(store) => <ConsoleView store={store} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} />}
     </RootGate>
   )
 }
@@ -70,10 +72,12 @@ type Modal =
 
 function ConsoleView({
   store,
+  nodeStatus,
   onSwitchToEvents,
   onBack
 }: {
   store: ConsoleStore
+  nodeStatus: string
   onSwitchToEvents: () => void
   onBack: () => void
 }) {
@@ -89,6 +93,11 @@ function ConsoleView({
 
   const cur = history[Math.min(sel, history.length - 1)] ?? null
   const runningCount = history.filter((e) => e.status === "running").length
+  const nodeSpin = useSpinner(nodeStatus === "connecting", "braille")
+  const leftBorderColor =
+    nodeStatus === "error" ? theme.error
+    : nodeStatus === "connecting" ? theme.warning
+    : theme.borderActive
 
   const composeAndRun = (seed: string, name: string | null) => {
     void (async () => {
@@ -198,7 +207,7 @@ function ConsoleView({
         <box
           border
           borderStyle={PANEL_BORDER}
-          borderColor={theme.borderActive}
+          borderColor={leftBorderColor}
           title=" Console "
           titleColor={theme.primary}
           backgroundColor={theme.background}
@@ -221,7 +230,11 @@ function ConsoleView({
       </box>
 
       <StatusBar
-        statusText={`${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`}
+        statusText={
+          nodeStatus === "connecting" ? `${nodeSpin} connecting…`
+          : nodeStatus === "error" ? "✖ can't reach node"
+          : `${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`
+        }
         hints="j/k move · n new · r run · d del · x stop · [/] tabs · ? help · esc back"
       />
 
