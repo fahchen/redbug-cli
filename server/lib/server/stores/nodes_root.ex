@@ -28,6 +28,7 @@ defmodule Server.Stores.NodesRoot do
       field(:ssh_port, String.t() | nil)
       field(:ssh_user, String.t() | nil)
       field(:container, String.t() | nil)
+      field(:label, String.t() | nil)
     end
   end
 

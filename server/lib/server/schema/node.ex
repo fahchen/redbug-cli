@@ -21,6 +21,7 @@ defmodule Server.Schema.Node do
     field(:id, String.t())
     field(:name, String.t())
     field(:cookie, String.t())
+    field(:label, String.t() | nil)
     field(:status, String.t())
     field(:source, :config | :env)
     field(:sessions, list(Session.t()))

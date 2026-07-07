@@ -28,6 +28,7 @@ defmodule Server.Stores.NodeStore do
     field(:ssh_port, String.t() | nil)
     field(:ssh_user, String.t() | nil)
     field(:container, String.t() | nil)
+    field(:label, String.t() | nil)
     field(:error, Server.Schema.AppError.t() | nil)
     field(:sessions, list(SessionItemStore.state()))
   end
@@ -41,6 +42,7 @@ defmodule Server.Stores.NodeStore do
       field(:ssh_port, String.t() | nil)
       field(:ssh_user, String.t() | nil)
       field(:container, String.t() | nil)
+      field(:label, String.t() | nil)
     end
   end
 
@@ -92,6 +94,7 @@ defmodule Server.Stores.NodeStore do
       ssh_port: Map.get(n, :ssh_port),
       ssh_user: Map.get(n, :ssh_user),
       container: Map.get(n, :container),
+      label: Map.get(n, :label),
       error: Map.get(n, :error),
       sessions:
         for s <- n.sessions do

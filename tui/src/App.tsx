@@ -175,10 +175,11 @@ function S1View({
   const [sshPortDraft, setSshPortDraft] = useState("")
   const [sshUserDraft, setSshUserDraft] = useState("")
   const [containerDraft, setContainerDraft] = useState("")
+  const [labelDraft, setLabelDraft] = useState("")
   const [nodeField, setNodeField] = useState(0)
   const [nodeErr, setNodeErr] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState("")
-  const NODE_FIELDS = 8
+  const NODE_FIELDS = 9
   const moveNodeField = (delta: number) => {
     setNodeField((f) => (f + delta + NODE_FIELDS) % NODE_FIELDS)
   }
@@ -242,6 +243,7 @@ function S1View({
     setSshPortDraft("")
     setSshUserDraft("")
     setContainerDraft("")
+    setLabelDraft("")
     setNodeField(0)
     setModal({ kind: "newNode" })
   }
@@ -309,7 +311,8 @@ function S1View({
               ssh_host: sshHostDraft,
               ssh_port: sshPortDraft,
               ssh_user: sshUserDraft,
-              container: containerDraft
+              container: containerDraft,
+              label: labelDraft || null
             }
             if (modal.kind === "newNode") createNode("createNode", payload)
             else {
@@ -447,6 +450,7 @@ function S1View({
           setSshPortDraft(node.ssh_port ?? "")
           setSshUserDraft(node.ssh_user ?? "")
           setContainerDraft(node.container ?? "")
+          setLabelDraft(node.label ?? "")
           setNodeField(0)
           setModal({ kind: "editNode", id: node.id })
         }
@@ -549,6 +553,7 @@ function S1View({
           sshPortDraft={sshPortDraft}
           sshUserDraft={sshUserDraft}
           containerDraft={containerDraft}
+          labelDraft={labelDraft}
           renameDraft={renameDraft}
           nodeField={nodeField}
           nodeErr={nodeErr}
@@ -562,6 +567,7 @@ function S1View({
           onSshPort={setSshPortDraft}
           onSshUser={setSshUserDraft}
           onContainer={setContainerDraft}
+          onLabel={setLabelDraft}
           onPresetChange={setPresetIdx}
           onPickPreset={commitPreset}
           onDismiss={() => setModal({ kind: "none" })}
@@ -611,10 +617,11 @@ function NodeRow({ node, active }: { node: Node; active: boolean }) {
     : node.status === "error" ? theme.error
     : theme.textMuted
   const nameColor = active || node.status === "connected" ? theme.text : theme.textMuted
+  const displayName = node.label || node.name
   return (
     <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={dotColor}>{`${dot} `}</text>
-      <text bg={bg} fg={nameColor}>{node.name}</text>
+      <text bg={bg} fg={nameColor}>{displayName}</text>
       {node.source === "env" && <text bg={bg} fg={theme.textMuted}>{"  env"}</text>}
       <box flexGrow={1} backgroundColor={bg} />
       <text bg={bg} fg={theme.textMuted}>{`${node.sessions.length}`}</text>
@@ -648,6 +655,7 @@ function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppE
     ["Host", host],
     ["Cookie", redactCookie(node.cookie)]
   ]
+  if (node.label) rows.unshift(["Label", node.label])
   if (node.ssh_host) {
     rows.push([
       "SSH",
@@ -704,6 +712,7 @@ function ModalLayer({
   sshPortDraft,
   sshUserDraft,
   containerDraft,
+  labelDraft,
   nodeField,
   nodeErr,
   onName,
@@ -714,6 +723,7 @@ function ModalLayer({
   onSshPort,
   onSshUser,
   onContainer,
+  onLabel,
   onPresetChange,
   onPickPreset,
   onCommit,
@@ -733,6 +743,7 @@ function ModalLayer({
   sshPortDraft: string
   sshUserDraft: string
   containerDraft: string
+  labelDraft: string
   renameDraft: string
   nodeField: number
   nodeErr: string | null
@@ -746,6 +757,7 @@ function ModalLayer({
   onSshPort: (v: string) => void
   onSshUser: (v: string) => void
   onContainer: (v: string) => void
+  onLabel: (v: string) => void
   onPresetChange: (index: number) => void
   onPickPreset: (index: number) => void
   onDismiss: () => void
@@ -847,6 +859,14 @@ function ModalLayer({
             value={containerDraft}
             onInput={onContainer}
             focused={nodeField === 7}
+          />
+          <text fg={theme.dim} marginTop={1}>Label (optional — human-readable alias)</text>
+          <Field
+            label="Label"
+            hint="Staging"
+            value={labelDraft}
+            onInput={onLabel}
+            focused={nodeField === 8}
           />
           {nodeErr && <text fg={theme.error} marginTop={1}>{`✗ ${nodeErr}`}</text>}
           <text fg={theme.dim} marginTop={1}>Tab/Shift+Tab switch field · Enter save · Esc cancel</text>
