@@ -605,7 +605,8 @@ function SessionView({
       {overlay === "confirmExit" && (
         <Overlay>
           <text fg={theme.text}>Stop trace and leave?</text>
-          <text fg={theme.textMuted} marginTop={1}>leaving stops the running trace · y = yes · n/Esc = stay</text>
+          {dirty && <text fg={theme.warning} marginTop={1}>{"⚠ unapplied changes will be lost · Ctrl+S to apply first"}</text>}
+          <text fg={theme.textMuted} marginTop={1}>y = stop &amp; leave · n/Esc = stay</text>
         </Overlay>
       )}
 
