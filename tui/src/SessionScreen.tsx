@@ -218,6 +218,7 @@ function SessionView({
     | { kind: "edit"; id: string; text: string }
     | { kind: "savePreset" }
   >({ kind: "none" })
+  const [editingLimits, setEditingLimits] = useState(false)
 
   // Track the trace list as it was when last applied, so per-row * markers
   // show which RTPs differ from the live (running) config. Initialised on
@@ -451,6 +452,10 @@ function SessionView({
       setRtpModal({ kind: "savePreset" })
       return
     }
+    if (editingLimits) {
+      if (n === "escape") setEditingLimits(false)
+      return
+    }
     switch (n) {
       case "escape":
         setOverlay("none")
@@ -474,6 +479,10 @@ function SessionView({
         break
       case "d":
         if (rtpCur) dispatch("deleteTrace", { trace_id: rtpCur.id })
+        break
+      case "l":
+        setEditingLimits((v) => !v)
+        if (!editingLimits) setLimitsDraft(formatLimits(limits))
         break
     }
   }
@@ -773,7 +782,30 @@ function SessionView({
               })
             )}
           </box>
-          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · space toggle · ⌃W save preset · esc close</text>
+          <box flexDirection="column" marginTop={1}>
+            {editingLimits ? (
+              <>
+                <text fg={theme.textMuted}>keep time msgs (space-separated) · Enter save · Esc cancel</text>
+                <input
+                  focused
+                  value={limitsDraft}
+                  onInput={(v: string) => setLimitsDraft(v)}
+                  onSubmit={() => {
+                    const p = parseLimits(limitsDraft)
+                    if (p) dispatch("updateLimits", p)
+                    setEditingLimits(false)
+                  }}
+                  backgroundColor={theme.bg}
+                  textColor={theme.fg}
+                  focusedBackgroundColor={theme.selBg}
+                  focusedTextColor={theme.selFg}
+                />
+              </>
+            ) : (
+              <text fg={theme.textMuted}>{`Limits: keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}</text>
+            )}
+          </box>
+          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · l limits · space toggle · ⌃W save preset · esc close</text>
         </Overlay>
       )}
 
