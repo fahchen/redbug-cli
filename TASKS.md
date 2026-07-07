@@ -4,7 +4,7 @@
 |---|------|----------|--------|
 | 9 | theme expansion (8 themes) | 🟢 | ✅ done |
 | 14 | node label (human-readable alias) | 🟡 | ✅ done |
-| 10 | DialogSelect (fuzzy-filter picker) | 🔴 | ⬜ |
+| 10 | DialogSelect (fuzzy-filter picker) | 🔴 | ✅ done |
 | 7 | port / ssh_port dial logic | 🟡 | ⬜ |
 | 8 | SSH known_hosts verification | 🟢 | ⬜ |
 | 12 | Demo GIF + README publish | 🟡 | ⬜ |
