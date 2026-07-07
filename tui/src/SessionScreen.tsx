@@ -453,8 +453,10 @@ function SessionView({
       case "d":
         if (selectedEvent) setOverlay("confirmDelete")
         break
+      case "p":
+        setShowPresets(true)
+        break
       case "?":
-        setOverlay("help")
         break
     }
   })
@@ -572,10 +574,6 @@ function SessionView({
         setEditingLimits((v) => !v)
         if (!editingLimits) setLimitsDraft(formatLimits(limits))
         break
-      case "p":
-        setShowPresets(true)
-        setOverlay("none")
-        break
       case "i":
         if (presets.length > 0) {
           setImportState({ phase: "pick", presetIdx: 0, selected: new Set(), traceSel: 0 })
@@ -603,7 +601,7 @@ function SessionView({
     : sessionState === "ended" || sessionState === "failed" ? "space restart"
     : sessionState === "running" ? (dirty ? "x stop · ⌃S apply" : "x stop")
     : ""
-  const eventsHints = ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
+  const eventsHints = ["j/k move", "enter detail", "t traces", "p presets", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
     .filter((s) => s !== "")
     .join(" · ")
 
@@ -740,6 +738,7 @@ function SessionView({
                 ["/", "filter"],
                 ["g", "cycle grouping"],
                 ["l", "limits"],
+                ["p", "preset manager"],
                 ["e / d", "error detail / delete event"],
                 ["⌃D", "delete event (no confirm)"]
               ]
@@ -905,7 +904,7 @@ function SessionView({
               <text fg={theme.textMuted}>{`Limits: keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}</text>
             )}
           </box>
-          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · i import · p presets · l limits · space toggle · ⌃W save · esc close</text>
+          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · i import · l limits · space toggle · ⌃W save · esc close</text>
         </Overlay>
       )}
 
