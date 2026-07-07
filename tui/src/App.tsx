@@ -44,6 +44,7 @@ type Modal =
   | { kind: "editNode"; id: string }
   | { kind: "newSessionName"; nodeId: string }
   | { kind: "newSessionPreset"; nodeId: string; name: string }
+  | { kind: "renameSession"; nodeId: string; sessionId: string }
   | { kind: "confirm"; label: string; run: () => void }
 
 export function App() {
@@ -173,6 +174,7 @@ function S1View({
   const [containerDraft, setContainerDraft] = useState("")
   const [nodeField, setNodeField] = useState(0)
   const [nodeErr, setNodeErr] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState("")
   const NODE_FIELDS = 8
   const moveNodeField = (delta: number) => {
     setNodeField((f) => (f + delta + NODE_FIELDS) % NODE_FIELDS)
@@ -244,6 +246,11 @@ function S1View({
         } else if (name === "n" || name === "escape") {
           setModal({ kind: "none" })
         }
+        return
+
+      case "renameSession":
+        // TextField owns Enter; only Esc closes
+        if (name === "escape") setModal({ kind: "none" })
         return
 
       case "newSessionPreset":
@@ -332,6 +339,12 @@ function S1View({
         case "s":
           newSession()
           break
+        case "r":
+          if (node && session) {
+            setRenameDraft(session.name)
+            setModal({ kind: "renameSession", nodeId: node.id, sessionId: session.id })
+          }
+          break
         case "d":
           if (node && session) {
             const proxy = sessionProxy
@@ -343,6 +356,7 @@ function S1View({
           }
           break
         case "?":
+          setModal({ kind: "help" })
           setModal({ kind: "help" })
           break
         default:
@@ -477,7 +491,7 @@ function S1View({
             ? envMode
               ? "j/k node · enter sessions · s session · c connect · env read-only · , settings · ? help · q quit"
               : "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · , settings · ? help · q quit"
-            : "j/k session · enter open · s new · d del · tab/esc nodes · ? help"
+            : "j/k session · enter open · r rename · s new · d del · tab/esc nodes · ? help"
         }
       />
 
@@ -498,8 +512,11 @@ function S1View({
           sshPortDraft={sshPortDraft}
           sshUserDraft={sshUserDraft}
           containerDraft={containerDraft}
+          renameDraft={renameDraft}
           nodeField={nodeField}
           nodeErr={nodeErr}
+          nodeList={nodeList}
+          nodeProxyById={nodeProxyById}
           onName={setNameDraft}
           onHost={setHostDraft}
           onPort={setPortDraft}
@@ -510,6 +527,7 @@ function S1View({
           onContainer={setContainerDraft}
           onPresetChange={setPresetIdx}
           onPickPreset={commitPreset}
+          onDismiss={() => setModal({ kind: "none" })}
           onCommit={(m, payload) => {
             if (m === "newSessionName")
               setModal({ kind: "newSessionPreset", nodeId: (modal as any).nodeId, name: payload })
@@ -659,7 +677,11 @@ function ModalLayer({
   onContainer,
   onPresetChange,
   onPickPreset,
-  onCommit
+  onCommit,
+  renameDraft,
+  nodeList,
+  nodeProxyById,
+  onDismiss
 }: {
   modal: Modal
   presetList: readonly Server.Schema.Preset[]
@@ -672,8 +694,11 @@ function ModalLayer({
   sshPortDraft: string
   sshUserDraft: string
   containerDraft: string
+  renameDraft: string
   nodeField: number
   nodeErr: string | null
+  nodeList: readonly Node[]
+  nodeProxyById: (id: string) => NodeProxy | undefined
   onName: (v: string) => void
   onHost: (v: string) => void
   onPort: (v: string) => void
@@ -684,6 +709,7 @@ function ModalLayer({
   onContainer: (v: string) => void
   onPresetChange: (index: number) => void
   onPickPreset: (index: number) => void
+  onDismiss: () => void
   onCommit: (kind: Modal["kind"], value: string) => void
 }) {
   const box = (title: string, children: ReactNode) => (
@@ -796,6 +822,27 @@ function ModalLayer({
           label="name"
           hint="checkout-flow"
           onSubmit={(v) => onCommit("newSessionName", v)}
+        />
+      )
+
+    case "renameSession":
+      return box(
+        "Rename session",
+        <TextField
+          key={modal.sessionId}
+          label="name"
+          initial={renameDraft}
+          onSubmit={(v) => {
+            if (v.trim() !== "") {
+              const np = nodeProxyById(modal.nodeId)
+              const si = nodeList.findIndex((n) => n.id === modal.nodeId)
+              if (np && si >= 0) {
+                const sIdx = nodeList[si].sessions.findIndex((s) => s.id === modal.sessionId)
+                if (sIdx >= 0) dispatcher(np.sessions[sIdx])("renameSession", { name: v })
+              }
+            }
+            onDismiss()
+          }}
         />
       )
 

@@ -22,6 +22,12 @@ defmodule Server.Stores.SessionItemStore do
     field(:limits, Server.Schema.Limits.t())
   end
 
+  command :renameSession do
+    payload do
+      field(:name, String.t())
+    end
+  end
+
   command :deleteSession do
     payload do
     end
@@ -47,6 +53,14 @@ defmodule Server.Stores.SessionItemStore do
   end
 
   @impl true
+  def handle_command(:renameSession, payload, socket) do
+    name = Server.Stores.Payload.get(payload, "name", "")
+    if name != "" do
+      Config.update_session(socket.assigns.node_id, socket.assigns.session.id, %{name: name})
+    end
+    {:noreply, socket}
+  end
+
   def handle_command(:deleteSession, _payload, socket) do
     s = socket.assigns.session
     Trace.terminate(s.id)
