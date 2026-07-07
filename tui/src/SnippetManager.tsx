@@ -40,7 +40,6 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   const cur = snippets[Math.min(sel, snippets.length - 1)] ?? null
   const numBuf = useRef("")
   const numTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [highlightIdx, setHighlightIdx] = useState(-1)
   const pendingSnippet = useRef<string | null>(null)
 
   // After creating a new snippet, auto-select and open $EDITOR.
@@ -129,6 +128,14 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       case "d":
         if (cur) setModal({ kind: "confirmDelete", id: cur.id, name: cur.name })
         break
+      case "g":
+        if (numBuf.current !== "") {
+          const num = parseInt(numBuf.current, 10)
+          if (num >= 1) setSel(Math.min(num - 1, snippets.length - 1))
+          numBuf.current = ""
+          if (numTimer.current) clearTimeout(numTimer.current)
+        }
+        break
       case "?":
         setModal({ kind: "help" })
         break
@@ -136,11 +143,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
         if (/^[0-9]$/.test(n) && snippets.length > 0) {
           if (numTimer.current) clearTimeout(numTimer.current)
           numBuf.current += n
-          const num = parseInt(numBuf.current, 10)
-          const idx = Math.min(Math.max(num - 1, 0), snippets.length - 1)
-          setHighlightIdx(idx)
-          setSel(idx)
-          numTimer.current = setTimeout(() => { numBuf.current = ""; setHighlightIdx(-1) }, 800)
+          numTimer.current = setTimeout(() => { numBuf.current = "" }, 2000)
         }
         break
     }
@@ -161,7 +164,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           {snippets.length === 0 ? (
             <box paddingLeft={1}><text fg={theme.dim}>No snippets yet · n to add</text></box>
           ) : (
-            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} highlight={i === highlightIdx} />)
+            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} />)
           )}
         </box>
 
@@ -193,7 +196,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 
       <StatusBar
         statusText={`${snippets.length} snippets`}
-        hints="j/k move · e edit · n new · ? help · esc back"
+        hints="j/k move · e edit · n new · #g jump · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -255,10 +258,10 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   )
 }
 
-function SnippetRow({ snippet, active, index, highlight }: { snippet: Snippet; active: boolean; index: number; highlight: boolean }) {
+function SnippetRow({ snippet, active, index }: { snippet: Snippet; active: boolean; index: number }) {
   const bg = active ? theme.selBg : theme.background
   const fg = active ? theme.selFg : theme.fg
-  const numFg = highlight ? theme.accent : theme.dim
+  const numFg = active ? theme.accent : theme.dim
   return (
     <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={numFg}>{`${String(index).padStart(2)} · `}</text>
