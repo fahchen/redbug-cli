@@ -46,6 +46,13 @@ defmodule Server.Stores.ConsoleRoot do
     end
   end
 
+  command :saveAsSnippet do
+    payload do
+      field(:exec_id, String.t())
+      field(:name, String.t())
+    end
+  end
+
   command :connect do
     payload do
     end
@@ -137,6 +144,17 @@ defmodule Server.Stores.ConsoleRoot do
 
   def handle_command(:connect, _payload, socket) do
     Config.connect_node(socket.assigns.node_id)
+    {:noreply, socket}
+  end
+
+  def handle_command(:saveAsSnippet, payload, socket) do
+    exec_id = get(payload, "exec_id")
+    name = get(payload, "name", "")
+    if name != "" do
+      snap = Remote.snapshot(socket.assigns.session_id)
+      exec = Enum.find(snap.history, &(&1.id == exec_id))
+      if exec, do: Config.add_snippet(%{name: name, code: exec.code})
+    end
     {:noreply, socket}
   end
 

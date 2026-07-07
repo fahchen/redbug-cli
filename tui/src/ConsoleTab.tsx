@@ -7,7 +7,7 @@ import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./mus
 import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, useSpinner } from "./ui"
+import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, useSpinner } from "./ui"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -66,6 +66,7 @@ type Modal =
   | { kind: "none" }
   | { kind: "help" }
   | { kind: "pickSnippet" }
+  | { kind: "saveSnippet"; id: string }
   | { kind: "confirmStop"; id: string }
   | { kind: "confirmClear" }
   | { kind: "confirmDelete"; id: string }
@@ -139,6 +140,11 @@ function ConsoleView({
       return
     }
 
+    if (modal.kind === "saveSnippet") {
+      if (n === "escape") setModal({ kind: "none" })
+      return
+    }
+
     if (modal.kind === "confirmDelete") {
       if (n === "y") {
         dispatch("deleteExec", { id: modal.id })
@@ -192,6 +198,9 @@ function ConsoleView({
       case "d":
         if (cur) setModal({ kind: "confirmDelete", id: cur.id })
         break
+      case "s":
+        if (cur) setModal({ kind: "saveSnippet", id: cur.id })
+        break
       case "x":
         if (cur && cur.status === "running") setModal({ kind: "confirmStop", id: cur.id })
         break
@@ -235,7 +244,7 @@ function ConsoleView({
           : nodeStatus === "error" ? "✖ can't reach node"
           : `${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`
         }
-        hints="j/k move · n new · r run · d del · x stop · [/] tabs · ? help · esc back"
+        hints="j/k move · n new · r run · s snippet · d del · x stop · [/] tabs · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -304,6 +313,19 @@ function ConsoleView({
         <Overlay>
           <text fg={theme.text}>Clear the entire execution history?</text>
           <text fg={theme.textMuted} marginTop={1}>history is server-held, not just this view · y = yes · n/Esc = no</text>
+        </Overlay>
+      )}
+
+      {modal.kind === "saveSnippet" && (
+        <Overlay>
+          <TextField
+            label="Save as snippet — name:"
+            onSubmit={(v) => {
+              const name = v.trim()
+              if (name !== "") dispatch("saveAsSnippet", { exec_id: modal.id, name })
+              setModal({ kind: "none" })
+            }}
+          />
         </Overlay>
       )}
 
