@@ -9,6 +9,7 @@ import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor, PANEL_BORDER } from "./theme"
 import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
+import { PresetManager } from "./PresetManager"
 import { editInEditor } from "./editor"
 import { elixirStyle, tsClient } from "./treesitter"
 
@@ -231,6 +232,7 @@ function SessionView({
     focus: "list" | "traces"
     traceSel: number
   } | null>(null)
+  const [showPresets, setShowPresets] = useState(false)
 
   // Track the trace list as it was when last applied, so per-row * markers
   // show which RTPs differ from the live (running) config. Initialised on
@@ -540,6 +542,7 @@ function SessionView({
     switch (n) {
       case "escape":
         setOverlay("none")
+        setImportState(null)
         break
       case "j":
       case "down":
@@ -566,6 +569,10 @@ function SessionView({
         if (!editingLimits) setLimitsDraft(formatLimits(limits))
         break
       case "p":
+        setShowPresets(true)
+        setOverlay("none")
+        break
+      case "i":
         if (presets.length > 0) {
           setImportState({ presetIdx: 0, selected: new Set(presets[0].traces.map((_, j) => j)), focus: "list", traceSel: 0 })
         }
@@ -597,6 +604,9 @@ function SessionView({
     .join(" · ")
 
   return (
+    <>
+    {showPresets && <PresetManager onBack={() => setShowPresets(false)} />}
+    {!showPresets && (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
         <text fg={theme.text}>{snap?.name ?? "session"}</text>
@@ -892,7 +902,7 @@ function SessionView({
               <text fg={theme.textMuted}>{`Limits: keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}</text>
             )}
           </box>
-          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · p import · l limits · space toggle · ⌃W save · esc close</text>
+          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · i import · p presets · l limits · space toggle · ⌃W save · esc close</text>
         </Overlay>
       )}
 
@@ -1007,6 +1017,8 @@ function SessionView({
       </>
       )}
     </box>
+    )}
+    </>
   )
 }
 
