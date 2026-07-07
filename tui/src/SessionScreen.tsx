@@ -70,11 +70,13 @@ export function SessionScreen({
   nodeId,
   sessionId,
   settings,
+  presetNames,
   onBack
 }: {
   nodeId: string
   sessionId: string
   settings?: Server.Schema.Settings
+  presetNames?: string[]
   onBack: () => void
 }) {
   const root = useMusubiRoot(sessionRoot(nodeId, sessionId))
@@ -86,6 +88,7 @@ export function SessionScreen({
           nodeId={nodeId}
           sessionId={sessionId}
           settings={settings}
+          presetNames={presetNames ?? []}
           onBack={onBack}
         />
       )}
@@ -98,12 +101,14 @@ function SessionView({
   nodeId,
   sessionId,
   settings,
+  presetNames,
   onBack
 }: {
   store: SessionStore
   nodeId: string
   sessionId: string
   settings?: Server.Schema.Settings
+  presetNames: string[]
   onBack: () => void
 }) {
   const [tab, setTab] = useState<"events" | "console">("events")
@@ -217,6 +222,7 @@ function SessionView({
     | { kind: "add" }
     | { kind: "edit"; id: string; text: string }
     | { kind: "savePreset" }
+    | { kind: "savePresetOverwrite"; name: string }
   >({ kind: "none" })
   const [editingLimits, setEditingLimits] = useState(false)
 
@@ -444,6 +450,15 @@ function SessionView({
 
   function handleEditorKeys(key: { name: string; ctrl: boolean }) {
     const n = key.name
+    if (rtpModal.kind === "savePresetOverwrite") {
+      if (n === "y") {
+        dispatch("saveAsPreset", { name: (rtpModal as any).name })
+        setRtpModal({ kind: "none" })
+      } else if (n === "n" || n === "escape") {
+        setRtpModal({ kind: "none" })
+      }
+      return
+    }
     if (rtpModal.kind !== "none") {
       if (n === "escape") setRtpModal({ kind: "none" })
       return
@@ -843,10 +858,23 @@ function SessionView({
             label="Save as preset — name:"
             hint="reusable template (traces + limits)"
             onSubmit={(v) => {
-              if (v.trim() !== "") dispatch("saveAsPreset", { name: v })
-              setRtpModal({ kind: "none" })
+              const name = v.trim()
+              if (name === "") { setRtpModal({ kind: "none" }); return }
+              if (presetNames.includes(name)) {
+                setRtpModal({ kind: "savePresetOverwrite", name })
+              } else {
+                dispatch("saveAsPreset", { name })
+                setRtpModal({ kind: "none" })
+              }
             }}
           />
+        </Overlay>
+      )}
+
+      {overlay === "editor" && rtpModal.kind === "savePresetOverwrite" && (
+        <Overlay>
+          <text fg={theme.text}>{`Overwrite preset "${rtpModal.name}"?`}</text>
+          <text fg={theme.textMuted} marginTop={1}>y = overwrite · n/Esc = cancel</text>
         </Overlay>
       )}
 

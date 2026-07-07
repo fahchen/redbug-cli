@@ -89,6 +89,7 @@ function Router({
   setScreen: (s: Screen) => void
 }) {
   const settingsSnap = useMusubiSnapshot(settingsStore)
+  const presetsSnap = useMusubiSnapshot(presetsStore)
   const settings = settingsSnap?.settings as Server.Schema.Settings | undefined
   setTheme(settings?.theme ?? "dark")
 
@@ -105,6 +106,7 @@ function Router({
           nodeId={screen.nodeId}
           sessionId={screen.sessionId}
           settings={settings}
+          presetNames={presetsSnap?.presets?.map((p: Server.Schema.Preset) => p.name) ?? []}
           onBack={() => setScreen({ name: "tree" })}
         />
       )
