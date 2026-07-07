@@ -4,12 +4,10 @@
 |---|------|----------|--------|
 | 9 | theme expansion (8 themes) | 🟢 | ⬜ |
 | 14 | node label (human-readable alias) | 🟡 | ⬜ |
-| 12 | Demo GIF + README publish | 🟡 | ⬜ |
+| 10 | DialogSelect + command palette | 🔴 | ⬜ |
 | 7 | port / ssh_port dial logic | 🟡 | ⬜ |
 | 8 | SSH known_hosts verification | 🟢 | ⬜ |
-| 10 | DialogSelect + command palette | 🔴 | ⬜ |
-| 11 | Leader key + which-key | 🔴 | ⬜ |
-| 13 | cross-platform packaging | 🟢 | ⬜ |
+| 12 | Demo GIF + README publish | 🟡 | ⬜ |
 
 ## Done
 
