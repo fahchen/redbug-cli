@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useKeyboard, useRenderer } from "@opentui/react"
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 import type { TabSelectRenderable } from "@opentui/core"
 
@@ -123,6 +123,7 @@ function SessionView({
   const snap = useMusubiSnapshot(store)
   const cols = settings?.columns ?? ALL_COLS
   const renderer = useRenderer()
+  const { width: termW, height: termH } = useTerminalDimensions()
   const traces = (snap?.traces ?? []) as Rtp[]
   const events = (snap?.events ?? []) as TraceEvent[]
   const limits = snap?.limits ?? DEFAULT_LIMITS
@@ -981,7 +982,7 @@ function SessionView({
         if (!p) return null
         const curSel = importState.selections.get(importState.presetIdx) ?? new Set()
         return (
-          <Overlay title="Import traces from preset">
+          <Overlay title="Import traces from preset" width={Math.min(80, termW - 4)} height={Math.min(24, termH - 4)}>
             <box flexDirection="row">
               {/* Left: preset list with selection counts */}
               <box flexDirection="column" width={32} marginRight={2}>

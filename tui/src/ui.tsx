@@ -164,10 +164,14 @@ export function Chip({
 export function Overlay({
   title,
   minWidth = 60,
+  width,
+  height,
   children
 }: {
   title?: string
   minWidth?: number
+  width?: number
+  height?: number
   children: ReactNode
 }) {
   // Modals are frameless: a filled panel floating on the dimmed scrim, no border
@@ -191,6 +195,8 @@ export function Overlay({
         paddingLeft={3}
         paddingRight={3}
         minWidth={minWidth}
+        width={width}
+        height={height}
       >
         {title && <text fg={theme.title}>{title}</text>}
         {title ? (
