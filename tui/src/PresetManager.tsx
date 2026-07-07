@@ -118,11 +118,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           break
         case "j":
         case "down":
-          setTraceSel((i) => Math.min(i + 1, traces.length - 1))
+          setTraceSel((i) => (i + 1 >= traces.length ? 0 : i + 1))
           break
         case "k":
         case "up":
-          setTraceSel((i) => Math.max(i - 1, 0))
+          setTraceSel((i) => (i <= 0 ? Math.max(0, traces.length - 1) : i - 1))
           break
         case "n":
           if (cur) setModal({ kind: "addTrace", presetId: cur.id })
@@ -149,11 +149,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         break
       case "j":
       case "down":
-        setSel((i) => Math.min(i + 1, presets.length - 1))
+        setSel((i) => (i + 1 >= presets.length ? 0 : i + 1))
         break
       case "k":
       case "up":
-        setSel((i) => Math.max(i - 1, 0))
+        setSel((i) => (i <= 0 ? Math.max(0, presets.length - 1) : i - 1))
         break
       case "return":
       case "tab":

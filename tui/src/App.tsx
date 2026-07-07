@@ -349,11 +349,11 @@ function S1View({
           break
         case "j":
         case "down":
-          setSessSel((i) => Math.min(i + 1, sessions.length - 1))
+          setSessSel((i) => (i + 1 >= sessions.length ? 0 : i + 1))
           break
         case "k":
         case "up":
-          // wrap up past the first item to the last
+          // wrap
           setSessSel((i) => (i <= 0 ? Math.max(0, sessions.length - 1) : i - 1))
           break
         case "return":
@@ -412,12 +412,12 @@ function S1View({
     switch (name) {
       case "j":
       case "down":
-        setNodeSel((i) => Math.min(i + 1, nodeList.length - 1))
+        setNodeSel((i) => (i + 1 >= nodeList.length ? 0 : i + 1))
         setSessSel(0)
         break
       case "k":
       case "up":
-        setNodeSel((i) => Math.max(i - 1, 0))
+        setNodeSel((i) => (i <= 0 ? Math.max(0, nodeList.length - 1) : i - 1))
         setSessSel(0)
         break
       case "return":

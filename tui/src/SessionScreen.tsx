@@ -267,7 +267,8 @@ function SessionView({
   const dispatch = dispatcher(store)
 
   const moveSel = (delta: number) => {
-    setSel((i) => clamp(i + delta, 0, count - 1))
+    const next = sel + delta
+    setSel(next < 0 ? count - 1 : next >= count ? 0 : next)
     setDetailScroll(0)
   }
 
@@ -560,11 +561,11 @@ function SessionView({
         break
       case "j":
       case "down":
-        setRtpSel((i) => (traces.length === 0 ? 0 : Math.min(i + 1, traces.length - 1)))
+        setRtpSel((i) => (traces.length === 0 ? 0 : (i + 1 >= traces.length ? 0 : i + 1)))
         break
       case "k":
       case "up":
-        setRtpSel((i) => Math.max(i - 1, 0))
+        setRtpSel((i) => (i <= 0 ? Math.max(0, traces.length - 1) : i - 1))
         break
       case "space":
         if (rtpCur) dispatch("toggleTrace", { trace_id: rtpCur.id })

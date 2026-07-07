@@ -176,11 +176,11 @@ function ConsoleView({
         break
       case "j":
       case "down":
-        setSel((i) => Math.min(i + 1, history.length - 1))
+        setSel((i) => (i + 1 >= history.length ? 0 : i + 1))
         break
       case "k":
       case "up":
-        setSel((i) => Math.max(i - 1, 0))
+        setSel((i) => (i <= 0 ? Math.max(0, history.length - 1) : i - 1))
         break
       case "n":
         setPick(0)

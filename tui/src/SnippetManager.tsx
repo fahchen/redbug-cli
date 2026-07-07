@@ -111,11 +111,11 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
         break
       case "j":
       case "down":
-        setSel((i) => Math.min(i + 1, snippets.length - 1))
+        setSel((i) => (i + 1 >= snippets.length ? 0 : i + 1))
         break
       case "k":
       case "up":
-        setSel((i) => Math.max(i - 1, 0))
+        setSel((i) => (i <= 0 ? Math.max(0, snippets.length - 1) : i - 1))
         break
       case "e":
         if (cur) editCode(cur)
