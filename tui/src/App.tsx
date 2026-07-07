@@ -661,10 +661,12 @@ function SessionRow({
 }) {
   const bg = active ? theme.backgroundElement : theme.background
   const num = SESSION_NUM_STYLE === "dot" ? `${index} ·` : `${index}.`
+  const numFg = active ? theme.accent : theme.textMuted
+  const nameFg = active ? theme.text : theme.textMuted
   return (
     <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
-      <text bg={bg} fg={theme.textMuted}>{num.padStart(4)}</text>
-      <text bg={bg} fg={active ? theme.text : theme.textMuted}>{`  ${truncate(session.name, nameWidth)}`}</text>
+      <text bg={bg} fg={numFg}>{num.padStart(4)}</text>
+      <text bg={bg} fg={nameFg}>{`  ${truncate(session.name, nameWidth)}`}</text>
     </box>
   )
 }
