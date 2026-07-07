@@ -6,7 +6,8 @@ import type { StoreProxy } from "@musubi/react"
 import { SNIPPETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { Header, HelpOverlay, Overlay, RootGate, StatusBar, TextField } from "./ui"
+import { elixirStyle, tsClient } from "./treesitter"
+import { HelpOverlay, Overlay, RootGate, StatusBar, TextField } from "./ui"
 
 type SnippetsStore = StoreProxy<"Server.Stores.SnippetsRoot", Musubi.Stores>
 type SnippetProxy = StoreProxy<"Server.Stores.SnippetStore", Musubi.Stores>
@@ -117,8 +118,6 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.bg}>
-      <Header title="Snippets — global library" />
-
       <box flexDirection="row" flexGrow={1} gap={1}>
         <box
           border
@@ -153,9 +152,12 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           ) : cur.code.trim() === "" ? (
             <text fg={theme.dim}>Empty · e to edit in $EDITOR</text>
           ) : (
-            cur.code.split("\n").slice(0, 24).map((l, i) => (
-              <text key={i} fg={theme.fg}>{l}</text>
-            ))
+            <code
+              content={cur.code}
+              filetype="elixir"
+              syntaxStyle={elixirStyle}
+              treeSitterClient={tsClient}
+            />
           )}
         </box>
       </box>
