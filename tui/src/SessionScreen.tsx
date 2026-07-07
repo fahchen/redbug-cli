@@ -986,7 +986,7 @@ function SessionView({
         const curSel = importState.selections.get(importState.presetIdx) ?? new Set()
         return (
           <Overlay title="Import traces from preset" width={Math.min(80, termW - 4)} height={Math.min(24, termH - 4)}>
-            <box flexDirection="row">
+            <box flexDirection="row" flexGrow={1}>
               {/* Left: preset list with selection counts */}
               <box flexDirection="column" width={32} marginRight={2}>
                 {presets.map((pr, i) => {
@@ -1007,6 +1007,7 @@ function SessionView({
               </box>
               {/* Right: RTP preview with checkboxes */}
               <box flexDirection="column" flexGrow={1}>
+                <scrollbox scrollY flexGrow={1}>
                 {p.traces.map((t, j) => {
                   const active = j === importState.traceSel && importState.focus === "traces"
                   const bg = active ? theme.backgroundElement : theme.overlay
@@ -1019,6 +1020,7 @@ function SessionView({
                     </box>
                   )
                 })}
+                </scrollbox>
               </box>
             </box>
             <text fg={theme.dim} marginTop={1}>
