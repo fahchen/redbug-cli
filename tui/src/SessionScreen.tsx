@@ -218,6 +218,18 @@ function SessionView({
     | { kind: "savePreset" }
   >({ kind: "none" })
 
+  // Track the trace list as it was when last applied, so per-row * markers
+  // show which RTPs differ from the live (running) config. Initialised on
+  // mount to whatever the server sends; refreshed after every successful
+  // apply (dirty → clean transition).
+  const [appliedTraces, setAppliedTraces] = useState<Rtp[]>(() => traces)
+  const prevDirty = useRef(dirty)
+  // dirty true → false means applyRestart just succeeded: reset the baseline.
+  if (prevDirty.current === true && dirty === false) {
+    if (appliedTraces !== traces) setAppliedTraces(traces)
+  }
+  prevDirty.current = dirty
+
   const { rows, count } = useMemo(
     () => processEvents(events, filter, sort, group),
     [events, filter, sort, group]
@@ -728,12 +740,15 @@ function SessionView({
             {traces.length === 0 ? (
               <text fg={theme.dim}>No patterns yet · n to add</text>
             ) : (
-              // manual list (not <select>): highlight = selection, no ► marker
+              // manual list (not <select>): highlight = selection, no ► marker.
+              // * prefix = RTP differs from what was last applied to the live trace.
               traces.map((t, i) => {
                 const on = i === rtpSel
                 const bg = on ? theme.backgroundElement : theme.overlay
+                const changed = running && dirty && isRtpChanged(t, appliedTraces)
                 return (
                   <box key={t.id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+                    {changed && <text bg={bg} fg={theme.warning}>{"* "}</text>}
                     <text bg={bg} fg={t.enabled ? theme.success : theme.textMuted}>{t.enabled ? "[x] " : "[ ] "}</text>
                     <text bg={bg} fg={on ? theme.text : theme.textMuted}>{t.text}</text>
                   </box>
@@ -1111,6 +1126,18 @@ function segs(text: string, query: string): { t: string; hit: boolean }[] {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(n, hi))
+}
+
+// Rolling per-second arrival counts → a block sparkline, scaled to its own peak
+// Compare one RTP against the applied-traces baseline. An RTP is "changed"
+// (staged, not yet applied) when:
+//   - its id is not in the applied set at all  (newly added)
+//   - its text or enabled flag differs            (edited / toggled)
+// Deleted traces disappear from the list entirely, so no * marker needed.
+function isRtpChanged(rtp: Rtp, applied: readonly Rtp[]): boolean {
+  const orig = applied.find((a) => a.id === rtp.id)
+  if (!orig) return true
+  return rtp.text !== orig.text || rtp.enabled !== orig.enabled
 }
 
 // Rolling per-second arrival counts → a block sparkline, scaled to its own peak
