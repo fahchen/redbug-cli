@@ -279,9 +279,6 @@ function SessionView({
   useKeyboard((key) => {
     const n = key.name
 
-    // PresetManager takes over all key handling while open as a modal.
-    if (showPresets) return
-
     // ConsoleTab registers its own keyboard handler; both stay mounted, so bail
     // here to avoid double-handling keys while the console tab is active.
     if (tab === "console") return
@@ -607,6 +604,9 @@ function SessionView({
 
   return (
     <>
+    {showPresets ? (
+      <PresetManager onBack={() => setShowPresets(false)} />
+    ) : (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       {/* ... session content ... */}
       <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
@@ -1013,10 +1013,6 @@ function SessionView({
       </>
       )}
     </box>
-    {showPresets && (
-      <Overlay>
-        <PresetManager onBack={() => setShowPresets(false)} />
-      </Overlay>
     )}
     </>
   )
