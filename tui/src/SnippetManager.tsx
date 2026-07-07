@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 
@@ -38,6 +38,8 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   const [modal, setModal] = useState<Modal>({ kind: "none" })
 
   const cur = snippets[Math.min(sel, snippets.length - 1)] ?? null
+  const numBuf = useRef("")
+  const numTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // createSnippet is the only root command; snippet-scoped mutations dispatch on
   // the matching child proxy (store path is the routing — no snippet_id payload).
@@ -113,6 +115,15 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       case "?":
         setModal({ kind: "help" })
         break
+      default:
+        if (/^[0-9]$/.test(n) && snippets.length > 0) {
+          if (numTimer.current) clearTimeout(numTimer.current)
+          numBuf.current += n
+          const num = parseInt(numBuf.current, 10)
+          setSel(Math.min(Math.max(num - 1, 0), snippets.length - 1))
+          numTimer.current = setTimeout(() => { numBuf.current = "" }, 800)
+        }
+        break
     }
   })
 
@@ -132,7 +143,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           {snippets.length === 0 ? (
             <text fg={theme.dim}>No snippets yet · n to add</text>
           ) : (
-            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} />)
+            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} />)
           )}
         </box>
 
@@ -222,11 +233,12 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   )
 }
 
-function SnippetRow({ snippet, active }: { snippet: Snippet; active: boolean }) {
-  const bg = active ? theme.selBg : theme.bg
+function SnippetRow({ snippet, active, index }: { snippet: Snippet; active: boolean; index: number }) {
+  const bg = active ? theme.selBg : theme.background
   const fg = active ? theme.selFg : theme.fg
   return (
-    <box backgroundColor={bg}>
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+      <text bg={bg} fg={theme.dim}>{`${index} · `}</text>
       <text bg={bg} fg={fg}>{snippet.name}</text>
     </box>
   )
