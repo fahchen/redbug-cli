@@ -228,7 +228,7 @@ function SessionView({
   const [editingLimits, setEditingLimits] = useState(false)
   const [importState, setImportState] = useState<{
     presetIdx: number
-    selected: Set<number>
+    selections: Map<number, Set<number>>
     focus: "list" | "traces"
     traceSel: number
   } | null>(null)
@@ -468,17 +468,18 @@ function SessionView({
       return
     }
     if (importState) {
+      const curSel = importState.selections.get(importState.presetIdx) ?? new Set()
       if (importState.focus === "traces") {
         if (n === "escape" || n === "tab") {
           setImportState({ ...importState, focus: "list" })
           return
         }
         if (n === "enter" || n === "return") {
-          if (importState.selected.size === 0) return
+          if (curSel.size === 0) return
           const p = presets[importState.presetIdx]
           const existing = new Set(traces.map((t) => t.text))
           for (let j = 0; j < p.traces.length; j++) {
-            if (importState.selected.has(j) && !existing.has(p.traces[j].text)) {
+            if (curSel.has(j) && !existing.has(p.traces[j].text)) {
               dispatch("addTrace", { text: p.traces[j].text })
             }
           }
@@ -488,16 +489,19 @@ function SessionView({
         if (n === "a") {
           const p = presets[importState.presetIdx]
           const all = new Set(p.traces.map((_, j) => j))
-          // toggle: if all are selected, deselect all; otherwise select all
-          const allSelected = importState.selected.size === p.traces.length
-          setImportState({ ...importState, selected: allSelected ? new Set() : all })
+          const allSelected = curSel.size === p.traces.length
+          const next = new Map(importState.selections)
+          next.set(importState.presetIdx, allSelected ? new Set() : all)
+          setImportState({ ...importState, selections: next })
           return
         }
         if (n === "space") {
-          const next = new Set(importState.selected)
-          if (next.has(importState.traceSel)) next.delete(importState.traceSel)
-          else next.add(importState.traceSel)
-          setImportState({ ...importState, selected: next })
+          const nextSel = new Set(curSel)
+          if (nextSel.has(importState.traceSel)) nextSel.delete(importState.traceSel)
+          else nextSel.add(importState.traceSel)
+          const next = new Map(importState.selections)
+          next.set(importState.presetIdx, nextSel)
+          setImportState({ ...importState, selections: next })
           return
         }
         if (n === "j" || n === "down") {
@@ -512,7 +516,7 @@ function SessionView({
       } else {
         // list focus
         if (n === "escape") {
-          if (importState.selected.size > 0) {
+          if (curSel.size > 0) {
             setImportState({ ...importState, focus: "traces" })
           } else {
             setImportState(null)
@@ -525,12 +529,12 @@ function SessionView({
         }
         if (n === "j" || n === "down") {
           const next = Math.min(importState.presetIdx + 1, presets.length - 1)
-          setImportState({ presetIdx: next, selected: new Set(), focus: "list", traceSel: 0 })
+          setImportState({ ...importState, presetIdx: next, focus: "list", traceSel: 0 })
           return
         }
         if (n === "k" || n === "up") {
           const next = Math.max(importState.presetIdx - 1, 0)
-          setImportState({ presetIdx: next, selected: new Set(), focus: "list", traceSel: 0 })
+          setImportState({ ...importState, presetIdx: next, focus: "list", traceSel: 0 })
           return
         }
       }
@@ -587,7 +591,7 @@ function SessionView({
         break
       case "i":
         if (presets.length > 0) {
-          setImportState({ presetIdx: 0, selected: new Set(), focus: "list", traceSel: 0 })
+          setImportState({ presetIdx: 0, selections: new Map(), focus: "list", traceSel: 0 })
         }
         break
     }
@@ -975,38 +979,37 @@ function SessionView({
       {overlay === "editor" && importState !== null && (() => {
         const p = presets[importState.presetIdx]
         if (!p) return null
-        const selCount = importState.selected.size
-        const totalCount = p.traces.length
+        const curSel = importState.selections.get(importState.presetIdx) ?? new Set()
         return (
           <Overlay title="Import traces from preset">
             <box flexDirection="row">
-              {/* Left: preset list */}
-              <box flexDirection="column" width={30} marginRight={2}>
+              {/* Left: preset list with selection counts */}
+              <box flexDirection="column" width={32} marginRight={2}>
                 {presets.map((pr, i) => {
                   const active = i === importState.presetIdx && importState.focus === "list"
                   const bg = active ? theme.backgroundElement : theme.overlay
+                  const ps = importState.selections.get(i)
+                  const sc = ps ? ps.size : 0
                   return (
-                    <box key={pr.id} backgroundColor={bg} flexDirection="row" paddingLeft={1}>
+                    <box key={pr.id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
                       <text bg={bg} fg={active ? theme.text : theme.textMuted}>
                         {pr.name}
                       </text>
                       <box flexGrow={1} backgroundColor={bg} />
-                      <text bg={bg} fg={theme.dim}>{pr.traces.length}</text>
+                      <text bg={bg} fg={sc > 0 ? theme.success : theme.dim}>{`${sc}/${pr.traces.length}`}</text>
                     </box>
                   )
                 })}
               </box>
               {/* Right: RTP preview with checkboxes */}
               <box flexDirection="column" flexGrow={1}>
-                <text fg={theme.title}>{p.name}</text>
-                <text fg={theme.dim} marginBottom={1}>{`${selCount}/${totalCount} selected`}{selCount === 0 ? " · a to select all" : ""}</text>
                 {p.traces.map((t, j) => {
                   const active = j === importState.traceSel && importState.focus === "traces"
                   const bg = active ? theme.backgroundElement : theme.overlay
                   return (
                     <box key={t.id} backgroundColor={bg} flexDirection="row" paddingLeft={1}>
-                      <text bg={bg} fg={importState.selected.has(j) ? theme.success : theme.textMuted}>
-                        {importState.selected.has(j) ? "[x] " : "[ ] "}
+                      <text bg={bg} fg={curSel.has(j) ? theme.success : theme.textMuted}>
+                        {curSel.has(j) ? "[x] " : "[ ] "}
                       </text>
                       <text bg={bg} fg={active ? theme.text : theme.textMuted}>{t.text}</text>
                     </box>
@@ -1015,7 +1018,7 @@ function SessionView({
               </box>
             </box>
             <text fg={theme.dim} marginTop={1}>
-              {importState.focus === "list" ? `j/k preset · Enter/tab → traces · Esc ${importState.selected.size > 0 ? "(selected → traces)" : "close"}` : "j/k trace · space toggle · a all · Enter import · Esc/tab ← presets"}
+              {importState.focus === "list" ? `j/k preset · Enter/tab → traces · Esc ${curSel.size > 0 ? "(selected → traces)" : "close"}` : "j/k trace · space toggle · Enter import · Esc/tab ← presets · a select all"}
             </text>
           </Overlay>
         )
