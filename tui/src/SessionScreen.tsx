@@ -9,6 +9,8 @@ import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor, PANEL_BORDER } from "./theme"
 import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
+import { DialogSelect } from "./DialogSelect"
+import type { DialogItem } from "./DialogSelect"
 import { editInEditor } from "./editor"
 import { elixirStyle, tsClient } from "./treesitter"
 
@@ -293,8 +295,7 @@ function SessionView({
     }
 
     if (overlay === "sort") {
-      // <select> owns j/k/return; only Esc closes the overlay
-      if (n === "escape") setOverlay("none")
+      // DialogSelect owns all keys (j/k/return/escape)
       return
     }
 
@@ -809,33 +810,21 @@ function SessionView({
       )}
 
       {overlay === "sort" && (
-        <Overlay>
-          <text fg={theme.title}>Sort by</text>
-          <select
-            focused
-            marginTop={1}
-            height={SORT_OPTS.length}
-            itemSpacing={0}
-            options={SORT_OPTS.map((s) => ({
-              name: `${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`,
-              description: ""
-            }))}
-            selectedIndex={sortIdx}
-            showDescription={false}
-            backgroundColor={theme.overlay}
-            textColor={theme.textMuted}
-            focusedBackgroundColor={theme.overlay}
-            focusedTextColor={theme.text}
-            selectedBackgroundColor={theme.backgroundElement}
-            selectedTextColor={theme.selectedForeground}
-            onChange={(i: number) => setSortIdx(i)}
-            onSelect={(i: number) => {
-              setSort(SORT_OPTS[i])
-              setOverlay("none")
-            }}
-          />
-          <text fg={theme.dim} marginTop={1}>j/k move · Enter apply · Esc cancel</text>
-        </Overlay>
+        <DialogSelect
+          title="Sort by"
+          items={SORT_OPTS.map((s) => ({
+            id: `${s.key}_${s.dir}`,
+            name: `${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`,
+            query: `${s.key} ${s.dir}`
+          }))}
+          selectedIndex={sortIdx}
+          onSelect={(item) => {
+            const s = SORT_OPTS.find((x) => `${x.key}_${x.dir}` === item.id)
+            if (s) setSort(s)
+            setOverlay("none")
+          }}
+          onClose={() => setOverlay("none")}
+        />
       )}
 
       {overlay === "limits" && (
