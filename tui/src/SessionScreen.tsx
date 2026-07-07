@@ -70,13 +70,13 @@ export function SessionScreen({
   nodeId,
   sessionId,
   settings,
-  presetNames,
+  presets,
   onBack
 }: {
   nodeId: string
   sessionId: string
   settings?: Server.Schema.Settings
-  presetNames?: string[]
+  presets?: Server.Schema.Preset[]
   onBack: () => void
 }) {
   const root = useMusubiRoot(sessionRoot(nodeId, sessionId))
@@ -88,7 +88,7 @@ export function SessionScreen({
           nodeId={nodeId}
           sessionId={sessionId}
           settings={settings}
-          presetNames={presetNames ?? []}
+          presets={presets ?? []}
           onBack={onBack}
         />
       )}
@@ -101,14 +101,14 @@ function SessionView({
   nodeId,
   sessionId,
   settings,
-  presetNames,
+  presets,
   onBack
 }: {
   store: SessionStore
   nodeId: string
   sessionId: string
   settings?: Server.Schema.Settings
-  presetNames: string[]
+  presets: Server.Schema.Preset[]
   onBack: () => void
 }) {
   const [tab, setTab] = useState<"events" | "console">("events")
@@ -223,6 +223,8 @@ function SessionView({
     | { kind: "edit"; id: string; text: string }
     | { kind: "savePreset" }
     | { kind: "savePresetOverwrite"; name: string }
+    | { kind: "pickPreset" }
+    | { kind: "importPreset"; presetId: string; selected: Set<number> }
   >({ kind: "none" })
   const [editingLimits, setEditingLimits] = useState(false)
 
@@ -459,12 +461,34 @@ function SessionView({
       }
       return
     }
+    if (rtpModal.kind === "pickPreset" || rtpModal.kind === "importPreset") {
+      if (n === "escape") { setRtpModal({ kind: "none" }); return }
+      if (rtpModal.kind === "importPreset") {
+        const p = presets.find((x) => x.id === (rtpModal as any).presetId)
+        if (!p) return
+        const sel = (rtpModal as any).selected as Set<number>
+        if (n === "enter" || n === "return") {
+          const existing = new Set(traces.map((t) => t.text))
+          for (let j = 0; j < p.traces.length; j++) {
+            if (sel.has(j) && !existing.has(p.traces[j].text)) {
+              dispatch("addTrace", { text: p.traces[j].text })
+            }
+          }
+          setRtpModal({ kind: "none" })
+        }
+      }
+      return
+    }
     if (rtpModal.kind !== "none") {
       if (n === "escape") setRtpModal({ kind: "none" })
       return
     }
     if (key.ctrl && n === "w") {
       setRtpModal({ kind: "savePreset" })
+      return
+    }
+    if (editingLimits) {
+      if (n === "escape") setEditingLimits(false)
       return
     }
     if (editingLimits) {
@@ -498,6 +522,9 @@ function SessionView({
       case "l":
         setEditingLimits((v) => !v)
         if (!editingLimits) setLimitsDraft(formatLimits(limits))
+        break
+      case "p":
+        if (presets.length > 0) setRtpModal({ kind: "pickPreset" })
         break
     }
   }
@@ -538,7 +565,7 @@ function SessionView({
           showScrollArrows={false}
           showUnderline={false}
           options={[
-            { name: "Events", description: "" },
+            { name: "Traces", description: "" },
             { name: "Console", description: "" }
           ]}
           backgroundColor={theme.background}
@@ -821,7 +848,7 @@ function SessionView({
               <text fg={theme.textMuted}>{`Limits: keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}</text>
             )}
           </box>
-          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · l limits · space toggle · ⌃W save preset · esc close</text>
+          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · p import · l limits · space toggle · ⌃W save · esc close</text>
         </Overlay>
       )}
 
@@ -860,7 +887,7 @@ function SessionView({
             onSubmit={(v) => {
               const name = v.trim()
               if (name === "") { setRtpModal({ kind: "none" }); return }
-              if (presetNames.includes(name)) {
+              if (presets.some((p) => p.name === name)) {
                 setRtpModal({ kind: "savePresetOverwrite", name })
               } else {
                 dispatch("saveAsPreset", { name })
@@ -877,6 +904,54 @@ function SessionView({
           <text fg={theme.textMuted} marginTop={1}>y = overwrite · n/Esc = cancel</text>
         </Overlay>
       )}
+
+      {overlay === "editor" && rtpModal.kind === "pickPreset" && (
+        <Overlay title="Import from preset">
+          <select
+            focused
+            height={Math.min(presets.length, 10)}
+            itemSpacing={0}
+            options={presets.map((p) => ({ name: p.name, description: `${p.traces.length} traces` }))}
+            selectedIndex={0}
+            showDescription={true}
+            backgroundColor={theme.overlay}
+            textColor={theme.textMuted}
+            focusedBackgroundColor={theme.overlay}
+            focusedTextColor={theme.text}
+            selectedBackgroundColor={theme.backgroundElement}
+            selectedTextColor={theme.selectedForeground}
+            onSelect={(i: number) => {
+              const p = presets[i]
+              if (p) setRtpModal({ kind: "importPreset", presetId: p.id, selected: new Set(p.traces.map((_, j) => j)) })
+            }}
+          />
+          <text fg={theme.dim} marginTop={1}>j/k move · Enter pick · Esc cancel</text>
+        </Overlay>
+      )}
+
+      {overlay === "editor" && rtpModal.kind === "importPreset" && (() => {
+        const p = presets.find((x) => x.id === (rtpModal as any).presetId)
+        if (!p) return null
+        const sel = (rtpModal as any).selected as Set<number>
+        const toggle = (j: number) => {
+          const next = new Set(sel)
+          if (next.has(j)) next.delete(j); else next.add(j)
+          setRtpModal({ kind: "importPreset", presetId: p.id, selected: next })
+        }
+        return (
+          <Overlay title={`Import from "${p.name}"`}>
+            <box flexDirection="column">
+              {p.traces.map((t, j) => (
+                <box key={t.id} flexDirection="row">
+                  <text fg={sel.has(j) ? theme.success : theme.textMuted}>{sel.has(j) ? "[x] " : "[ ] "}</text>
+                  <text fg={theme.text}>{t.text}</text>
+                </box>
+              ))}
+            </box>
+            <text fg={theme.dim} marginTop={1}>j/k move · space toggle · Enter import · Esc cancel</text>
+          </Overlay>
+        )
+      })()}
 
       {zoom && selectedEvent && (
         <Overlay title="Detail · esc close · v view" minWidth={70}>
