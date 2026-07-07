@@ -2,9 +2,9 @@
 
 | # | Task | Priority | Status |
 |---|------|----------|--------|
-| 9 | theme expansion (8 themes) | 🟢 | ⬜ |
+| 9 | theme expansion (8 themes) | 🟢 | ✅ done |
 | 14 | node label (human-readable alias) | 🟡 | ⬜ |
-| 10 | DialogSelect + command palette | 🔴 | ⬜ |
+| 10 | DialogSelect (fuzzy-filter picker) | 🔴 | ⬜ |
 | 7 | port / ssh_port dial logic | 🟡 | ⬜ |
 | 8 | SSH known_hosts verification | 🟢 | ⬜ |
 | 12 | Demo GIF + README publish | 🟡 | ⬜ |
