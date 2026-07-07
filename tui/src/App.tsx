@@ -437,6 +437,9 @@ function S1View({
           })
         }
         break
+      case "p":
+        onOpenPresets()
+        break
       case "l":
         onOpenSnippets()
         break
@@ -489,7 +492,7 @@ function S1View({
           focus === "nodes"
             ? envMode
               ? "j/k node · enter sessions · s session · c connect · env read-only · , settings · ? help · q quit"
-              : "j/k node · enter sessions · n new · c connect · e edit · d del · l snippets · , settings · ? help · q quit"
+              : "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · l snippets · , settings · ? help · q quit"
             : "j/k session · enter open · r rename · s new · d del · tab/esc nodes · ? help"
         }
       />
@@ -735,6 +738,7 @@ function ModalLayer({
             {
               title: "go to",
               lines: [
+                ["p", "presets"],
                 ["l", "snippet library"],
                 [",", "settings"],
                 ["q", "quit"]

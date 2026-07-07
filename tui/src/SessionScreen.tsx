@@ -9,7 +9,6 @@ import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, kindColor, PANEL_BORDER } from "./theme"
 import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
-import { PresetManager } from "./PresetManager"
 import { editInEditor } from "./editor"
 import { elixirStyle, tsClient } from "./treesitter"
 
@@ -450,10 +449,8 @@ function SessionView({
       case "d":
         if (selectedEvent) setOverlay("confirmDelete")
         break
-      case "p":
-        setShowPresets(true)
-        break
       case "?":
+        setOverlay("help")
         break
     }
   })
@@ -598,15 +595,11 @@ function SessionView({
     : sessionState === "ended" || sessionState === "failed" ? "space restart"
     : sessionState === "running" ? (dirty ? "x stop · ⌃S apply" : "x stop")
     : ""
-  const eventsHints = ["j/k move", "enter detail", "t traces", "p presets", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
+  const eventsHints = ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
     .filter((s) => s !== "")
     .join(" · ")
 
   return (
-    <>
-    {showPresets ? (
-      <PresetManager onBack={() => setShowPresets(false)} />
-    ) : (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       {/* ... session content ... */}
       <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
@@ -738,7 +731,6 @@ function SessionView({
                 ["/", "filter"],
                 ["g", "cycle grouping"],
                 ["l", "limits"],
-                ["p", "preset manager"],
                 ["e / d", "error detail / delete event"],
                 ["⌃D", "delete event (no confirm)"]
               ]
@@ -1013,8 +1005,6 @@ function SessionView({
       </>
       )}
     </box>
-    )}
-    </>
   )
 }
 
