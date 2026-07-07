@@ -7,7 +7,7 @@ import { SNIPPETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./m
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { HelpOverlay, Overlay, RootGate, StatusBar, TextField } from "./ui"
+import { HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
 
 type SnippetsStore = StoreProxy<"Server.Stores.SnippetsRoot", Musubi.Stores>
 type SnippetProxy = StoreProxy<"Server.Stores.SnippetStore", Musubi.Stores>
@@ -158,34 +158,16 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      <box flexDirection="row" flexGrow={1} gap={1} paddingTop={1}>
-        <box
-          border
-          borderColor={theme.title}
-          backgroundColor={theme.background}
-          title={` Snippets (${snippets.length}) `}
-          titleColor={theme.title}
-          width={40}
-          flexDirection="column"
-        >
+      <box flexDirection="row" flexGrow={1} paddingTop={1}>
+        <Panel heading={`Snippets (${snippets.length})`} active width={40}>
           {snippets.length === 0 ? (
-            <box paddingLeft={1}><text fg={theme.dim}>No snippets yet · n to add</text></box>
+            <text fg={theme.dim}>No snippets yet · n to add</text>
           ) : (
             snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} />)
           )}
-        </box>
+        </Panel>
 
-        <box
-          border
-          borderColor={theme.border}
-          backgroundColor={theme.background}
-          title={cur ? ` ${cur.name} ` : " — "}
-          titleColor={theme.title}
-          flexGrow={1}
-          flexBasis={0}
-          flexDirection="column"
-          padding={1}
-        >
+        <Panel heading={cur ? cur.name : "—"} grow>
           {!cur ? (
             <text fg={theme.dim}>Select a snippet</text>
           ) : cur.code.trim() === "" ? (
@@ -198,7 +180,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
               treeSitterClient={tsClient}
             />
           )}
-        </box>
+        </Panel>
       </box>
 
       <StatusBar
