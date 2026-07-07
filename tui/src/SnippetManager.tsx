@@ -157,10 +157,9 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           titleColor={theme.title}
           width={32}
           flexDirection="column"
-          padding={1}
         >
           {snippets.length === 0 ? (
-            <text fg={theme.dim}>No snippets yet · n to add</text>
+            <box paddingLeft={1}><text fg={theme.dim}>No snippets yet · n to add</text></box>
           ) : (
             snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} highlight={i === highlightIdx} />)
           )}
@@ -261,7 +260,7 @@ function SnippetRow({ snippet, active, index, highlight }: { snippet: Snippet; a
   const fg = active ? theme.selFg : theme.fg
   const numFg = highlight ? theme.accent : theme.dim
   return (
-    <box backgroundColor={bg} flexDirection="row">
+    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={numFg}>{`${String(index).padStart(2)} · `}</text>
       <text bg={bg} fg={fg}>{snippet.name}</text>
     </box>
