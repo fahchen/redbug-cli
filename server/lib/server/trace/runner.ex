@@ -201,14 +201,24 @@ defmodule Server.Trace.Runner do
           {:ok, state}
 
         {proc, 0, _procs} when is_atom(proc) ->
-          {:error, :no_matching_functions, %{state | status: "stopped"}}
+          state = %{state | status: "stopped"}
+          Config.set_session_status(state.session_id, "stopped")
+          broadcast(state.session_id, {:trace_status, status_payload(state)})
+          {:error, :no_matching_functions, state}
 
         other ->
           Logger.error("redbug start failed for #{node.name}: #{inspect(other)}")
-          {:error, redbug_error(other), %{state | status: "stopped"}}
+          state = %{state | status: "stopped"}
+          Config.set_session_status(state.session_id, "stopped")
+          broadcast(state.session_id, {:trace_status, status_payload(state)})
+          {:error, redbug_error(other), state}
       end
     else
-      {:error, reason} -> {:error, reason, %{state | status: "stopped"}}
+      {:error, reason} ->
+        state = %{state | status: "stopped"}
+        Config.set_session_status(state.session_id, "stopped")
+        broadcast(state.session_id, {:trace_status, status_payload(state)})
+        {:error, reason, state}
     end
   end
 
