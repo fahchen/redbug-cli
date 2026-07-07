@@ -43,7 +43,7 @@ defmodule Server.Remote.Worker do
   defp eval(code) do
     try do
       {value, _binding} = Code.eval_string(code)
-      {:ok, inspect(value)}
+      {:ok, inspect(value, limit: :infinity, pretty: true, width: 100)}
     rescue
       e in [SyntaxError, TokenMissingError, UndefinedFunctionError] ->
         case erl_eval(code) do

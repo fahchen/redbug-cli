@@ -369,17 +369,17 @@ defmodule Server.Trace.Runner do
   defp describe(:call, {{m, f, args}, stack}) do
     info =
       case stack_info(stack) do
-        "" -> inspect(args)
-        s -> inspect(args) <> "\n" <> s
+        "" -> pp(args)
+        s -> pp(args) <> "\n" <> s
       end
 
     {fmt_mf(m, f, length(args)), info}
   end
 
-  defp describe(:retn, {{m, f, a}, ret}), do: {fmt_mf(m, f, a), inspect(ret)}
-  defp describe(:send, {message, to}), do: {"send", "→ #{inspect(to)}: #{inspect(message)}"}
-  defp describe(:recv, message), do: {"recv", inspect(message)}
-  defp describe(tag, payload), do: {Atom.to_string(tag), inspect(payload)}
+  defp describe(:retn, {{m, f, a}, ret}), do: {fmt_mf(m, f, a), pp(ret)}
+  defp describe(:send, {message, to}), do: {"send", "→ #{inspect(to)}: #{pp(message)}"}
+  defp describe(:recv, message), do: {"recv", pp(message)}
+  defp describe(tag, payload), do: {Atom.to_string(tag), pp(payload)}
 
   defp stack_info(<<>>), do: ""
   defp stack_info(stack) when is_binary(stack) do
@@ -405,4 +405,8 @@ defmodule Server.Trace.Runner do
   defp fmt_ts(other), do: inspect(other)
 
   defp event_id, do: Integer.to_string(System.unique_integer([:monotonic, :positive]))
+
+  # Pretty-print an Erlang/Elixir term with no length limit, so maps, lists,
+  # and tuples render fully indented in the TUI detail pane.
+  defp pp(term), do: inspect(term, limit: :infinity, pretty: true, width: 100)
 end
