@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import type { ReactNode } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
@@ -163,6 +163,7 @@ function S1View({
   // reachable), jump to that 1-based session, reset the buffer after a pause.
   const sessNumBuf = useRef("")
   const sessNumTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSession = useRef<{ nodeId: string; name: string } | null>(null)
   const [focus, setFocus] = useState<Focus>("nodes")
   const [modal, setModal] = useState<Modal>({ kind: "none" })
   const [presetIdx, setPresetIdx] = useState(0)
@@ -211,9 +212,25 @@ function S1View({
     if (modal.kind !== "newSessionPreset") return
     const fromPresetId = index === 0 ? null : presetList[index - 1]?.id ?? null
     const np = nodeProxyById(modal.nodeId)
-    if (np) dispatcher(np)("createSession", { name: modal.name, from_preset_id: fromPresetId })
+    if (np) {
+      dispatcher(np)("createSession", { name: modal.name, from_preset_id: fromPresetId })
+      pendingSession.current = { nodeId: modal.nodeId, name: modal.name }
+    }
     setModal({ kind: "none" })
   }
+
+  // After creating a session, auto-open it once it appears in the list.
+  useEffect(() => {
+    if (!pendingSession.current) return
+    const node = nodeList.find((n) => n.id === pendingSession.current!.nodeId)
+    if (!node) return
+    const session = node.sessions.find((s) => s.name === pendingSession.current!.name)
+    if (session) {
+      const ps = pendingSession.current!
+      pendingSession.current = null
+      onOpenSession(ps.nodeId, session.id)
+    }
+  }, [nodeList])
 
   const openNewNode = () => {
     if (envMode) return
