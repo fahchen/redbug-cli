@@ -15,6 +15,7 @@ import {
 import { theme, setTheme } from "./theme"
 import { Chip, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, truncate, useSpinner } from "./ui"
 import { DialogSelect } from "./DialogSelect"
+import { NodeRow, SessionRow, NodeDetailBand, EmptyTree, isValidHost } from "./Tree"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -577,125 +578,6 @@ function S1View({
           }}
         />
       )}
-    </box>
-  )
-}
-
-// First-run: instead of a bare "nothing here", teach the domain model in a
-// glance so the empty screen is the shortest path to understanding what to add.
-function EmptyTree() {
-  return (
-    <box flexDirection="column">
-      <text fg={theme.fg}>No nodes yet</text>
-      <text fg={theme.dim} marginTop={1}>Node ▸ Session ▸ Trace</text>
-      <text fg={theme.dim}>{"                └ → Events"}</text>
-      <text fg={theme.dim} marginTop={1}>a target, a run, a pattern,</text>
-      <text fg={theme.dim}>the calls it catches, live.</text>
-      <box flexDirection="row" marginTop={1}>
-        <text fg={theme.accent}>n</text>
-        <text fg={theme.dim}>{"  add your first node"}</text>
-      </box>
-    </box>
-  )
-}
-
-function NodeRow({ node, active }: { node: Node; active: boolean }) {
-  const bg = active ? theme.backgroundElement : theme.background
-  // color-weight: connected node reads bright, others muted. A small status dot
-  // carries the state; a braille spinner while connecting.
-  const spin = useSpinner(node.status === "connecting", "braille")
-  // only surface exceptions: idle nodes get no glyph (just alignment space);
-  // connected/connecting/error carry a colored dot.
-  const dot =
-    node.status === "connected" ? "●"
-    : node.status === "connecting" ? spin
-    : node.status === "error" ? "✖"
-    : " "
-  const dotColor =
-    node.status === "connected" ? theme.success
-    : node.status === "connecting" ? theme.warning
-    : node.status === "error" ? theme.error
-    : theme.textMuted
-  const nameColor = active || node.status === "connected" ? theme.text : theme.textMuted
-  const displayName = node.label || node.name
-  return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
-      <text bg={bg} fg={dotColor}>{`${dot} `}</text>
-      <text bg={bg} fg={nameColor}>{displayName}</text>
-      {node.source === "env" && <text bg={bg} fg={theme.textMuted}>{"  env"}</text>}
-      <box flexGrow={1} backgroundColor={bg} />
-      <text bg={bg} fg={theme.textMuted}>{`${node.sessions.length}`}</text>
-    </box>
-  )
-}
-
-// Redact a cookie to first-2 + last-2, masking the middle. A cookie is an RCE
-// credential, so never render it in full — enough to recognize, not to reuse.
-function redactCookie(c: string | null | undefined): string {
-  if (!c) return "—"
-  if (c.length <= 4) return "•".repeat(c.length)
-  return `${c.slice(0, 2)}••••${c.slice(-2)}`
-}
-
-// A directly-dialed node's host must be a real hostname or IP — a bare number like
-// "178" is neither a valid Erlang longname host (needs FQDN/IP) nor a shortname one.
-function isValidHost(h: string): boolean {
-  const s = h.trim()
-  if (s === "") return false
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return true
-  if (!/^[a-zA-Z0-9.\-]+$/.test(s)) return false
-  return /[a-zA-Z]/.test(s) || s.includes(".")
-}
-
-// Detail block at the top of the sessions pane: host / cookie(redacted) / ssh
-// route, aligned key–value rows. The connect error (if any) rides underneath.
-function NodeDetailBand({ node, error }: { node: Node; error: Server.Schema.AppError | null }) {
-  const host = node.ssh_host || (node.name.includes("@") ? node.name.split("@")[1] : node.name)
-  const rows: [string, string][] = [
-    ["Host", host],
-    ["Cookie", redactCookie(node.cookie)]
-  ]
-  if (node.label) rows.unshift(["Label", node.label])
-  if (node.ssh_host) {
-    rows.push([
-      "SSH",
-      `${node.ssh_user ? `${node.ssh_user}@` : ""}${node.ssh_host}`
-    ])
-  }
-  if (node.container) rows.push(["Container", node.container])
-  if (node.source === "env") rows.push(["Source", "env (read-only)"])
-  return (
-    <box flexDirection="row" flexWrap="wrap" marginBottom={1}>
-      {rows.map(([k, v]) => (
-        <Chip key={k} label={k} value={v} />
-      ))}
-      {error && <Chip label="Error" value={`${error.message} · c retry`} tone="error" />}
-    </box>
-  )
-}
-
-// Session-number style: "period" = `1.`, "dot" = `1 ·`.
-const SESSION_NUM_STYLE: "period" | "dot" = "dot"
-
-function SessionRow({
-  session,
-  index,
-  nameWidth,
-  active
-}: {
-  session: Session
-  index: number
-  nameWidth: number
-  active: boolean
-}) {
-  const bg = active ? theme.backgroundElement : theme.background
-  const num = SESSION_NUM_STYLE === "dot" ? `${index} ·` : `${index}.`
-  const numFg = active ? theme.accent : theme.textMuted
-  const nameFg = active ? theme.text : theme.textMuted
-  return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
-      <text bg={bg} fg={numFg}>{num.padStart(4)}</text>
-      <text bg={bg} fg={nameFg}>{`  ${truncate(session.name, nameWidth)}`}</text>
     </box>
   )
 }
