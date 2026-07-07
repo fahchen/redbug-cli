@@ -10,8 +10,8 @@
 | 3 | apply-failed state | ✅ done |
 | 4 | exit-while-unapplied prompt | ✅ done |
 | 5 | inline limits-in-editor | ✅ done | |
-| 6 | save-as-preset overwrite + confirm | ⏳ in progress |
-| 7 | port / ssh_port dial logic | ⬜ |
+| 6 | save-as-preset overwrite + confirm | ✅ done |
+| 7 | port / ssh_port dial logic | ⏳ in progress |
 | 8 | SSH known_hosts verification | ⬜ |
 | 9 | theme expansion (8 themes) | ⬜ |
 | 10 | DialogSelect + command palette (P3) | ⬜ |
