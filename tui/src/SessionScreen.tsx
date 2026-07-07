@@ -61,7 +61,7 @@ const RTP_EXAMPLES: [string, string][] = [
   ["Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"]
 ]
 
-const COL = { ts: 12, k: 1, name: 16, pid: 11, mfa: 22, info: 44 }
+const COL = { ts: 12, k: 3, name: 16, pid: 11, mfa: 22, info: 44 }
 const COLGAP = 2
 const SPARK_N = 12
 const SPARK_RAMP = "▁▂▃▄▅▆▇█"
@@ -127,7 +127,7 @@ function SessionView({
   // Node connection status (auto-connected on entry by SessionRoot). Drives the
   // breadcrumb glyph and the connect-error banner in the events pane.
   const nodeStatus = snap?.node_status ?? "idle"
-  const nodeSpin = useSpinner(nodeStatus === "connecting", "block")
+  const nodeSpin = useSpinner(nodeStatus === "connecting", "braille")
 
   // One consolidated lifecycle state the UI reads (folds node connection + trace
   // run + limit-stop into a single axis). Space is the sole "go" action per state
@@ -831,7 +831,7 @@ function ColumnHeader({ cols, pidWidth }: { cols: Cols; pidWidth: number }) {
   return (
     <box flexDirection="row">
       <text fg={theme.dim} marginRight={COLGAP}>{fit("Ts", COL.ts)}</text>
-      <text fg={theme.dim} marginRight={COLGAP}>{" k "}</text>
+      <text fg={theme.dim} marginRight={COLGAP}>{fit(" k ", COL.k)}</text>
       {cols.name && <text fg={theme.dim} marginRight={COLGAP}>{fit("Name", COL.name)}</text>}
       {cols.pid && <text fg={theme.dim} marginRight={COLGAP}>{fit("Pid", pidWidth)}</text>}
       {cols.mfa && <text fg={theme.dim} marginRight={COLGAP}>{fit("Mfa", COL.mfa)}</text>}
@@ -873,7 +873,7 @@ function EventRow({
   return (
     <box backgroundColor={bg} flexDirection="row">
       <text bg={bg} fg={theme.dim} marginRight={COLGAP}>{fit(ev.ts, COL.ts)}</text>
-      <text bg={bg} fg={kc} marginRight={COLGAP}>{` ${sym} `}</text>
+      <text bg={bg} fg={kc} marginRight={COLGAP}>{fit(` ${sym} `, COL.k)}</text>
       {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={nameFg} q={hl("all")} mr />}
       {cols.pid && <Cell text={fit(ev.pid, pidWidth)} bg={bg} fg={pidFg} q={hl("pid")} mr />}
       {cols.mfa && <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} mr />}
