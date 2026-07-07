@@ -37,6 +37,7 @@ defmodule Server.Remote.Console do
 
   def run(session_id, code, name), do: GenServer.call(via(session_id), {:run, code, name})
   def stop(session_id, exec_id), do: GenServer.call(via(session_id), {:stop, exec_id})
+  def delete(session_id, exec_id), do: GenServer.call(via(session_id), {:delete, exec_id})
   def clear(session_id), do: GenServer.call(via(session_id), :clear)
   def snapshot(session_id), do: GenServer.call(via(session_id), :snapshot)
 
@@ -91,6 +92,14 @@ defmodule Server.Remote.Console do
         running = Map.put(state.running, exec_id, %{meta | cause: "stopped"})
         {:reply, :ok, %{state | running: running}}
     end
+  end
+
+  def handle_call({:delete, exec_id}, _from, state) do
+    entry = Enum.find(state.history, &(&1.id == exec_id))
+    if entry do
+      broadcast(state, {:console_delete, exec_id})
+    end
+    {:reply, :ok, %{state | history: Enum.reject(state.history, &(&1.id == exec_id))}}
   end
 
   def handle_call(:clear, _from, state) do

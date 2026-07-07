@@ -66,6 +66,7 @@ type Modal =
   | { kind: "pickSnippet" }
   | { kind: "confirmStop"; id: string }
   | { kind: "confirmClear" }
+  | { kind: "confirmDelete"; id: string }
 
 function ConsoleView({
   store,
@@ -129,6 +130,14 @@ function ConsoleView({
       return
     }
 
+    if (modal.kind === "confirmDelete") {
+      if (n === "y") {
+        dispatch("deleteExec", { id: modal.id })
+        setModal({ kind: "none" })
+      } else if (n === "n" || n === "escape") setModal({ kind: "none" })
+      return
+    }
+
     // [ switches back to Events ([ / ] tab nav; ] is a no-op here — already Console)
     if (n === "[") {
       onSwitchToEvents()
@@ -138,6 +147,11 @@ function ConsoleView({
     // ⌃L clears history (matches Events' ⌃L; keeps destructive clear off a bare key)
     if (key.ctrl && n === "l") {
       if (history.length > 0) setModal({ kind: "confirmClear" })
+      return
+    }
+
+    if (key.ctrl && n === "d") {
+      if (cur) dispatch("deleteExec", { id: cur.id })
       return
     }
 
@@ -165,6 +179,9 @@ function ConsoleView({
         break
       case "r":
         if (cur) dispatch("run", { code: cur.code, name: cur.name || null })
+        break
+      case "d":
+        if (cur) setModal({ kind: "confirmDelete", id: cur.id })
         break
       case "x":
         if (cur && cur.status === "running") setModal({ kind: "confirmStop", id: cur.id })
@@ -205,7 +222,7 @@ function ConsoleView({
 
       <StatusBar
         statusText={`${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`}
-        hints="j/k move · n new · r run · x stop · [/] tabs · ? help · esc back"
+        hints="j/k move · n new · r run · d del · x stop · [/] tabs · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -274,6 +291,13 @@ function ConsoleView({
         <Overlay>
           <text fg={theme.text}>Clear the entire execution history?</text>
           <text fg={theme.textMuted} marginTop={1}>history is server-held, not just this view · y = yes · n/Esc = no</text>
+        </Overlay>
+      )}
+
+      {modal.kind === "confirmDelete" && (
+        <Overlay>
+          <text fg={theme.text}>Delete this execution?</text>
+          <text fg={theme.textMuted} marginTop={1}>y = yes · n/Esc = no</text>
         </Overlay>
       )}
     </box>

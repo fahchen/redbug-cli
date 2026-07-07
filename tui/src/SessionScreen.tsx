@@ -23,7 +23,7 @@ type FilterScope = "all" | "mfa" | "pid" | "info"
 type Filter = { scope: FilterScope; query: string }
 type GroupKey = "none" | "pid" | "mfa" | "kind"
 
-type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help" | "errorDetail" | "confirmExit"
+type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help" | "errorDetail" | "confirmExit" | "confirmDelete"
 type Focus = "list" | "detail"
 type Cols = { name: boolean; pid: boolean; mfa: boolean; info: boolean }
 
@@ -303,6 +303,12 @@ function SessionView({
       return
     }
 
+    if (overlay === "confirmDelete") {
+      if (n === "y" && selectedEvent) dispatch("deleteEvent", { id: selectedEvent.id })
+      if (n === "y" || n === "n" || n === "escape") setOverlay("none")
+      return
+    }
+
     if (overlay === "editor") {
       handleEditorKeys(key)
       return
@@ -349,6 +355,7 @@ function SessionView({
     if (key.ctrl) {
       if (n === "l") return dispatch("clearEvents")
       if (n === "s") return dispatch("applyRestart")
+      if (n === "d" && selectedEvent) return dispatch("deleteEvent", { id: selectedEvent.id })
       if (detailOpen && (n === "j" || n === "down")) return moveSel(1)
       if (detailOpen && (n === "k" || n === "up")) return moveSel(-1)
       return
@@ -425,7 +432,7 @@ function SessionView({
         if (error?.detail) setOverlay("errorDetail")
         break
       case "d":
-        if (error) dispatch("dismissError")
+        if (selectedEvent) setOverlay("confirmDelete")
         break
       case "?":
         setOverlay("help")
@@ -489,7 +496,7 @@ function SessionView({
     : sessionState === "ended" ? "space restart"
     : sessionState === "running" ? (dirty ? "x stop · ⌃S apply" : "x stop")
     : ""
-  const eventsHints = ["j/k move", "enter detail", "t traces", spaceAction, "[/] tabs", "? help", "esc back"]
+  const eventsHints = ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
     .filter((s) => s !== "")
     .join(" · ")
 
@@ -601,6 +608,13 @@ function SessionView({
         </Overlay>
       )}
 
+      {overlay === "confirmDelete" && (
+        <Overlay>
+          <text fg={theme.text}>Delete this event?</text>
+          <text fg={theme.textMuted} marginTop={1}>y = yes · n/Esc = no</text>
+        </Overlay>
+      )}
+
       {overlay === "help" && (
         <HelpOverlay
           title="session · events"
@@ -615,7 +629,8 @@ function SessionView({
                 ["/", "filter"],
                 ["g", "cycle grouping"],
                 ["l", "limits"],
-                ["e / d", "error detail / dismiss"]
+                ["e / d", "error detail / delete event"],
+                ["⌃D", "delete event (no confirm)"]
               ]
             },
             {

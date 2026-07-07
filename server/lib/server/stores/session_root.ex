@@ -88,6 +88,12 @@ defmodule Server.Stores.SessionRoot do
     end
   end
 
+  command :deleteEvent do
+    payload do
+      field(:id, String.t())
+    end
+  end
+
   command :dismissError do
     payload do
     end
@@ -254,6 +260,11 @@ defmodule Server.Stores.SessionRoot do
   def handle_command(:clearEvents, _payload, socket) do
     Trace.clear(socket.assigns.session_id)
     {:noreply, assign(socket, :error, nil)}
+  end
+
+  def handle_command(:deleteEvent, payload, socket) do
+    id = get(payload, "id")
+    {:noreply, stream_delete_by_item_key(socket, :events, id)}
   end
 
   def handle_command(:dismissError, _payload, socket) do

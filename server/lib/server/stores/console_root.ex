@@ -40,6 +40,12 @@ defmodule Server.Stores.ConsoleRoot do
     end
   end
 
+  command :deleteExec do
+    payload do
+      field(:id, String.t())
+    end
+  end
+
   command :connect do
     payload do
     end
@@ -96,6 +102,10 @@ defmodule Server.Stores.ConsoleRoot do
     {:noreply, stream(socket, :history, [], reset: true)}
   end
 
+  def handle_info({:console_delete, exec_id}, socket) do
+    {:noreply, stream_delete(socket, :history, exec_id)}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -117,6 +127,11 @@ defmodule Server.Stores.ConsoleRoot do
 
   def handle_command(:clearHistory, _payload, socket) do
     Remote.clear(socket.assigns.session_id)
+    {:noreply, socket}
+  end
+
+  def handle_command(:deleteExec, payload, socket) do
+    Remote.delete_exec(socket.assigns.session_id, get(payload, "id"))
     {:noreply, socket}
   end
 
