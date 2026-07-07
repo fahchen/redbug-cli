@@ -7,6 +7,8 @@ import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./mu
 import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
 import { Chip, HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
+import { ConfirmOverlay } from "./ConfirmOverlay"
+import { RtpCheatSheet } from "./RtpCheatSheet"
 
 type PresetsStore = StoreProxy<"Server.Stores.PresetsRoot", Musubi.Stores>
 type PresetProxy = StoreProxy<"Server.Stores.PresetStore", Musubi.Stores>
@@ -14,14 +16,6 @@ type Preset = Server.Schema.Preset
 type Rtp = Server.Schema.Rtp
 
 type Focus = "list" | "detail"
-
-// Cheat-sheet for add/edit RTP dialogs, matching the trace editor in SessionScreen.
-const RTP_EXAMPLES: [string, string][] = [
-  ["Enum.map/2 -> return", "call args + return value"],
-  ["MyMod.func -> return;stack", "+ call stack"],
-  ["Demo.tick when '$1' > 100 -> return", "guard on 1st arg"],
-  ["Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"]
-]
 
 type Modal =
   | { kind: "none" }
@@ -288,15 +282,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-          <box flexDirection="column" marginTop={1}>
-            <text fg={theme.textMuted}>Common RTP rules (Elixir)</text>
-            {RTP_EXAMPLES.map(([pat, desc]) => (
-              <box key={pat} flexDirection="row">
-                <text fg={theme.dim}>{pat.padEnd(38)}</text>
-                <text fg={theme.dim}>{desc}</text>
-              </box>
-            ))}
-          </box>
+          <RtpCheatSheet />
         </Overlay>
       )}
 
@@ -312,15 +298,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               setModal({ kind: "none" })
             }}
           />
-          <box flexDirection="column" marginTop={1}>
-            <text fg={theme.textMuted}>Common RTP rules (Elixir)</text>
-            {RTP_EXAMPLES.map(([pat, desc]) => (
-              <box key={pat} flexDirection="row">
-                <text fg={theme.dim}>{pat.padEnd(38)}</text>
-                <text fg={theme.dim}>{desc}</text>
-              </box>
-            ))}
-          </box>
+          <RtpCheatSheet />
         </Overlay>
       )}
 
@@ -340,17 +318,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
       )}
 
       {modal.kind === "confirmPreset" && (
-        <Overlay>
-          <text fg={theme.fg}>{`Delete preset "${modal.name}"?`}</text>
-          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
-        </Overlay>
+        <ConfirmOverlay question={`Delete preset "${modal.name}"?`} />
       )}
 
       {modal.kind === "confirmTrace" && (
-        <Overlay>
-          <text fg={theme.fg}>Delete this pattern?</text>
-          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
-        </Overlay>
+        <ConfirmOverlay question="Delete this pattern?" />
       )}
     </box>
   )

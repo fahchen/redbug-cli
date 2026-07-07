@@ -6,6 +6,7 @@ import { dispatcher } from "./musubi"
 import { theme } from "./theme"
 import { DialogSelect } from "./DialogSelect"
 import { HelpOverlay, Overlay, TextField } from "./ui"
+import { ConfirmOverlay } from "./ConfirmOverlay"
 
 type Node = Server.Schema.Node
 type NodeProxy = StoreProxy<"Server.Stores.NodeStore", Musubi.Stores>
@@ -244,12 +245,8 @@ export function ModalLayer({
       )
 
     case "confirm":
-      return box(
-        "Confirm",
-        <>
-          <text fg={theme.fg}>{modal.label}</text>
-          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
-        </>
+      return (
+        <ConfirmOverlay question={modal.label} />
       )
 
     default:

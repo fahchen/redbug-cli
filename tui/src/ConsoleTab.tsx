@@ -8,6 +8,7 @@ import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, useSpinner } from "./ui"
+import { ConfirmOverlay } from "./ConfirmOverlay"
 import { DialogSelect } from "./DialogSelect"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
@@ -292,17 +293,17 @@ function ConsoleView({
       )}
 
       {modal.kind === "confirmStop" && (
-        <Overlay>
-          <text fg={theme.text}>Force-stop (kill) this running execution?</text>
-          <text fg={theme.textMuted} marginTop={1}>side effects already run cannot be undone · y = yes · n/Esc = no</text>
-        </Overlay>
+        <ConfirmOverlay
+          question="Force-stop (kill) this running execution?"
+          hint="side effects already run cannot be undone · y = stop · n/Esc = no"
+        />
       )}
 
       {modal.kind === "confirmClear" && (
-        <Overlay>
-          <text fg={theme.text}>Clear the entire execution history?</text>
-          <text fg={theme.textMuted} marginTop={1}>history is server-held, not just this view · y = yes · n/Esc = no</text>
-        </Overlay>
+        <ConfirmOverlay
+          question="Clear the entire execution history?"
+          hint="history is server-held, not just this view · y = yes · n/Esc = no"
+        />
       )}
 
       {modal.kind === "saveSnippet" && (
@@ -319,10 +320,7 @@ function ConsoleView({
       )}
 
       {modal.kind === "confirmDelete" && (
-        <Overlay>
-          <text fg={theme.text}>Delete this execution?</text>
-          <text fg={theme.textMuted} marginTop={1}>y = yes · n/Esc = no</text>
-        </Overlay>
+        <ConfirmOverlay question="Delete this execution?" />
       )}
     </box>
   )

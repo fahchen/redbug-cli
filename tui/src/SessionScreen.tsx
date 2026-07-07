@@ -6,67 +6,32 @@ import type { TabSelectRenderable } from "@opentui/core"
 
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
-import { theme, kindColor, PANEL_BORDER } from "./theme"
-import { Chip, ErrorDetailOverlay, Flash, HelpOverlay, Overlay, RootGate, StatusBar, TextField, fit, useSpinner } from "./ui"
+import { theme, PANEL_BORDER } from "./theme"
+import { Flash, ErrorDetailOverlay, RootGate, StatusBar, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
-import { DialogSelect } from "./DialogSelect"
-import type { DialogItem } from "./DialogSelect"
-import { editInEditor } from "./editor"
-import { elixirStyle, tsClient } from "./treesitter"
+
+import {
+  COL, SORT_OPTS, GROUP_CYCLE, ALL_COLS,
+  parseSort, processEvents, sparkline, openInEditor
+} from "./sessionHelpers"
+import type { Sort, Filter, FilterScope, GroupKey, Focus, Cols, DRow } from "./sessionHelpers"
+import type { Rtp, TraceEvent } from "./types"
+
+import { ColumnHeader, EventRow } from "./SessionEvents"
+import { DetailPane } from "./SessionDetail"
+import {
+  FilterOverlay, SortOverlay, LimitsOverlay,
+  SessionHelpOverlay, ConfirmExitOverlay, ConfirmDeleteOverlay,
+  ZoomOverlay
+} from "./SessionOverlays"
+import { EditorOverlay } from "./SessionEditor"
+import type { RtpModal, ImportState } from "./SessionEditor"
+import { SessionStat } from "./SessionStatus"
+import { useSessionLiveness } from "./useSessionLiveness"
 
 type SessionStore = StoreProxy<"Server.Stores.SessionRoot", Musubi.Stores>
-type Rtp = Server.Schema.Rtp
-type TraceEvent = Server.Schema.TraceEvent
-
-type SortKey = "ts" | "kind" | "pid" | "mfa"
-type SortDir = "asc" | "desc"
-type Sort = { key: SortKey; dir: SortDir }
-type FilterScope = "all" | "mfa" | "pid" | "info"
-type Filter = { scope: FilterScope; query: string }
-type GroupKey = "none" | "pid" | "mfa" | "kind"
 
 type Overlay = "none" | "sort" | "filter" | "editor" | "limits" | "help" | "errorDetail" | "confirmExit" | "confirmDelete"
-type Focus = "list" | "detail"
-type Cols = { name: boolean; pid: boolean; mfa: boolean; info: boolean }
-
-const ALL_COLS: Cols = { name: true, pid: true, mfa: true, info: true }
-
-type DRow =
-  | { type: "header"; key: string; label: string; count: number }
-  | { type: "event"; key: string; ev: TraceEvent; sidx: number }
-
-const kindSym: Record<string, string> = {
-  call: "↓",
-  retn: "↑",
-  send: "→",
-  recv: "←",
-  restart: "·"
-}
-
-const SORT_OPTS: Sort[] = [
-  { key: "ts", dir: "desc" },
-  { key: "ts", dir: "asc" },
-  { key: "kind", dir: "asc" },
-  { key: "kind", dir: "desc" },
-  { key: "pid", dir: "asc" },
-  { key: "mfa", dir: "asc" }
-]
-
-const FILTER_SCOPES: FilterScope[] = ["all", "mfa", "pid", "info"]
-const GROUP_CYCLE: GroupKey[] = ["none", "pid", "mfa", "kind"]
-
-// Cheat-sheet shown in the trace editor: redbug RTP patterns in Elixir syntax.
-const RTP_EXAMPLES: [string, string][] = [
-  ["Enum.map/2 -> return", "call args + return value"],
-  ["MyMod.func -> return;stack", "+ call stack"],
-  ["Demo.tick when '$1' > 100 -> return", "guard on 1st arg"],
-  ["Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"]
-]
-
-const COL = { ts: 12, k: 3, name: 16, pid: 11, mfa: 22, info: 44 }
-const COLGAP = 2
-const SPARK_N = 12
-const SPARK_RAMP = "▁▂▃▄▅▆▇█"
 
 export function SessionScreen({
   nodeId,
@@ -114,9 +79,6 @@ function SessionView({
   onBack: () => void
 }) {
   const [tab, setTab] = useState<"events" | "console">("events")
-  // tab-select is display-only (not focused, so it never steals keys from the
-  // list or a console sub-picker). We drive switching via [ / ] in the keymaps
-  // and keep the tab-select's highlight in sync imperatively.
   const tabRef = useRef<TabSelectRenderable>(null)
   useEffect(() => {
     tabRef.current?.setSelectedIndex(tab === "events" ? 0 : 1)
@@ -131,14 +93,9 @@ function SessionView({
   const dirty = snap?.dirty === true
   const error = snap?.error ?? null
 
-  // Node connection status (auto-connected on entry by SessionRoot). Drives the
-  // breadcrumb glyph and the connect-error banner in the events pane.
   const nodeStatus = snap?.node_status ?? "idle"
   const nodeSpin = useSpinner(nodeStatus === "connecting", "braille")
 
-  // One consolidated lifecycle state the UI reads (folds node connection + trace
-  // run + limit-stop into a single axis). Space is the sole "go" action per state
-  // (retry/start/restart); x stops. See docs/screens/02-session-events.md.
   const endedLimit = (snap?.ended ?? null) as "time" | "msgs" | null
   const sessionState: "connecting" | "unreachable" | "idle" | "running" | "ended" | "failed" =
     nodeStatus === "error" ? "unreachable"
@@ -148,58 +105,9 @@ function SessionView({
     : error ? "failed"
     : "idle"
 
-  // Liveness: a running session that traces nothing looks identical to a healthy
-  // one. Track wall-clock age since the event buffer last grew and tick a clock
-  // while running so the status reads ● live vs ◇ idle Ns (the "is my pattern
-  // even matching?" signal). Age from a client timestamp, not ev.ts, so it is
-  // independent of the id/ts encoding.
-  const lastEventAt = useRef(Date.now())
-  const seenMaxId = useRef(0)
-  // ticks a rerender each second while running so the sparkline advances (the
-  // value itself is unused; only the state update matters).
-  const [nowTick, setNowTick] = useState(() => Date.now())
-  const runningSince = useRef<number | null>(null)
-  if (running && runningSince.current === null) runningSince.current = nowTick
-  if (!running && runningSince.current !== null) runningSince.current = null
-  const remainingSec =
-    running && runningSince.current !== null ?
-      Math.max(0, limits.time - Math.floor((nowTick - runningSince.current) / 1000))
-    : null
-  // Detect new events by max id, NOT array length: the buffer is capped (keep),
-  // so once it fills, length stops growing while events still stream in. Length
-  // would then falsely read as "idle".
-  const curMaxId = events.reduce((m, e) => Math.max(m, Number(e.id)), seenMaxId.current)
-  if (curMaxId > seenMaxId.current) {
-    lastEventAt.current = Date.now()
-    seenMaxId.current = curMaxId
-  }
+  // Liveness + sparkline tracking
+  const { remainingSec, buckets } = useSessionLiveness(running, events, limits.time)
 
-  // Rate sparkline: per-second arrivals over a rolling window. Counted by max
-  // event id (monotonic) rather than buffer length, so it stays accurate once
-  // the capped buffer starts evicting. Shares the one liveness timer.
-  const eventsRef = useRef(events)
-  eventsRef.current = events
-  const lastMaxId = useRef(0)
-  const buckets = useRef<number[]>(new Array(SPARK_N).fill(0))
-  useEffect(() => {
-    if (!running) {
-      buckets.current = new Array(SPARK_N).fill(0)
-      return
-    }
-    const id = setInterval(() => {
-      let delta = 0
-      let mx = lastMaxId.current
-      for (const e of eventsRef.current) {
-        const n = Number(e.id)
-        if (n > lastMaxId.current) delta++
-        if (n > mx) mx = n
-      }
-      lastMaxId.current = mx
-      buckets.current = [...buckets.current.slice(1), delta]
-      setNowTick(Date.now())
-    }, 1000)
-    return () => clearInterval(id)
-  }, [running])
   const [sort, setSort] = useState<Sort>(() => parseSort(settings?.default_sort))
   const [filter, setFilter] = useState<Filter | null>(null)
   const [filterScope, setFilterScope] = useState<FilterScope>("all")
@@ -219,30 +127,13 @@ function SessionView({
 
   // S3 editor overlay state
   const [rtpSel, setRtpSel] = useState(0)
-  const [rtpModal, setRtpModal] = useState<
-    | { kind: "none" }
-    | { kind: "add" }
-    | { kind: "edit"; id: string; text: string }
-    | { kind: "savePreset" }
-    | { kind: "savePresetOverwrite"; name: string }
-    | { kind: "confirmTraceDelete"; id: string }
-  >({ kind: "none" })
+  const [rtpModal, setRtpModal] = useState<RtpModal>({ kind: "none" })
   const [editingLimits, setEditingLimits] = useState(false)
-  const [importState, setImportState] = useState<{
-    phase: "pick" | "traces"
-    presetIdx: number
-    selected: Set<number>
-    traceSel: number
-  } | null>(null)
-  const [showPresets, setShowPresets] = useState(false)
+  const [importState, setImportState] = useState<ImportState | null>(null)
 
-  // Track the trace list as it was when last applied, so per-row * markers
-  // show which RTPs differ from the live (running) config. Initialised on
-  // mount to whatever the server sends; refreshed after every successful
-  // apply (dirty → clean transition).
+  // Applied traces baseline
   const [appliedTraces, setAppliedTraces] = useState<Rtp[]>(() => traces)
   const prevDirty = useRef(dirty)
-  // dirty true → false means applyRestart just succeeded: reset the baseline.
   if (prevDirty.current === true && dirty === false) {
     if (appliedTraces !== traces) setAppliedTraces(traces)
   }
@@ -253,7 +144,6 @@ function SessionView({
     [events, filter, sort, group]
   )
 
-  // widen the pid column to its longest value so pids are never truncated
   const pidWidth = useMemo(
     () => events.reduce((m, e) => Math.max(m, e.pid.length), COL.pid),
     [events]
@@ -263,8 +153,6 @@ function SessionView({
   const selectedEvent =
     rows.find((r): r is Extract<DRow, { type: "event" }> => r.type === "event" && r.sidx === selClamped)
       ?.ev ?? null
-
-  const rtpCur = traces[Math.min(rtpSel, traces.length - 1)]
 
   const dispatch = dispatcher(store)
 
@@ -282,40 +170,28 @@ function SessionView({
   useKeyboard((key) => {
     const n = key.name
 
-    // ConsoleTab registers its own keyboard handler; both stay mounted, so bail
-    // here to avoid double-handling keys while the console tab is active.
     if (tab === "console") return
 
     if (overlay === "filter") {
-      // Tab toggles focus between the query <input> and the scope <select>;
-      // the scope <select> owns j/k while focused.
       if (n === "escape") setOverlay("none")
       else if (n === "tab") setFilterFocus((f) => (f === "query" ? "scope" : "query"))
       return
     }
 
-    if (overlay === "sort") {
-      // DialogSelect owns all keys (j/k/return/escape)
-      return
-    }
+    if (overlay === "sort") return // DialogSelect owns all keys
 
     if (overlay === "limits") {
       if (n === "escape") setOverlay("none")
       return
     }
 
-    if (overlay === "help") {
-      setOverlay("none")
-      return
-    }
-
+    if (overlay === "help") { setOverlay("none"); return }
     if (overlay === "errorDetail") {
       if (n === "escape" || n === "e") setOverlay("none")
       return
     }
 
     if (overlay === "confirmExit") {
-      // y leaves the screen; unmounting the SessionRoot stops the trace server-side.
       if (n === "y") onBack()
       else if (n === "n" || n === "escape") setOverlay("none")
       return
@@ -344,27 +220,12 @@ function SessionView({
       if (key.ctrl && (n === "j" || n === "down")) return moveSel(1)
       if (key.ctrl && (n === "k" || n === "up")) return moveSel(-1)
       switch (n) {
-        case "escape":
-          setDetailOpen(false)
-          setFocus("list")
-          break
-        case "tab":
-          setFocus("list")
-          break
-        case "j":
-        case "down":
-          setDetailScroll((s) => s + 1)
-          break
-        case "k":
-        case "up":
-          setDetailScroll((s) => Math.max(0, s - 1))
-          break
-        case "z":
-          if (selectedEvent) setZoom(true)
-          break
-        case "v":
-          exportSelected()
-          break
+        case "escape": setDetailOpen(false); setFocus("list"); break
+        case "tab": setFocus("list"); break
+        case "j": case "down": setDetailScroll((s) => s + 1); break
+        case "k": case "up": setDetailScroll((s) => Math.max(0, s - 1)); break
+        case "z": if (selectedEvent) setZoom(true); break
+        case "v": exportSelected(); break
       }
       return
     }
@@ -379,7 +240,6 @@ function SessionView({
       return
     }
 
-    // tab switch (Events ⇄ Console) via [ / ]; the <tab-select> header mirrors it.
     if (n === "]") return setTab("console")
     if (n === "[") return setTab("events")
 
@@ -389,24 +249,12 @@ function SessionView({
         else if (sessionState === "running") setOverlay("confirmExit")
         else onBack()
         break
-      case "j":
-      case "down":
-        moveSel(1)
-        break
-      case "k":
-      case "up":
-        moveSel(-1)
-        break
+      case "j": case "down": moveSel(1); break
+      case "k": case "up": moveSel(-1); break
       case "return":
-        if (selectedEvent) {
-          setDetailOpen(true)
-          setFocus("detail")
-          setDetailScroll(0)
-        }
+        if (selectedEvent) { setDetailOpen(true); setFocus("detail"); setDetailScroll(0) }
         break
-      case "tab":
-        if (detailOpen) setFocus("detail")
-        break
+      case "tab": if (detailOpen) setFocus("detail"); break
       case "o":
         setSortIdx(Math.max(0, SORT_OPTS.findIndex((s) => s.key === sort.key && s.dir === sort.dir)))
         setOverlay("sort")
@@ -417,74 +265,40 @@ function SessionView({
         setFilterFocus("query")
         setOverlay("filter")
         break
-      case "g":
-        setGroup((g) => GROUP_CYCLE[(GROUP_CYCLE.indexOf(g) + 1) % GROUP_CYCLE.length])
-        break
-      case "l":
-        setLimitsDraft(formatLimits(limits))
-        setOverlay("limits")
-        break
-      case "z":
-        if (selectedEvent) {
-          setDetailOpen(true)
-          setZoom(true)
-        }
-        break
-      case "t":
-        setRtpSel(0)
-        setOverlay("editor")
-        break
-      case "v":
-        exportSelected()
-        break
+      case "g": setGroup((g) => GROUP_CYCLE[(GROUP_CYCLE.indexOf(g) + 1) % GROUP_CYCLE.length]); break
+      case "l": setLimitsDraft(formatLimits(limits)); setOverlay("limits"); break
+      case "z": if (selectedEvent) { setDetailOpen(true); setZoom(true) }; break
+      case "t": setRtpSel(0); setOverlay("editor"); break
+      case "v": exportSelected(); break
       case "space":
-        // single context "go" action — never destructive (retry / start / restart)
         if (sessionState === "unreachable") dispatch("reconnect")
         else if (sessionState === "idle" || sessionState === "ended" || sessionState === "failed") dispatch("startTrace")
         break
-      case "x":
-        // abort a running trace: destructive, so its own key (not Space)
-        if (sessionState === "running") dispatch("stopTrace")
-        break
-      case "e":
-        if (error?.detail) setOverlay("errorDetail")
-        break
-      case "d":
-        if (selectedEvent) setOverlay("confirmDelete")
-        break
-      case "?":
-        setOverlay("help")
-        break
+      case "x": if (sessionState === "running") dispatch("stopTrace"); break
+      case "e": if (error?.detail) setOverlay("errorDetail"); break
+      case "d": if (selectedEvent) setOverlay("confirmDelete"); break
+      case "?": setOverlay("help"); break
     }
   })
 
   function handleEditorKeys(key: { name: string; ctrl: boolean }) {
     const n = key.name
+
     if (rtpModal.kind === "confirmTraceDelete") {
-      if (n === "y") {
-        dispatch("deleteTrace", { trace_id: (rtpModal as any).id })
-        setRtpModal({ kind: "none" })
-      } else if (n === "n" || n === "escape") {
-        setRtpModal({ kind: "none" })
-      }
+      if (n === "y") { dispatch("deleteTrace", { trace_id: (rtpModal as any).id }); setRtpModal({ kind: "none" }) }
+      else if (n === "n" || n === "escape") setRtpModal({ kind: "none" })
       return
     }
     if (rtpModal.kind === "savePresetOverwrite") {
-      if (n === "y") {
-        dispatch("saveAsPreset", { name: (rtpModal as any).name })
-        setRtpModal({ kind: "none" })
-      } else if (n === "n" || n === "escape") {
-        setRtpModal({ kind: "none" })
-      }
+      if (n === "y") { dispatch("saveAsPreset", { name: (rtpModal as any).name }); setRtpModal({ kind: "none" }) }
+      else if (n === "n" || n === "escape") setRtpModal({ kind: "none" })
       return
     }
+
     if (importState) {
       if (importState.phase === "traces") {
         const p = presets[importState.presetIdx]
-        if (n === "escape" || n === "tab") {
-          setImportState({ ...importState, phase: "pick" })
-          return
-        }
+        if (n === "escape" || n === "tab") { setImportState({ ...importState, phase: "pick" }); return }
         if (n === "enter" || n === "return") {
           if (importState.selected.size === 0) return
           const existing = new Set(traces.map((t) => t.text))
@@ -517,7 +331,6 @@ function SessionView({
           return
         }
       } else {
-        // pick phase
         if (n === "escape") { setImportState(null); return }
         if (n === "enter" || n === "return") {
           const p = presets[importState.presetIdx]
@@ -535,76 +348,45 @@ function SessionView({
       }
       return
     }
+
     if (rtpModal.kind !== "none") {
       if (n === "escape") setRtpModal({ kind: "none" })
       return
     }
-    if (key.ctrl && n === "w") {
-      setRtpModal({ kind: "savePreset" })
-      return
-    }
+    if (key.ctrl && n === "w") { setRtpModal({ kind: "savePreset" }); return }
     if (editingLimits) {
       if (n === "escape") setEditingLimits(false)
       return
     }
-    if (editingLimits) {
-      if (n === "escape") setEditingLimits(false)
-      return
-    }
-    if (key.ctrl && n === "d" && rtpCur) {
-      dispatch("deleteTrace", { trace_id: rtpCur.id })
+    if (key.ctrl && n === "d" && traces[rtpSel]) {
+      dispatch("deleteTrace", { trace_id: traces[rtpSel].id })
       return
     }
     switch (n) {
-      case "escape":
-        setOverlay("none")
-        setImportState(null)
-        break
-      case "j":
-      case "down":
+      case "escape": setOverlay("none"); setImportState(null); break
+      case "j": case "down":
         setRtpSel((i) => (traces.length === 0 ? 0 : (i + 1 >= traces.length ? 0 : i + 1)))
         break
-      case "k":
-      case "up":
+      case "k": case "up":
         setRtpSel((i) => (i <= 0 ? Math.max(0, traces.length - 1) : i - 1))
         break
-      case "space":
-        if (rtpCur) dispatch("toggleTrace", { trace_id: rtpCur.id })
-        break
-      case "n":
-        setRtpModal({ kind: "add" })
-        break
-      case "e":
-        if (rtpCur) setRtpModal({ kind: "edit", id: rtpCur.id, text: rtpCur.text })
-        break
-      case "d":
-        if (rtpCur) setRtpModal({ kind: "confirmTraceDelete", id: rtpCur.id })
-        break
-      case "l":
-        setEditingLimits((v) => !v)
-        if (!editingLimits) setLimitsDraft(formatLimits(limits))
-        break
+      case "space": if (traces[rtpSel]) dispatch("toggleTrace", { trace_id: traces[rtpSel].id }); break
+      case "n": setRtpModal({ kind: "add" }); break
+      case "e": if (traces[rtpSel]) setRtpModal({ kind: "edit", id: traces[rtpSel].id, text: traces[rtpSel].text }); break
+      case "d": if (traces[rtpSel]) setRtpModal({ kind: "confirmTraceDelete", id: traces[rtpSel].id }); break
+      case "l": setEditingLimits((v) => !v); if (!editingLimits) setLimitsDraft(formatLimits(limits)); break
       case "i":
-        if (presets.length > 0) {
-          setImportState({ phase: "pick", presetIdx: 0, selected: new Set(), traceSel: 0 })
-        }
+        if (presets.length > 0) setImportState({ phase: "pick", presetIdx: 0, selected: new Set(), traceSel: 0 })
         break
     }
   }
 
-  // sort/filter/group moved off the header onto the Events panel's top border
-  // (right-aligned via a padded composite title, since a box has one title/edge).
-  // Node connection status/error rides the Events frame's top border, not a body
-  // row. Connected is silent (only exceptions surface); connecting/error take
-  // over the title (and error tints the whole frame red), dropping the
-  // sort/group meta since a down node has no events to sort anyway.
   const eventsBorderColor =
     nodeStatus === "error" ? theme.error
     : nodeStatus === "connecting" ? theme.warning
     : focus === "list" ? theme.borderActive
     : theme.borderSubtle
 
-  // Footer hints: the Space-action label follows the current state (self-documenting).
   const spaceAction =
     sessionState === "unreachable" ? "space retry"
     : sessionState === "idle" ? "space start"
@@ -617,7 +399,6 @@ function SessionView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      {/* ... session content ... */}
       <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
         <text fg={theme.text}>{snap?.name ?? "session"}</text>
         <box flexGrow={1} backgroundColor={theme.background} />
@@ -675,8 +456,6 @@ function SessionView({
             <scrollbox scrollY stickyStart="top" flexGrow={1}>
               {(() => {
                 const shown = rows.slice(0, 300)
-                // ditto: dim a row's name/pid when identical to the row above so the
-                // eye tracks changes, not repeats. Off while grouped or filtering.
                 const ditto = group === "none" && !filter?.query
                 return shown.map((row, i) => {
                   if (row.type === "header")
@@ -710,7 +489,7 @@ function SessionView({
       {error && <Flash error={error} />}
 
       <StatusBar
-        statChip={<SessionStat state={sessionState} nodeSpin={nodeSpin} endedLimit={endedLimit} dirty={dirty} spark={running && buckets.current.some((v) => v > 0) ? sparkline(buckets.current) : ""} count={events.length} limits={limits} remainingSec={remainingSec} />}
+        statChip={<SessionStat state={sessionState} nodeSpin={nodeSpin} endedLimit={endedLimit} dirty={dirty} spark={running && buckets.some((v) => v > 0) ? sparkline(buckets) : ""} count={events.length} limits={limits} remainingSec={remainingSec} />}
         hints={eventsHints}
       />
 
@@ -718,106 +497,26 @@ function SessionView({
         <ErrorDetailOverlay body={error.detail ?? error.message} />
       )}
 
-      {overlay === "confirmExit" && (
-        <Overlay>
-          <text fg={theme.text}>Stop trace and leave?</text>
-          {dirty && <text fg={theme.warning} marginTop={1}>{"⚠ unapplied changes will be lost · Ctrl+S to apply first"}</text>}
-          <text fg={theme.textMuted} marginTop={1}>y = stop &amp; leave · n/Esc = stay</text>
-        </Overlay>
-      )}
+      {overlay === "confirmExit" && <ConfirmExitOverlay dirty={dirty} />}
+      {overlay === "confirmDelete" && <ConfirmDeleteOverlay />}
+      {overlay === "help" && <SessionHelpOverlay />}
 
-      {overlay === "confirmDelete" && (
-        <Overlay>
-          <text fg={theme.text}>Delete this event?</text>
-          <text fg={theme.textMuted} marginTop={1}>y = yes · n/Esc = no</text>
-        </Overlay>
-      )}
-
-      {overlay === "help" && (
-        <HelpOverlay
-          title="session · events"
-          sections={[
-            {
-              lines: [
-                ["j / k", "move"],
-                ["enter", "open detail"],
-                ["v", "view event in $EDITOR"],
-                ["z", "zoom detail"],
-                ["o", "sort"],
-                ["/", "filter"],
-                ["g", "cycle grouping"],
-                ["l", "limits"],
-                ["e / d", "error detail / delete event"],
-                ["⌃D", "delete event (no confirm)"]
-              ]
-            },
-            {
-              title: "trace (space = context go, never destructive)",
-              lines: [
-                ["space", "retry / start / restart (per state)"],
-                ["x", "stop trace"],
-                ["⌃S", "apply RTP edits (restart)"],
-                ["t", "edit traces (RTPs)"],
-                ["⌃L", "clear events"]
-              ]
-            },
-            {
-              title: "tabs",
-              lines: [
-                ["[ / ]", "switch Events ⇄ Console"],
-                ["esc", "back"]
-              ]
-            }
-          ]}
+      {overlay === "filter" && (
+        <FilterOverlay
+          filterScope={filterScope}
+          filterDraft={filterDraft}
+          filterFocus={filterFocus}
+          onFilterScope={setFilterScope}
+          onFilterDraft={setFilterDraft}
+          onFilterFocus={setFilterFocus}
+          onApply={(f) => { setFilter(f); setOverlay("none") }}
+          onClose={() => setOverlay("none")}
         />
       )}
 
-      {overlay === "filter" && (
-        <Overlay>
-          <text fg={theme.title}>Filter events</text>
-          <text fg={theme.textMuted} marginTop={1}>Scope</text>
-          <select
-            focused={filterFocus === "scope"}
-            height={FILTER_SCOPES.length}
-            itemSpacing={0}
-            options={FILTER_SCOPES.map((s) => ({ name: s, description: "" }))}
-            selectedIndex={Math.max(0, FILTER_SCOPES.indexOf(filterScope))}
-            showDescription={false}
-            backgroundColor={theme.overlay}
-            textColor={theme.textMuted}
-            focusedBackgroundColor={theme.overlay}
-            focusedTextColor={theme.text}
-            selectedBackgroundColor={theme.backgroundElement}
-            selectedTextColor={theme.selectedForeground}
-            onChange={(i: number) => setFilterScope(FILTER_SCOPES[i])}
-          />
-          <text fg={theme.textMuted} marginTop={1}>Query</text>
-          <input
-            focused={filterFocus === "query"}
-            value={filterDraft}
-            onInput={(v: string) => setFilterDraft(v)}
-            onSubmit={() => {
-              setFilter(filterDraft.trim() === "" ? null : { scope: filterScope, query: filterDraft })
-              setOverlay("none")
-            }}
-            backgroundColor={theme.bg}
-            textColor={theme.fg}
-            focusedBackgroundColor={theme.selBg}
-            focusedTextColor={theme.selFg}
-          />
-          <text fg={theme.dim} marginTop={1}>Tab switch scope/query · Enter apply · Esc cancel</text>
-        </Overlay>
-      )}
-
       {overlay === "sort" && (
-        <DialogSelect
-          title="Sort by"
-          items={SORT_OPTS.map((s) => ({
-            id: `${s.key}_${s.dir}`,
-            name: `${s.key} ${s.dir === "asc" ? "↑ asc" : "↓ desc"}`,
-            query: `${s.key} ${s.dir}`
-          }))}
-          selectedIndex={sortIdx}
+        <SortOverlay
+          sortIdx={sortIdx}
           onSelect={(item) => {
             const s = SORT_OPTS.find((x) => `${x.key}_${x.dir}` === item.id)
             if (s) setSort(s)
@@ -828,568 +527,43 @@ function SessionView({
       )}
 
       {overlay === "limits" && (
-        <Overlay>
-          <text fg={theme.title}>Session limits</text>
-          <box flexDirection="column" marginTop={1}>
-            <text fg={theme.fg}>keep time msgs (space-separated)</text>
-            <text fg={theme.dim}>keep = TUI buffer cap · time = stop after Ns · msgs = stop after N events</text>
-            <input
-              focused
-              value={limitsDraft}
-              onInput={(v: string) => setLimitsDraft(v)}
-              onSubmit={() => {
-                const p = parseLimits(limitsDraft)
-                if (p) dispatch("updateLimits", p)
-                setOverlay("none")
-              }}
-              backgroundColor={theme.bg}
-              textColor={theme.fg}
-              focusedBackgroundColor={theme.selBg}
-              focusedTextColor={theme.selFg}
-            />
-          </box>
-          <text fg={theme.dim} marginTop={1}>Enter apply (Ctrl+S to restart if running) · Esc cancel</text>
-        </Overlay>
+        <LimitsOverlay
+          limitsDraft={limitsDraft}
+          onLimitsDraft={setLimitsDraft}
+          onApply={() => {
+            const p = parseLimits(limitsDraft)
+            if (p) dispatch("updateLimits", p)
+            setOverlay("none")
+          }}
+          onClose={() => setOverlay("none")}
+        />
       )}
 
-      {overlay === "editor" && importState === null && rtpModal.kind === "none" && (
-        // Level 1 — trace list: select / toggle / delete. New & edit open a
-        // second page (below) so this stays clean; examples live on that page.
-        <Overlay>
-          <text fg={theme.title}>{"Traces"}</text>
-          <box flexDirection="column" marginTop={1}>
-            {traces.length === 0 ? (
-              <text fg={theme.dim}>No patterns yet · n to add</text>
-            ) : (
-              // manual list (not <select>): highlight = selection, no ► marker.
-              // * prefix = RTP differs from what was last applied to the live trace.
-              traces.map((t, i) => {
-                const on = i === rtpSel
-                const bg = on ? theme.backgroundElement : theme.overlay
-                const changed = running && dirty && isRtpChanged(t, appliedTraces)
-                return (
-                  <box key={t.id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
-                    {changed && <text bg={bg} fg={theme.warning}>{"* "}</text>}
-                    <text bg={bg} fg={t.enabled ? theme.success : theme.textMuted}>{t.enabled ? "[x] " : "[ ] "}</text>
-                    <text bg={bg} fg={on ? theme.text : theme.textMuted}>{t.text}</text>
-                  </box>
-                )
-              })
-            )}
-          </box>
-          <box flexDirection="column" marginTop={1}>
-            {editingLimits ? (
-              <>
-                <text fg={theme.textMuted}>keep time msgs (space-separated) · Enter save · Esc cancel</text>
-                <input
-                  focused
-                  value={limitsDraft}
-                  onInput={(v: string) => setLimitsDraft(v)}
-                  onSubmit={() => {
-                    const p = parseLimits(limitsDraft)
-                    if (p) dispatch("updateLimits", p)
-                    setEditingLimits(false)
-                  }}
-                  backgroundColor={theme.bg}
-                  textColor={theme.fg}
-                  focusedBackgroundColor={theme.selBg}
-                  focusedTextColor={theme.selFg}
-                />
-              </>
-            ) : (
-              <text fg={theme.textMuted}>{`Limits: keep ${limits.keep} · time ${limits.time}s · msgs ${limits.msgs}`}</text>
-            )}
-          </box>
-          <text fg={theme.dim} marginTop={1}>n new · e edit · d del · i import · l limits · space toggle · ⌃W save · esc close</text>
-        </Overlay>
+      {overlay === "editor" && (
+        <EditorOverlay
+          traces={traces}
+          rtpSel={rtpSel}
+          rtpModal={rtpModal}
+          editingLimits={editingLimits}
+          limitsDraft={limitsDraft}
+          importState={importState}
+          presets={presets}
+          appliedTraces={appliedTraces}
+          running={running}
+          dirty={dirty}
+          limits={limits}
+          onRtpSel={setRtpSel}
+          onRtpModal={setRtpModal}
+          onEditingLimits={setEditingLimits}
+          onLimitsDraft={setLimitsDraft}
+          onImportState={setImportState}
+          dispatch={(action, payload) => dispatch(action as any, payload)}
+        />
       )}
 
-      {overlay === "editor" && (rtpModal.kind === "add" || rtpModal.kind === "edit") && (
-        // Level 2 — new / edit form. Input on top, RTP cheat-sheet as reference.
-        <Overlay>
-          <TextField
-            key={rtpModal.kind === "edit" ? "rtp-edit" : "rtp-add"}
-            label={rtpModal.kind === "edit" ? "Edit RTP:" : "New RTP:"}
-            hint="redbug spec, e.g. lists:seq/2 -> return"
-            initial={rtpModal.kind === "edit" ? rtpModal.text : undefined}
-            onSubmit={(v) => {
-              if (rtpModal.kind === "edit") dispatch("updateTrace", { trace_id: rtpModal.id, text: v })
-              else if (v.trim() !== "") dispatch("addTrace", { text: v })
-              setRtpModal({ kind: "none" })
-            }}
-          />
-          <box flexDirection="column" marginTop={1}>
-            <text fg={theme.textMuted}>Common RTP rules (Elixir)</text>
-            {RTP_EXAMPLES.map(([pat, desc]) => (
-              <box key={pat} flexDirection="row">
-                <text fg={theme.dim}>{pat.padEnd(38)}</text>
-                <text fg={theme.dim}>{desc}</text>
-              </box>
-            ))}
-          </box>
-        </Overlay>
-      )}
-
-      {overlay === "editor" && rtpModal.kind === "savePreset" && (
-        <Overlay>
-          <TextField
-            key="rtp-savePreset"
-            label="Save as preset — name:"
-            hint="reusable template (traces + limits)"
-            onSubmit={(v) => {
-              const name = v.trim()
-              if (name === "") { setRtpModal({ kind: "none" }); return }
-              if (presets.some((p) => p.name === name)) {
-                setRtpModal({ kind: "savePresetOverwrite", name })
-              } else {
-                dispatch("saveAsPreset", { name })
-                setRtpModal({ kind: "none" })
-              }
-            }}
-          />
-        </Overlay>
-      )}
-
-      {overlay === "editor" && rtpModal.kind === "savePresetOverwrite" && (
-        <Overlay>
-          <text fg={theme.text}>{`Overwrite preset "${rtpModal.name}"?`}</text>
-          <text fg={theme.textMuted} marginTop={1}>y = overwrite · n/Esc = cancel</text>
-        </Overlay>
-      )}
-
-      {overlay === "editor" && rtpModal.kind === "confirmTraceDelete" && (
-        <Overlay>
-          <text fg={theme.text}>Delete this trace?</text>
-          <text fg={theme.textMuted} marginTop={1}>y = yes · n/Esc = no</text>
-        </Overlay>
-      )}
-
-      {overlay === "editor" && importState !== null && (() => {
-        if (importState.phase === "pick") {
-          return (
-            <Overlay title="Import from preset">
-              {presets.map((pr, i) => {
-                const active = i === importState.presetIdx
-                const bg = active ? theme.backgroundElement : theme.overlay
-                return (
-                  <box key={pr.id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
-                    <text bg={bg} fg={active ? theme.text : theme.textMuted}>{pr.name}</text>
-                    <box flexGrow={1} backgroundColor={bg} />
-                    <text bg={bg} fg={theme.dim}>{pr.traces.length}</text>
-                  </box>
-                )
-              })}
-              <text fg={theme.dim} marginTop={1}>j/k move · Enter select · Esc cancel</text>
-            </Overlay>
-          )
-        }
-        const p = presets[importState.presetIdx]
-        const sc = importState.selected.size
-        const tc = p.traces.length
-        return (
-          <Overlay title={`Import from ${p.name} (${sc}/${tc})`}>
-            <box flexDirection="column">
-              {p.traces.map((t, j) => {
-                const active = j === importState.traceSel
-                const bg = active ? theme.backgroundElement : theme.overlay
-                return (
-                  <box key={t.id} backgroundColor={bg} flexDirection="row" paddingLeft={1}>
-                    <text bg={bg} fg={importState.selected.has(j) ? theme.success : theme.textMuted}>
-                      {importState.selected.has(j) ? "[x] " : "[ ] "}
-                    </text>
-                    <text bg={bg} fg={active ? theme.text : theme.textMuted}>{t.text}</text>
-                  </box>
-                )
-              })}
-            </box>
-            <text fg={theme.dim} marginTop={1}>j/k move · space toggle · a select all · Enter import · Esc back</text>
-          </Overlay>
-        )
-      })()}
-
-      {zoom && selectedEvent && (
-        <Overlay title="Detail · esc close · v view" minWidth={70}>
-          <DetailMeta ev={selectedEvent} />
-          <EventDetailBody ev={selectedEvent} />
-        </Overlay>
-      )}
+      {zoom && selectedEvent && <ZoomOverlay ev={selectedEvent} />}
       </>
       )}
     </box>
   )
-}
-
-function ColumnHeader({ cols, pidWidth }: { cols: Cols; pidWidth: number }) {
-  return (
-    <box flexDirection="row">
-      <text fg={theme.dim} marginRight={COLGAP}>{fit("Ts", COL.ts)}</text>
-      <text fg={theme.dim} marginRight={COLGAP}>{fit(" k ", COL.k)}</text>
-      {cols.name && <text fg={theme.dim} marginRight={COLGAP}>{fit("Name", COL.name)}</text>}
-      {cols.pid && <text fg={theme.dim} marginRight={COLGAP}>{fit("Pid", pidWidth)}</text>}
-      {cols.mfa && <text fg={theme.dim} marginRight={COLGAP}>{fit("Mfa", COL.mfa)}</text>}
-      {cols.info && <text fg={theme.dim}>{fit("Info", COL.info)}</text>}
-    </box>
-  )
-}
-
-function EventRow({
-  ev,
-  active,
-  filter,
-  cols,
-  pidWidth,
-  dittoName,
-  dittoPid
-}: {
-  ev: TraceEvent
-  active: boolean
-  filter: Filter | null
-  cols: Cols
-  pidWidth: number
-  dittoName?: boolean
-  dittoPid?: boolean
-}) {
-  if (ev.kind === "restart")
-    return <text fg={theme.dim}>{`── ${ev.info} ──`}</text>
-
-  const bg = active ? theme.backgroundElement : theme.background
-  const fg = active ? theme.selectedForeground : theme.text
-  const kc = kindColor[ev.kind] ?? theme.text
-  const sym = kindSym[ev.kind] ?? "?"
-  const hl = (scope: FilterScope) =>
-    filter && (filter.scope === scope || filter.scope === "all") ? filter.query : ""
-  // the active row always shows real values; ditto only recedes unselected repeats
-  const nameFg = dittoName && !active ? theme.dim : fg
-  const pidFg = dittoPid && !active ? theme.dim : fg
-
-  return (
-    <box backgroundColor={bg} flexDirection="row">
-      <text bg={bg} fg={theme.dim} marginRight={COLGAP}>{fit(ev.ts, COL.ts)}</text>
-      <text bg={bg} fg={kc} marginRight={COLGAP}>{fit(` ${sym} `, COL.k)}</text>
-      {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={nameFg} q={hl("all")} mr />}
-      {cols.pid && <Cell text={fit(ev.pid, pidWidth)} bg={bg} fg={pidFg} q={hl("pid")} mr />}
-      {cols.mfa && <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} mr />}
-      {cols.info && <Cell text={fit(ev.info, COL.info)} bg={bg} fg={fg} q={hl("info")} />}
-    </box>
-  )
-}
-
-function Cell({
-  text,
-  bg,
-  fg,
-  q,
-  mr
-}: {
-  text: string
-  bg: string
-  fg: string
-  q: string
-  mr?: boolean
-}) {
-  const marginRight = mr ? COLGAP : 0
-  if (!q) return <text bg={bg} fg={fg} marginRight={marginRight}>{text}</text>
-  return (
-    <box backgroundColor={bg} flexDirection="row" marginRight={marginRight}>
-      {segs(text, q).map((s, i) => (
-        <text key={i} bg={s.hit ? theme.warn : bg} fg={s.hit ? theme.bg : fg}>{s.t}</text>
-      ))}
-    </box>
-  )
-}
-
-// Bottom-left status: one glyph per lifecycle state so ● live / ◇ idle / ⧗ ended
-// are distinct at a glance. Running shows sparkline + count; ended names the cap.
-function SessionStat({
-  state,
-  nodeSpin,
-  endedLimit,
-  dirty,
-  spark,
-  count,
-  limits,
-  remainingSec
-}: {
-  state: "connecting" | "unreachable" | "idle" | "running" | "ended" | "failed"
-  nodeSpin: string
-  endedLimit: "time" | "msgs" | null
-  dirty: boolean
-  spark: string
-  count: number
-  limits: { keep: number; time: number; msgs: number }
-  remainingSec: number | null
-}) {
-  switch (state) {
-    case "connecting":
-      return <text fg={theme.warning}>{`${nodeSpin} connecting…`}</text>
-    case "unreachable":
-      return <text fg={theme.error}>{"✖ can't reach node"}</text>
-    case "idle":
-      return <text fg={theme.textMuted}>{"◇ idle"}</text>
-    case "ended":
-      return (
-        <text fg={theme.warning}>
-          {`⧗ ${endedLimit === "msgs" ? `msgs limit (${limits.msgs})` : `time limit (${limits.time}s)`}`}
-        </text>
-      )
-    case "failed":
-      return <text fg={theme.error}>{"✖ restart failed · space retry"}</text>
-    case "running":
-      return (
-        <box flexDirection="row">
-          <text fg={theme.success}>{`● ${spark ? `${spark} ` : ""}${count}/${limits.keep}${remainingSec === null ? "" : ` · ${remainingSec}s`}`}</text>
-          {dirty && <text fg={theme.warning}>{"  ⚠ unapplied"}</text>}
-        </box>
-      )
-  }
-}
-
-function DetailMeta({ ev }: { ev: TraceEvent }) {
-  const sym = kindSym[ev.kind] ?? "?"
-  return (
-    <box flexDirection="row" flexWrap="wrap">
-      <Chip label="Kind" value={`${sym} ${ev.kind}`} />
-      <Chip label="Ts" value={ev.ts} />
-      <Chip label="Pid" value={ev.pid} />
-      <Chip label="Name" value={ev.name || "-"} />
-      <Chip label="Mfa" value={ev.mfa || "-"} />
-    </box>
-  )
-}
-
-function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
-  return (
-    <box
-      border
-      borderStyle={PANEL_BORDER}
-      borderColor={focused ? theme.borderActive : theme.borderSubtle}
-      backgroundColor={theme.background}
-      title=" Detail "
-      titleColor={theme.textMuted}
-      width={46}
-      flexDirection="column"
-      padding={1}
-    >
-      <DetailMeta ev={ev} />
-      <EventDetailBody ev={ev} />
-    </box>
-  )
-}
-
-function EventDetailBody({ ev }: { ev: TraceEvent }) {
-  const { payload, stack } = splitEventInfo(ev)
-  const payloadLabel = ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
-
-  return (
-    <>
-      <text fg={theme.textMuted} marginTop={1}>{payloadLabel}</text>
-      <code
-        content={payload}
-        filetype="elixir"
-        syntaxStyle={elixirStyle}
-        treeSitterClient={tsClient}
-      />
-      {stack.length > 0 && (
-        <>
-          <text fg={theme.textMuted} marginTop={1}>stack</text>
-          <box flexDirection="column">
-            {stack.map((line, i) => (
-              <box key={`${i}-${line}`} flexDirection="row">
-                <text fg={theme.dim}>{`${i + 1}. `.padStart(4)}</text>
-                <text fg={theme.textMuted}>{line}</text>
-              </box>
-            ))}
-          </box>
-        </>
-      )}
-    </>
-  )
-}
-
-// --- pure helpers ---
-
-function splitEventInfo(ev: TraceEvent): { payload: string; stack: string[] } {
-  if (ev.kind !== "call") return { payload: ev.info, stack: [] }
-
-  const lines = ev.info.split("\n")
-  const stack = lines.filter(isStackLine)
-  if (stack.length === 0) return { payload: ev.info, stack: [] }
-
-  const payload = lines.filter((line) => !isStackLine(line)).join("\n").trimEnd()
-  return { payload, stack }
-}
-
-function isStackLine(line: string): boolean {
-  return line.includes("cp = ") || line.includes("Return addr")
-}
-
-function processEvents(
-  events: readonly TraceEvent[],
-  filter: Filter | null,
-  sort: Sort,
-  group: GroupKey
-): { rows: DRow[]; count: number } {
-  const filtering = !!(filter && filter.query)
-  let evs = events.slice()
-
-  // restart markers only carry meaning chronologically (ungrouped, unfiltered)
-  const keepRestart = group === "none" && !filtering
-  if (!keepRestart) evs = evs.filter((e) => e.kind !== "restart")
-  if (filtering) evs = evs.filter((e) => matchFilter(e, filter!))
-
-  evs = sortEvents(evs, sort)
-
-  const rows: DRow[] = []
-  let sidx = 0
-
-  if (group === "none") {
-    for (const ev of evs) rows.push({ type: "event", key: ev.id, ev, sidx: sidx++ })
-    return { rows, count: sidx }
-  }
-
-  const groups = new Map<string, TraceEvent[]>()
-  for (const ev of evs) {
-    const k = groupKeyOf(ev, group)
-    const bucket = groups.get(k)
-    if (bucket) bucket.push(ev)
-    else groups.set(k, [ev])
-  }
-  for (const [k, list] of groups) {
-    rows.push({ type: "header", key: `h:${k}`, label: k || "-", count: list.length })
-    for (const ev of list) rows.push({ type: "event", key: ev.id, ev, sidx: sidx++ })
-  }
-  return { rows, count: sidx }
-}
-
-function parseSort(s: string | undefined): Sort {
-  const def: Sort = { key: "ts", dir: "desc" }
-  if (!s) return def
-  const [key, dir] = s.split("_")
-  const k = (["ts", "kind", "pid", "mfa"] as SortKey[]).includes(key as SortKey)
-    ? (key as SortKey)
-    : "ts"
-  const d: SortDir = dir === "asc" ? "asc" : "desc"
-  return { key: k, dir: d }
-}
-
-function groupKeyOf(ev: TraceEvent, group: GroupKey): string {
-  if (group === "pid") return ev.pid
-  if (group === "mfa") return ev.mfa || "-"
-  if (group === "kind") return ev.kind
-  return ""
-}
-
-function matchFilter(ev: TraceEvent, f: Filter): boolean {
-  const q = f.query.toLowerCase()
-  const fields =
-    f.scope === "pid"
-      ? [ev.pid]
-      : f.scope === "mfa"
-        ? [ev.mfa]
-        : f.scope === "info"
-          ? [ev.info]
-          : [ev.pid, ev.mfa, ev.info, ev.name]
-  return fields.some((s) => s.toLowerCase().includes(q))
-}
-
-function sortEvents(evs: TraceEvent[], sort: Sort): TraceEvent[] {
-  const dir = sort.dir === "asc" ? 1 : -1
-  return evs.slice().sort((a, b) => {
-    let r = 0
-    switch (sort.key) {
-      case "ts":
-        r = Number(a.id) - Number(b.id)
-        break
-      case "kind":
-        r = a.kind.localeCompare(b.kind)
-        break
-      case "pid":
-        r = a.pid.localeCompare(b.pid)
-        break
-      case "mfa":
-        r = a.mfa.localeCompare(b.mfa)
-        break
-    }
-    if (r === 0) r = Number(a.id) - Number(b.id)
-    return r * dir
-  })
-}
-
-function segs(text: string, query: string): { t: string; hit: boolean }[] {
-  const lower = text.toLowerCase()
-  const q = query.toLowerCase()
-  const out: { t: string; hit: boolean }[] = []
-  let i = 0
-  while (true) {
-    const idx = lower.indexOf(q, i)
-    if (idx < 0) {
-      if (i < text.length) out.push({ t: text.slice(i), hit: false })
-      break
-    }
-    if (idx > i) out.push({ t: text.slice(i, idx), hit: false })
-    out.push({ t: text.slice(idx, idx + q.length), hit: true })
-    i = idx + q.length
-  }
-  return out.length === 0 ? [{ t: text, hit: false }] : out
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(n, hi))
-}
-
-// Rolling per-second arrival counts → a block sparkline, scaled to its own peak
-// Compare one RTP against the applied-traces baseline. An RTP is "changed"
-// (staged, not yet applied) when:
-//   - its id is not in the applied set at all  (newly added)
-//   - its text or enabled flag differs            (edited / toggled)
-// Deleted traces disappear from the list entirely, so no * marker needed.
-function isRtpChanged(rtp: Rtp, applied: readonly Rtp[]): boolean {
-  const orig = applied.find((a) => a.id === rtp.id)
-  if (!orig) return true
-  return rtp.text !== orig.text || rtp.enabled !== orig.enabled
-}
-
-// Rolling per-second arrival counts → a block sparkline, scaled to its own peak
-// (relative shape, not absolute rate). Flat baseline when idle.
-function sparkline(buckets: number[]): string {
-  const mx = Math.max(1, ...buckets)
-  return buckets
-    .map((v) => SPARK_RAMP[Math.min(SPARK_RAMP.length - 1, Math.floor((v / mx) * (SPARK_RAMP.length - 1)))])
-    .join("")
-}
-
-async function openInEditor(
-  renderer: { suspend: () => void; resume: () => void },
-  ev: TraceEvent
-): Promise<void> {
-  await editInEditor(renderer, {
-    file: `redbug-event-${ev.id}.exs`,
-    seed: elixirTerm(ev),
-    readBack: false
-  })
-}
-
-function elixirTerm(ev: TraceEvent): string {
-  const { payload, stack } = splitEventInfo(ev)
-  const lines = [
-    "%{",
-    `  kind: ${JSON.stringify(ev.kind)},`,
-    `  ts: ${JSON.stringify(ev.ts)},`,
-    `  pid: ${JSON.stringify(ev.pid)},`,
-    `  name: ${JSON.stringify(ev.name)},`,
-    `  mfa: ${JSON.stringify(ev.mfa)},`,
-    `  payload: ${payload}${stack.length > 0 ? "," : ""}`
-  ]
-
-  if (stack.length > 0) {
-    lines.push("  stack: [")
-    lines.push(...stack.map((line) => `    ${JSON.stringify(line)},`))
-    lines.push("  ]")
-  }
-
-  return [
-    ...lines,
-    "}",
-    ""
-  ].join("\n")
 }

@@ -8,6 +8,7 @@ import { editInEditor } from "./editor"
 import { theme } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
+import { ConfirmOverlay } from "./ConfirmOverlay"
 
 type SnippetsStore = StoreProxy<"Server.Stores.SnippetsRoot", Musubi.Stores>
 type SnippetProxy = StoreProxy<"Server.Stores.SnippetStore", Musubi.Stores>
@@ -242,10 +243,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       )}
 
       {modal.kind === "confirmDelete" && (
-        <Overlay>
-          <text fg={theme.fg}>{`Delete snippet "${modal.name}"?`}</text>
-          <text fg={theme.dim} marginTop={1}>y = yes · n/Esc = no</text>
-        </Overlay>
+        <ConfirmOverlay question={`Delete snippet "${modal.name}"?`} />
       )}
     </box>
   )
