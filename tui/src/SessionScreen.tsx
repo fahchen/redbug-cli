@@ -223,6 +223,7 @@ function SessionView({
     | { kind: "edit"; id: string; text: string }
     | { kind: "savePreset" }
     | { kind: "savePresetOverwrite"; name: string }
+    | { kind: "confirmTraceDelete"; id: string }
   >({ kind: "none" })
   const [editingLimits, setEditingLimits] = useState(false)
   const [importState, setImportState] = useState<{
@@ -457,6 +458,15 @@ function SessionView({
 
   function handleEditorKeys(key: { name: string; ctrl: boolean }) {
     const n = key.name
+    if (rtpModal.kind === "confirmTraceDelete") {
+      if (n === "y") {
+        dispatch("deleteTrace", { trace_id: (rtpModal as any).id })
+        setRtpModal({ kind: "none" })
+      } else if (n === "n" || n === "escape") {
+        setRtpModal({ kind: "none" })
+      }
+      return
+    }
     if (rtpModal.kind === "savePresetOverwrite") {
       if (n === "y") {
         dispatch("saveAsPreset", { name: (rtpModal as any).name })
@@ -539,6 +549,10 @@ function SessionView({
       if (n === "escape") setEditingLimits(false)
       return
     }
+    if (key.ctrl && n === "d" && rtpCur) {
+      dispatch("deleteTrace", { trace_id: rtpCur.id })
+      return
+    }
     switch (n) {
       case "escape":
         setOverlay("none")
@@ -562,7 +576,7 @@ function SessionView({
         if (rtpCur) setRtpModal({ kind: "edit", id: rtpCur.id, text: rtpCur.text })
         break
       case "d":
-        if (rtpCur) dispatch("deleteTrace", { trace_id: rtpCur.id })
+        if (rtpCur) setRtpModal({ kind: "confirmTraceDelete", id: rtpCur.id })
         break
       case "l":
         setEditingLimits((v) => !v)
@@ -950,6 +964,13 @@ function SessionView({
         <Overlay>
           <text fg={theme.text}>{`Overwrite preset "${rtpModal.name}"?`}</text>
           <text fg={theme.textMuted} marginTop={1}>y = overwrite · n/Esc = cancel</text>
+        </Overlay>
+      )}
+
+      {overlay === "editor" && rtpModal.kind === "confirmTraceDelete" && (
+        <Overlay>
+          <text fg={theme.text}>Delete this trace?</text>
+          <text fg={theme.textMuted} marginTop={1}>y = yes · n/Esc = no</text>
         </Overlay>
       )}
 

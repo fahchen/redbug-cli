@@ -98,6 +98,18 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
       return
     }
 
+    if (key.ctrl && n === "d") {
+      if (focus === "detail" && cur && traceCur) {
+        const p = presetProxyById(cur.id)
+        if (p) dispatcher(p)("deletePresetTrace", { trace_id: traceCur.id })
+      } else if (focus === "list" && cur) {
+        const p = presetProxyById(cur.id)
+        if (p) dispatcher(p)("deletePreset")
+        setSel((i) => Math.max(0, i - 1))
+      }
+      return
+    }
+
     if (focus === "detail") {
       switch (n) {
         case "escape":

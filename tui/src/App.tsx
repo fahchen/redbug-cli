@@ -319,6 +319,10 @@ function S1View({
     }
 
     if (focus === "sessions") {
+      if (key.ctrl && name === "d" && node && session && sessionProxy) {
+        dispatcher(sessionProxy)("deleteSession")
+        return
+      }
       switch (name) {
         case "escape":
         case "tab":
@@ -384,6 +388,10 @@ function S1View({
     }
 
     // focus === "nodes"
+    if (key.ctrl && name === "d" && node && node.source !== "env" && nodeProxy) {
+      dispatcher(nodeProxy)("deleteNode")
+      return
+    }
     switch (name) {
       case "j":
       case "down":

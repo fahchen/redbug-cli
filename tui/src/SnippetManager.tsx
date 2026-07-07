@@ -98,6 +98,13 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       return
     }
 
+    if (key.ctrl && n === "d" && cur) {
+      const p = proxyById(cur.id)
+      if (p) dispatcher(p)("deleteSnippet")
+      setSel((i) => Math.max(0, i - 1))
+      return
+    }
+
     switch (n) {
       case "escape":
         onBack()
