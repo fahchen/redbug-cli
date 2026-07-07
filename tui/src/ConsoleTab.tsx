@@ -8,6 +8,7 @@ import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, useSpinner } from "./ui"
+import { DialogSelect } from "./DialogSelect"
 
 type ConsoleStore = StoreProxy<"Server.Stores.ConsoleRoot", Musubi.Stores>
 type Exec = Server.Schema.ConsoleExec
@@ -119,8 +120,7 @@ function ConsoleView({
     }
 
     if (modal.kind === "pickSnippet") {
-      // <select> owns j/k/return; only Esc closes the overlay
-      if (n === "escape") setModal({ kind: "none" })
+      // DialogSelect owns all keys
       return
     }
 
@@ -274,32 +274,21 @@ function ConsoleView({
       )}
 
       {modal.kind === "pickSnippet" && (
-        <Overlay title="New execution — start from">
-          <select
-            focused
-            height={snippets.length + 1}
-            itemSpacing={0}
-            options={[
-              { name: "(blank)", description: "" },
-              ...snippets.map((s) => ({ name: s.name, description: "" }))
-            ]}
-            selectedIndex={pick}
-            showDescription={false}
-            backgroundColor={theme.overlay}
-            textColor={theme.textMuted}
-            focusedBackgroundColor={theme.overlay}
-            focusedTextColor={theme.text}
-            selectedBackgroundColor={theme.backgroundElement}
-            selectedTextColor={theme.selectedForeground}
-            onChange={(i: number) => setPick(i)}
-            onSelect={(i: number) => {
-              const snip = i === 0 ? null : snippets[i - 1]
-              setModal({ kind: "none" })
-              composeAndRun(snip?.code ?? "", snip?.name ?? null)
-            }}
-          />
-          <text fg={theme.textMuted} marginTop={1}>j/k move · Enter compose in $EDITOR · Esc cancel</text>
-        </Overlay>
+        <DialogSelect
+          title="New execution — start from"
+          items={[
+            { id: "_blank", name: "(blank)", query: "blank" },
+            ...snippets.map((s) => ({ id: s.id, name: s.name, query: s.name }))
+          ]}
+          selectedIndex={pick}
+          onSelect={(item) => {
+            const i = item.id === "_blank" ? 0 : snippets.findIndex((s) => s.id === item.id) + 1
+            const snip = i === 0 ? null : snippets[i - 1]
+            setModal({ kind: "none" })
+            composeAndRun(snip?.code ?? "", snip?.name ?? null)
+          }}
+          onClose={() => setModal({ kind: "none" })}
+        />
       )}
 
       {modal.kind === "confirmStop" && (

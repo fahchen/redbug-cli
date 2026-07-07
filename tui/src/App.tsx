@@ -14,6 +14,7 @@ import {
 } from "./musubi"
 import { theme, setTheme } from "./theme"
 import { Chip, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, truncate, useSpinner } from "./ui"
+import { DialogSelect } from "./DialogSelect"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
@@ -275,8 +276,7 @@ function S1View({
         return
 
       case "newSessionPreset":
-        // <select> owns j/k/return; only Esc closes the overlay
-        if (name === "escape") setModal({ kind: "none" })
+        // DialogSelect owns all keys
         return
 
       case "newNode":
@@ -906,30 +906,20 @@ function ModalLayer({
       )
 
     case "newSessionPreset":
-      return box(
-        `Session "${modal.name}" — init from`,
-        <>
-          <select
-            focused
-            height={presetList.length + 1}
-            itemSpacing={0}
-            options={[
-              { name: "(blank)", description: "" },
-              ...presetList.map((p) => ({ name: p.name, description: "" }))
-            ]}
-            selectedIndex={presetIdx}
-            showDescription={false}
-            backgroundColor={theme.overlay}
-            textColor={theme.textMuted}
-            focusedBackgroundColor={theme.overlay}
-            focusedTextColor={theme.text}
-            selectedBackgroundColor={theme.backgroundElement}
-            selectedTextColor={theme.selectedForeground}
-            onChange={(i: number) => onPresetChange(i)}
-            onSelect={(i: number) => onPickPreset(i)}
-          />
-          <text fg={theme.dim} marginTop={1}>j/k move · Enter create · Esc cancel</text>
-        </>
+      return (
+        <DialogSelect
+          title={`Session "${modal.name}" — init from`}
+          items={[
+            { id: "_blank", name: "(blank)", query: "blank" },
+            ...presetList.map((p) => ({ id: p.id, name: p.name, query: p.name }))
+          ]}
+          selectedIndex={presetIdx}
+          onSelect={(item) => {
+            const idx = item.id === "_blank" ? 0 : presetList.findIndex((p) => p.id === item.id) + 1
+            onPickPreset(idx)
+          }}
+          onClose={() => onDismiss()}
+        />
       )
 
     case "confirm":
