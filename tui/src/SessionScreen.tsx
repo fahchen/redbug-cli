@@ -280,6 +280,9 @@ function SessionView({
   useKeyboard((key) => {
     const n = key.name
 
+    // PresetManager takes over all key handling while open.
+    if (showPresets) return
+
     // ConsoleTab registers its own keyboard handler; both stay mounted, so bail
     // here to avoid double-handling keys while the console tab is active.
     if (tab === "console") return
