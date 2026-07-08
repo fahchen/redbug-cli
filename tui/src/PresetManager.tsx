@@ -211,7 +211,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         statusText={`${presets.length} presets`}
         hints={
           focus === "list"
-            ? "j/k move · enter edit · n new · r rename · d del · ? help · esc back"
+            ? "j/k move · enter traces · n new · r rename · d del · ? help · esc back"
             : "j/k move · n add · e edit · l limits · d del · ? help · tab/esc back"
         }
       />
@@ -224,10 +224,10 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
               title: "list",
               lines: [
                 ["j / k", "move"],
-                ["enter / tab", "edit (focus traces)"],
+                ["enter / tab", "focus traces"],
                 ["n", "new preset"],
                 ["r", "rename"],
-                ["d", "delete preset"]
+                ["d / ⌃D", "delete / delete (no confirm)"]
               ]
             },
             {
@@ -237,7 +237,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
                 ["n", "add pattern"],
                 ["e", "edit pattern"],
                 ["l", "limits"],
-                ["d", "delete pattern"],
+                ["d / ⌃D", "delete / delete (no confirm)"],
                 ["tab / esc", "back to list"]
               ]
             }

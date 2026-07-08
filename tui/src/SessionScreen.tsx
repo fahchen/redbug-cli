@@ -240,8 +240,11 @@ function SessionView({
       return
     }
 
-    if (n === "]") return setTab("console")
-    if (n === "[") return setTab("events")
+    // [ / ] toggle between Events ⇄ Console tabs
+    if (n === "]" || n === "[") {
+      setTab((t) => (t === "events" ? "console" : "events"))
+      return
+    }
 
     switch (n) {
       case "escape":

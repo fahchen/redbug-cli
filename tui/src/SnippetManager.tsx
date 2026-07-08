@@ -190,7 +190,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 
       <StatusBar
         statusText={`${snippets.length} snippets`}
-        hints="j/k move · e edit · n new · #g jump · ? help · esc back"
+        hints="j/k move · e edit · n new · r rename · f format · d del · #g jump · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -204,7 +204,8 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
                 ["n", "new snippet"],
                 ["r", "rename"],
                 ["f", "format code"],
-                ["d", "delete"],
+                ["d / ⌃D", "delete / delete (no confirm)"],
+                ["#g", "jump to snippet #"],
                 ["esc", "back"]
               ]
             }

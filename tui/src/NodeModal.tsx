@@ -103,7 +103,20 @@ export function ModalLayer({
                 ["s", "new session"],
                 ["e", "edit node"],
                 ["c", "connect / disconnect"],
-                ["d", "delete"]
+                ["d", "delete"],
+                ["⌃D", "delete (no confirm)"]
+              ]
+            },
+            {
+              title: "sessions focus",
+              lines: [
+                ["j / k", "move"],
+                ["enter", "open session"],
+                ["r", "rename"],
+                ["s", "new session"],
+                ["d", "delete"],
+                ["#g", "jump to session #"],
+                ["tab / esc / h", "back to nodes"]
               ]
             },
             {

@@ -154,8 +154,8 @@ function ConsoleView({
       return
     }
 
-    // [ switches back to Events ([ / ] tab nav; ] is a no-op here — already Console)
-    if (n === "[") {
+    // [ / ] toggle between Events ⇄ Console tabs
+    if (n === "[" || n === "]") {
       onSwitchToEvents()
       return
     }
@@ -245,7 +245,7 @@ function ConsoleView({
           : nodeStatus === "error" ? "✖ can't reach node"
           : `${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`
         }
-        hints="j/k move · n new · r run · s snippet · d del · x stop · [/] tabs · ? help · esc back"
+        hints="j/k move · n compose · e edit+run · r run · v view · s save · d del · x stop · ⌃L clear · [/] tabs · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -259,6 +259,8 @@ function ConsoleView({
                 ["e", "edit + run selected"],
                 ["v", "view full code + output in $EDITOR"],
                 ["r", "run selected as-is"],
+                ["s", "save as snippet"],
+                ["d / ⌃D", "delete / delete (no confirm)"],
                 ["x", "force-stop running execution"],
                 ["⌃L", "clear history"]
               ]

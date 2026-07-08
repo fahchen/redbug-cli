@@ -151,6 +151,14 @@ export function SessionHelpOverlay() {
           ]
         },
         {
+          title: "detail pane",
+          lines: [
+            ["tab", "switch list ↔ detail focus"],
+            ["j / k", "scroll detail"],
+            ["⌃J / ⌃K", "move selection from detail"]
+          ]
+        },
+        {
           title: "trace (space = context go, never destructive)",
           lines: [
             ["space", "retry / start / restart (per state)"],

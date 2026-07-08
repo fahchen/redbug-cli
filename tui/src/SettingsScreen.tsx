@@ -144,7 +144,7 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
             {
               lines: [
                 ["j / k", "move"],
-                ["space / enter / l", "toggle or cycle value"],
+                ["space / enter / right / l", "toggle or cycle value"],
                 ["esc", "close"]
               ]
             },
