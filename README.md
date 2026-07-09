@@ -1,57 +1,50 @@
 # redbug-cli
 
-A terminal UI for [redbug](https://hex.pm/packages/redbug)-style tracing of remote
-Erlang/Elixir nodes — with no code, agent, or install on the target.
+A terminal UI for tracing remote Erlang and Elixir nodes with
+[redbug](https://hex.pm/packages/redbug), without adding code, installing an agent, or deploying
+anything to the target node.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## What it is
+## Demo
 
-- **Server** — an Elixir [musubi](https://hex.pm/packages/musubi) app (server-authoritative
-  state over a Phoenix WebSocket). It owns the config, talks Erlang distribution to the
-  target node, and runs the redbug tracer.
-- **TUI** — an [opentui](https://opentui.com)/React client on Bun that renders the trace
-  screens and drives the server over the WebSocket.
+<!--
+Add the demo GIF here before publishing, for example:
 
-The redbug tracer is injected into the **target** node over distribution, so the target
-needs no code changes and nothing installed on it — just a reachable node name and a
-matching cookie.
+![redbug-cli tracing demo](docs/demo.gif)
+-->
 
-The domain model is **Node ▸ Session ▸ Traces → Events**: connect a node, open a session,
-add trace patterns (RTP), and the matching calls/returns/sends/receives stream in live.
+_Demo GIF coming soon._
 
-## Requirements
+## Why redbug-cli?
 
-Tooling is pinned in `mise.toml`:
+- Trace live function calls, returns, sends, and receives from a terminal UI.
+- Connect to local nodes, routable remote nodes, or SSH-only hosts.
+- Tunnel into containerized releases automatically when SSH details are configured.
+- Keep trace sessions, reusable trace patterns, snippets, and node config on the controller.
+- Inspect event payloads and stack traces in the TUI or open them in `$EDITOR`.
 
-```
-erlang 28.3 · elixir 1.19.5-otp-28 · bun 1.3
-```
+The target only needs to be reachable over Erlang distribution with a matching cookie. The
+controller and TUI run locally.
+
+## Quick Start
+
+Tool versions are pinned in [mise.toml](mise.toml):
 
 ```sh
 mise install
-```
-
-## Quick start
-
-```sh
 mise run dev
 ```
 
-This starts the server on a **random free port** (announced via a port file), waits for
-it, then launches the TUI pointed at that port. The controller node is
-`redbug_controller@127.0.0.1`; the distribution cookie comes from `RB_COOKIE`
-(default `rbtest`).
+This starts the controller on a random local port and opens the TUI.
 
-### A throwaway target to trace
-
-In another terminal, start an `iex` node with the **same cookie**:
+In another terminal, start a throwaway target node with the same cookie:
 
 ```sh
 iex --name target@127.0.0.1 --cookie rbtest
 ```
 
-Then in that shell, define a module and call it:
+Define and call something in that `iex` session:
 
 ```elixir
 defmodule Demo do
@@ -61,125 +54,124 @@ end
 Demo.add(1, 2)
 ```
 
-Then in the TUI:
+In redbug-cli:
 
-1. **Add the node.** Press `n`. Type the node name `target@127.0.0.1` (the `--name`
-   you launched `iex` with), Enter. Type the cookie `rbtest`, Enter.
-2. **Connect.** With the node selected, press `c`. The dot turns green (`●`) when the
-   controller reaches it over distribution.
-3. **Add a session.** Press `s`. Type a label, e.g. `demo`, Enter. On the "init from"
-   picker leave `(blank)` selected, Enter.
-4. **Add a trace pattern.** Press `enter` to open the session, then `e` for the trace
-   editor. Press `a`, type `Demo.add/2 -> return`, Enter. Press `space` to enable it
-   (it must be on), then `esc` to leave the editor.
-5. **Trace.** Press `Shift+S` to start. Back in the iex target, call `Demo.add(1, 2)`
-   again — the call and its return stream into the session live.
+1. Press `n` and add node `target@127.0.0.1` with cookie `rbtest`.
+2. Press `c` to connect.
+3. Press `s` to create a session.
+4. Open the session, press `t`, add `Demo.add/2 -> return`, and enable it.
+5. Press `space` to start tracing.
+6. Call `Demo.add(1, 2)` again in `iex`.
 
-### Running the pieces separately
+You should see the call and return events stream into the session.
 
-Pin the port with `REDBUG_PORT` so both sides agree on it (otherwise the server picks a
-random free port and prints `redbug ws port: <n>`).
+## Install / Package
 
-```sh
-# server (controller must be a distributed longname node)
-cd server
-REDBUG_PORT=4010 elixir --name redbug_controller@127.0.0.1 --cookie rbtest -S mix phx.server
-
-# TUI (point it at the server)
-cd tui
-REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 bun run dev
-```
-
-### Tests
-
-```sh
-cd server && mix test
-```
-
-The e2e test (`test/session_root_test.exs`) drives the full store layer against a real
-target node, so start a target like the one above first.
-
-## Keybindings
-
-Every screen carries a slim hint statusline at the bottom; press `?` on any screen
-for the full per-page keymap. Toggle the hints off via Settings → `show hints`.
-
-**Tree**
-`j/k` move · `enter` open session · `n` node · `s` session · `e` edit node ·
-`c` connect/disconnect · `d` delete · `p` presets · `l` library · `,` settings · `?` help · `q` quit
-
-**Session · Events**
-`enter` detail · `v` view event in `$EDITOR` · `z` zoom · `o` sort · `/` filter · `g` group · `l` limits ·
-`t` edit traces · `Shift+S`/`Shift+X` start/stop · `Ctrl+S` apply (restart) · `Ctrl+L` clear · `]` Console
-
-**Session · Console**
-`n` new · `e` edit · `v` view · `r` run · `s` stop · `c` clear · `[` Events
-
-**Presets / Snippets / Settings**
-`j/k` move · `enter`/`tab` edit · `space` toggle · `n` new · `esc` back
-
-**Event kinds**
-`↓` call · `↑` return · `→` send · `←` receive
-
-## Configuration
-
-Config is persisted to `~/.config/redbug/config.json` (file mode `0600`, dir `0700`;
-honors `$XDG_CONFIG_HOME`). It stores nodes, sessions, presets, and settings. The cookie is
-stored in plaintext, so keep the file local and the WebSocket channel trusted.
-
-| Variable | Component | Default | Purpose |
-|---|---|---|---|
-| `REDBUG_HOST` | TUI | `127.0.0.1` | Server host the TUI connects to |
-| `REDBUG_PORT` | TUI / server | `4010`* | WS port (server pins it when set, else picks a free one) |
-| `REDBUG_NODES` | server | — | Comma-separated env-injected nodes (epmd-free): `name@host\|dial_ip:port\|cookie` (see [Remote nodes](docs/remote-nodes.md)) |
-| `REDBUG_PORT_FILE` | server | — | If set, the chosen port is written here (used by the launcher) |
-| `RB_COOKIE` | dev | `rbtest` | Distribution cookie for the controller (`mise run dev`) |
-| `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
-| `CONTROLLER_DISTRIBUTION` | server | `name` | `sname` to trace shortname targets (default Elixir releases); see [Remote nodes](docs/remote-nodes.md) |
-| `RELEASE_NODE` / `RELEASE_COOKIE` / `RELEASE_DISTRIBUTION` | release | — | Standard Elixir release distribution settings |
-| `XDG_CONFIG_HOME` | server | `~/.config` | Base dir for `redbug/config.json` |
-
-\* The server uses an OS-assigned free port when `REDBUG_PORT` is unset.
-
-## Packaging
+Build the single-file executable:
 
 ```sh
 mise run package
-```
-
-Produces a single self-contained binary at `dist/redbug` — a bun `--compile` executable
-with the `server` release (ERTS bundled) embedded as a tarball. On first run it extracts the
-release to a per-build cache dir, spawns it as the controller node, waits for its WebSocket
-port, then renders the TUI against it. Quitting the TUI tears the controller down. macOS
-arm64 only; no system Erlang or Bun needed on the target.
-
-```sh
 ./dist/redbug
 ```
 
-## Tracing a remote node
+The packaged binary embeds the Elixir controller release and the Bun TUI launcher. On first run it
+extracts the controller to a per-build cache directory, starts it locally, and tears it down when
+the TUI exits.
 
-The controller and TUI always run locally. To trace a node on another host, the controller
-only needs to reach that node over Erlang distribution (its **epmd** and **distribution**
-ports) with a matching cookie — no agent, sidecar, or code is deployed to the target. Give a
-node its SSH details (host + container) and the controller tunnels to a container node on its
-own — no exposed port, no manual `ssh -L`. For that, routable hosts, `REDBUG_NODES` env
-injection, and [Kamal](https://kamal-deploy.org)/Docker containers, see
-[**Remote nodes**](docs/remote-nodes.md).
+Current packaging target: macOS arm64.
+
+## Tracing Remote Nodes
+
+redbug-cli supports three remote-node paths:
+
+| Target shape | Use |
+|---|---|
+| SSH-only host with a Docker/Kamal container | Built-in SSH tunnel |
+| Routable host over VPN/LAN/WireGuard | Direct Erlang distribution |
+| CI or custom tunnel setup | `REDBUG_NODES` |
+
+For details, see [Remote nodes](docs/remote-nodes.md).
+
+## Running Pieces Separately
+
+Pin the port with `REDBUG_PORT` when starting the controller and TUI yourself:
+
+```sh
+cd server
+REDBUG_PORT=4010 elixir --name redbug_controller@127.0.0.1 --cookie rbtest -S mix phx.server
+
+cd ../tui
+REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 bun run dev
+```
+
+## Configuration
+
+Config is persisted to `~/.config/redbug/config.json` and honors `$XDG_CONFIG_HOME`. The file
+stores nodes, sessions, presets, snippets, and settings. Cookies are stored in plaintext, so keep
+the config local and private.
+
+| Variable | Component | Default | Purpose |
+|---|---|---|---|
+| `REDBUG_HOST` | TUI | `127.0.0.1` | Controller host |
+| `REDBUG_PORT` | TUI / server | random when unset | WebSocket port |
+| `REDBUG_PORT_FILE` | server | - | Writes the chosen port for launchers |
+| `REDBUG_NODES` | server | - | Env-injected nodes: `name@host\|dial_ip:port\|cookie` |
+| `RB_COOKIE` | dev | `rbtest` | Cookie used by `mise run dev` |
+| `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
+| `CONTROLLER_DISTRIBUTION` | server | `name` | Use `sname` for shortname targets |
+| `XDG_CONFIG_HOME` | server | `~/.config` | Config base directory |
+
+## Keybindings
+
+Press `?` in the TUI for the active screen's keymap.
+
+Common keys:
+
+| Screen | Keys |
+|---|---|
+| Tree | `j/k` move, `enter` open, `n` node, `s` session, `e` edit, `c` connect, `d` delete |
+| Events | `enter` detail, `v` open event in `$EDITOR`, `z` zoom, `/` filter, `t` traces |
+| Trace session | `space` start/restart, `x` stop, `Ctrl+S` apply/restart, `Ctrl+L` clear |
+| Console | `n` new, `e` edit+run, `r` run, `v` view, `s` save snippet, `x` stop, `Ctrl+L` clear |
+
+## Development
+
+```sh
+cd server && mix test
+pnpm --dir tui typecheck
+```
+
+The full session-root test drives the store layer against a real target node, so start a target
+like the quick-start `iex` node first when running the whole server test suite.
+
+## Architecture
+
+redbug-cli has two parts:
+
+- **Controller**: an Elixir [musubi](https://hex.pm/packages/musubi) app with
+  server-authoritative state over a Phoenix WebSocket. It owns config, connects to target nodes,
+  and runs redbug.
+- **TUI**: an [opentui](https://opentui.com) / React client on Bun.
+
+The domain model is:
+
+```text
+Node -> Session -> Trace patterns -> Events
+```
 
 ## Security
 
-- **Cookie == RCE.** The distribution cookie is a full remote-code-execution capability on
-  the target. The config file is `0600`; keep it local.
-- Keep the WebSocket on `127.0.0.1` (the default) — **never expose it on a public interface.**
-- Erlang distribution is **unencrypted** unless tunnelled. Reach epmd/distribution ports over
-  a VPN or SSH tunnel; never expose them to untrusted networks.
+- The Erlang distribution cookie is remote-code-execution capability on the target.
+- Keep the WebSocket bound to `127.0.0.1`.
+- Erlang distribution is unencrypted unless tunnelled; use SSH or a trusted private network.
+- Do not expose epmd or distribution ports to untrusted networks.
 
 ## Documentation
 
-- [Remote nodes](docs/remote-nodes.md) — trace nodes on other hosts (routable, `REDBUG_NODES`, SSH, Kamal)
-- [Screen design](docs/screens.md) — TUI screen-by-screen design reference
-- [Testing & screenshots](docs/testing.md) — run tests, screenshot the TUI via a web terminal
+- [Architecture](docs/ARCHITECTURE.md)
+- [Remote nodes](docs/remote-nodes.md)
+- [Testing & screenshots](docs/testing.md)
+- [Demo script](docs/demo-script.md)
 
 ## License
 
