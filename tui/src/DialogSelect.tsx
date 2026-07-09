@@ -62,20 +62,29 @@ export function DialogSelect({
     }
   })
 
+  // A filter earns its space only with enough options to sift; under 3 (or none)
+  // it's just noise, so drop it and let the short list speak for itself.
+  const hasItems = items.length > 0
+  const showFilter = items.length >= 3
+
   return (
     <Overlay title={title}>
-      <input
-        focused
-        value={query}
-        onInput={(v: string) => { setQuery(v); setSel(0) }}
-        placeholder="filter…"
-        backgroundColor={theme.bg}
-        textColor={theme.fg}
-        focusedBackgroundColor={theme.selBg}
-        focusedTextColor={theme.selFg}
-      />
+      {showFilter && (
+        <input
+          focused
+          value={query}
+          onInput={(v: string) => { setQuery(v); setSel(0) }}
+          placeholder="filter…"
+          backgroundColor={theme.bg}
+          textColor={theme.fg}
+          focusedBackgroundColor={theme.selBg}
+          focusedTextColor={theme.selFg}
+        />
+      )}
       <box flexDirection="column" marginTop={1} minHeight={Math.min(filtered.length, 10)}>
-        {filtered.length === 0 ? (
+        {!hasItems ? (
+          <text fg={theme.dim}>nothing to pick</text>
+        ) : filtered.length === 0 ? (
           <text fg={theme.dim}>no matches</text>
         ) : (
           filtered.slice(0, 20).map((item, i) => {
@@ -97,7 +106,11 @@ export function DialogSelect({
           })
         )}
       </box>
-      <text fg={theme.dim} marginTop={1}>type to filter · j/k move · Enter select · Esc cancel</text>
+      <text fg={theme.dim} marginTop={1}>
+        {showFilter ? "type to filter · j/k move · Enter select · Esc cancel"
+          : hasItems ? "j/k move · Enter select · Esc cancel"
+          : "Esc cancel"}
+      </text>
     </Overlay>
   )
 }
