@@ -108,7 +108,10 @@ function ConsoleView({
         file: `redbug-console-compose-${Date.now()}.exs`,
         seed
       })
-      if (code !== null && code.trim() !== "") await runAfterEdit(store, code, name)
+      if (code !== null && code.trim() !== "") {
+        await runAfterEdit(store, code, name)
+        setSel(0) // new run inserts at the top of history
+      }
     })()
   }
 
@@ -194,7 +197,10 @@ function ConsoleView({
         if (cur) void viewExec(renderer, cur)
         break
       case "r":
-        if (cur) dispatch("run", { code: cur.code, name: cur.name || null })
+        if (cur) {
+          dispatch("run", { code: cur.code, name: cur.name || null })
+          setSel(0) // new run inserts at the top of history
+        }
         break
       case "d":
         if (cur) setModal({ kind: "confirmDelete", id: cur.id })
