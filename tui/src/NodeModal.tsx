@@ -137,38 +137,40 @@ export function ModalLayer({
       return box(
         modal.kind === "newNode" ? "New node" : "Edit node",
         <>
+          <SectionHeader label="Connection" note="how the controller reaches the Erlang node" />
           <Field
-            label="Name"
-            hint="myapp"
+            label="Node name"
+            hint="myapp — the part before @ in myapp@host"
             value={nameDraft}
             onInput={onName}
             focused={nodeField === 0}
           />
           <Field
             label="Host"
-            hint="127.0.0.1"
+            hint="127.0.0.1 — where the node runs"
             value={hostDraft}
             onInput={onHost}
             focused={nodeField === 1}
           />
           <Field
-            label="Port"
-            hint="(optional — direct dist port)"
-            value={portDraft}
-            onInput={onPort}
+            label="Cookie"
+            hint="secretcookie — Erlang distribution cookie"
+            value={cookieDraft}
+            onInput={onCookie}
             focused={nodeField === 2}
           />
           <Field
-            label="Cookie"
-            hint="secretcookie"
-            value={cookieDraft}
-            onInput={onCookie}
+            label="Dist port"
+            hint="optional — distribution port for a direct dial"
+            value={portDraft}
+            onInput={onPort}
             focused={nodeField === 3}
           />
-          <text fg={theme.dim} marginTop={1}>SSH (optional — leave blank to dial directly)</text>
+
+          <SectionHeader label="SSH tunnel" note="optional — for a node behind an SSH bastion" />
           <Field
             label="SSH host"
-            hint="prod-1.example.com"
+            hint="bastion.example.com — leave blank to dial directly"
             value={sshHostDraft}
             onInput={onSshHost}
             focused={nodeField === 4}
@@ -187,15 +189,17 @@ export function ModalLayer({
             onInput={onSshUser}
             focused={nodeField === 6}
           />
-          <text fg={theme.dim} marginTop={1}>Container (optional — leave blank for a host process)</text>
+
+          <SectionHeader label="Container" note="optional — a Docker container on the SSH host" />
           <Field
             label="Container"
-            hint="myapp"
+            hint="myapp — leave blank for a host process"
             value={containerDraft}
             onInput={onContainer}
             focused={nodeField === 7}
           />
-          <text fg={theme.dim} marginTop={1}>Label (optional — human-readable alias)</text>
+
+          <SectionHeader label="Display" note="optional — alias shown in the node list" />
           <Field
             label="Label"
             hint="Staging"
@@ -265,6 +269,19 @@ export function ModalLayer({
     default:
       return null
   }
+}
+
+// Section heading for the node form. Terminals can't scale glyphs, so "bigger"
+// = bold + title hue (vs the old dim muted text) to read as a real heading.
+function SectionHeader({ label, note }: { label: string; note?: string }) {
+  return (
+    <box flexDirection="column" marginTop={1} marginBottom={1}>
+      <text fg={theme.title}>
+        <b>{label}</b>
+      </text>
+      {note ? <text fg={theme.dim}>{note}</text> : null}
+    </box>
+  )
 }
 
 function Field({
