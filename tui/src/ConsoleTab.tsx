@@ -108,7 +108,7 @@ function ConsoleView({
         file: `redbug-console-compose-${Date.now()}.exs`,
         seed
       })
-      if (code !== null && code.trim() !== "") dispatch("run", { code, name })
+      if (code !== null && code.trim() !== "") await runAfterEdit(store, code, name)
     })()
   }
 
@@ -331,7 +331,8 @@ function ConsoleView({
 function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
   const bg = active ? theme.backgroundElement : theme.background
   const fg = active ? theme.text : theme.textMuted
-  const glyph = statusGlyph(exec.status)
+  const spin = useSpinner(exec.status === "running", "braille")
+  const glyph = exec.status === "running" ? spin : statusGlyph(exec.status)
   const label = exec.name?.trim() ? exec.name : firstLine(exec.code)
   return (
     <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
@@ -369,10 +370,12 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
   const dur = exec.duration_ms == null ? "—" : `${exec.duration_ms}ms`
   const code = exec.code.split("\n").slice(0, 12).join("\n")
   const errTone = exec.status === "error" || exec.status === "timeout"
+  const spin = useSpinner(exec.status === "running", "braille")
+  const glyph = exec.status === "running" ? spin : statusGlyph(exec.status)
   return (
     <>
       <box flexDirection="row" flexWrap="wrap">
-        <Chip label="Status" value={`${statusGlyph(exec.status)} ${exec.status}`} tone={errTone ? "error" : "default"} />
+        <Chip label="Status" value={`${glyph} ${exec.status}`} tone={errTone ? "error" : "default"} />
         <Chip label="Duration" value={dur} />
         {exec.name?.trim() ? <Chip label="Name" value={exec.name} /> : null}
         <Chip label="Ts" value={exec.ts} />
@@ -404,6 +407,25 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
 }
 
 // --- editor helpers ---
+
+// Dispatch `run` after the $EDITOR closes, retrying a pre-send "not connected"
+// rejection. The long edit blocks Bun's event loop, so Phoenix's heartbeat is
+// starved and the server may drop the socket; on resume the store is mid-rejoin
+// (version 0) and dispatchCommand rejects *before* pushing. That's the only
+// safe error to retry — nothing reached the server, so re-dispatching can't
+// double-run the code. Any other rejection (Disconnected/timeout/server error)
+// means the push may have landed, so we stop.
+async function runAfterEdit(store: ConsoleStore, code: string, name: string | null): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    try {
+      await store.dispatchCommand("run", { code, name })
+      return
+    } catch (e) {
+      if ((e as Error)?.message !== "Store is not connected") return
+      await new Promise((r) => setTimeout(r, 150))
+    }
+  }
+}
 
 async function viewExec(
   renderer: { suspend: () => void; resume: () => void },
