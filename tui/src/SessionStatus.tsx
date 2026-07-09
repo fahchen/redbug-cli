@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import { theme } from "./theme"
+import type { Limits } from "./limits"
 
 export function SessionStat({
   state,
@@ -17,7 +18,7 @@ export function SessionStat({
   dirty: boolean
   spark: string
   count: number
-  limits: { keep: number; time: number; msgs: number }
+  limits: Limits
   remainingSec: number | null
 }) {
   switch (state) {

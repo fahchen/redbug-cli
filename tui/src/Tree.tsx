@@ -1,6 +1,4 @@
 /** @jsxImportSource @opentui/react */
-import type { ReactNode } from "react"
-
 import { theme } from "./theme"
 import { Chip, truncate, useSpinner } from "./ui"
 
@@ -34,7 +32,7 @@ export function EmptyTree() {
 
 export function NodeRow({ node, active }: { node: Node; active: boolean }) {
   const bg = active ? theme.backgroundElement : theme.background
-  const spin = useSpinner(node.status === "connecting", "braille")
+  const spin = useSpinner(node.status === "connecting")
   const dot =
     node.status === "connected" ? "●"
     : node.status === "connecting" ? spin

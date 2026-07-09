@@ -10,20 +10,19 @@ import { theme, PANEL_BORDER } from "./theme"
 import { Flash, ErrorDetailOverlay, RootGate, StatusBar, useSpinner } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 
-import {
-  COL, SORT_OPTS, GROUP_CYCLE, ALL_COLS,
-  parseSort, processEvents, sparkline, openInEditor
-} from "./sessionHelpers"
-import type { Sort, Filter, FilterScope, GroupKey, Focus, Cols, DRow } from "./sessionHelpers"
+import { parseSort, processEvents, sparkline, openInEditor } from "./sessionHelpers"
+import { COL, SORT_OPTS, GROUP_CYCLE, ALL_COLS } from "./sessionTypes"
+import type { Sort, Filter, FilterScope, GroupKey, Focus, Cols, DRow } from "./sessionTypes"
 import type { Rtp, TraceEvent } from "./types"
 
 import { ColumnHeader, EventRow } from "./SessionEvents"
 import { DetailPane } from "./SessionDetail"
 import {
   FilterOverlay, SortOverlay, LimitsOverlay,
-  SessionHelpOverlay, ConfirmExitOverlay, ConfirmDeleteOverlay,
+  SessionHelpOverlay, ConfirmExitOverlay,
   ZoomOverlay
 } from "./SessionOverlays"
+import { ConfirmOverlay } from "./ConfirmOverlay"
 import { EditorOverlay } from "./SessionEditor"
 import type { RtpModal, ImportState } from "./SessionEditor"
 import { SessionStat } from "./SessionStatus"
@@ -94,7 +93,7 @@ function SessionView({
   const error = snap?.error ?? null
 
   const nodeStatus = snap?.node_status ?? "idle"
-  const nodeSpin = useSpinner(nodeStatus === "connecting", "braille")
+  const nodeSpin = useSpinner(nodeStatus === "connecting")
 
   const endedLimit = (snap?.ended ?? null) as "time" | "msgs" | null
   const sessionState: "connecting" | "unreachable" | "idle" | "running" | "ended" | "failed" =
@@ -501,7 +500,7 @@ function SessionView({
       )}
 
       {overlay === "confirmExit" && <ConfirmExitOverlay dirty={dirty} />}
-      {overlay === "confirmDelete" && <ConfirmDeleteOverlay />}
+      {overlay === "confirmDelete" && <ConfirmOverlay question="Delete this event?" />}
       {overlay === "help" && <SessionHelpOverlay />}
 
       {overlay === "filter" && (

@@ -3,15 +3,6 @@ import type { Filter, Sort, GroupKey, DRow } from "./sessionTypes"
 import { SPARK_RAMP } from "./sessionTypes"
 import { editInEditor } from "./editor"
 
-// Re-export all types and constants so existing imports don't break.
-export type {
-  SortKey, SortDir, Sort, FilterScope, Filter, GroupKey, Focus, Cols, DRow
-} from "./sessionTypes"
-export {
-  ALL_COLS, kindSym, SORT_OPTS, FILTER_SCOPES, GROUP_CYCLE,
-  RTP_EXAMPLES, COL, COLGAP, SPARK_N
-} from "./sessionTypes"
-
 export function splitEventInfo(ev: TraceEvent): { payload: string; stack: string[] } {
   if (ev.kind !== "call") return { payload: ev.info, stack: [] }
 

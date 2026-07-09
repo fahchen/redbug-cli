@@ -10,29 +10,19 @@ import { theme, type Theme, PANEL_BORDER } from "./theme"
 // stops competing for focus (opentui alpha-composites this over the buffer below).
 const SCRIM = RGBA.fromValues(0, 0, 0, 0.78)
 
-// ora spinner frames. `dots` (simpleDotsScrolling) is a 3-wide text spinner for
-// inline "connecting…" labels; `circle` (circleHalves) is a 1-wide glyph that
-// slots into a status-dot column without shifting alignment. Swap SPINNER to
-// change the inline-label spinner project-wide.
-export const SPINNERS = {
-  dots: { frames: [".  ", ".. ", "...", " ..", "  .", "   "], interval: 200 },
-  block: { frames: ["▖", "▘", "▝", "▗"], interval: 140 },
-  // opencode's braille spinner: smooth, 1-wide, not a round glyph.
-  braille: { frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], interval: 80 }
-} as const
-
-export const SPINNER = SPINNERS.braille
+// opencode's braille spinner: smooth, 1-wide, not a round glyph.
+const SPIN_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+const SPIN_INTERVAL = 80
 
 // Advance a spinner while `active`; returns the current frame ("" when idle).
-export function useSpinner(active: boolean, which: keyof typeof SPINNERS = "dots"): string {
-  const spin = SPINNERS[which]
+export function useSpinner(active: boolean): string {
   const [i, setI] = useState(0)
   useEffect(() => {
     if (!active) return
-    const id = setInterval(() => setI((n) => n + 1), spin.interval)
+    const id = setInterval(() => setI((n) => n + 1), SPIN_INTERVAL)
     return () => clearInterval(id)
-  }, [active, spin.interval])
-  return active ? spin.frames[i % spin.frames.length] : ""
+  }, [active])
+  return active ? SPIN_FRAMES[i % SPIN_FRAMES.length] : ""
 }
 
 // Whether keybind hint footers are shown (driven by the `show_hints` setting).
@@ -91,17 +81,6 @@ export function StatusBar({
   )
 }
 
-
-// Top title bar shared by every screen. `children` carry per-screen status/info
-// chips that sit to the right of the title.
-export function Header({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <box backgroundColor={theme.bg} paddingLeft={1} flexDirection="row">
-      <text fg={theme.title}>{title}</text>
-      {children}
-    </box>
-  )
-}
 
 // Framed pane: a bordered box whose `heading` rides the top border line (opentui
 // box title). Focus brightens both the title and the border (primary/borderActive
@@ -307,7 +286,7 @@ export function ErrorDetailOverlay({ title = "Error", body }: { title?: string; 
   )
 }
 
-function wrapText(s: string, width: number): string[] {
+export function wrapText(s: string, width: number): string[] {
   if (s.length <= width) return [s === "" ? " " : s]
   const out: string[] = []
   for (let i = 0; i < s.length; i += width) out.push(s.slice(i, i + width))

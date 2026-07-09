@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { theme, PANEL_BORDER } from "./theme"
-import { kindSym, splitEventInfo } from "./sessionHelpers"
+import { splitEventInfo } from "./sessionHelpers"
+import { kindSym } from "./sessionTypes"
 import type { TraceEvent } from "./types"
 import { Chip } from "./ui"
 import { elixirStyle, tsClient } from "./treesitter"

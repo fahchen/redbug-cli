@@ -1,7 +1,8 @@
 /** @jsxImportSource @opentui/react */
 import { theme, kindColor } from "./theme"
-import { COL, COLGAP, kindSym, segs } from "./sessionHelpers"
-import type { Filter, FilterScope, Cols } from "./sessionHelpers"
+import { segs } from "./sessionHelpers"
+import { COL, COLGAP, kindSym } from "./sessionTypes"
+import type { Filter, FilterScope, Cols } from "./sessionTypes"
 import type { TraceEvent } from "./types"
 import { fit } from "./ui"
 

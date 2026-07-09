@@ -1,14 +1,13 @@
 /** @jsxImportSource @opentui/react */
 import { theme } from "./theme"
-import { FILTER_SCOPES } from "./sessionHelpers"
-import type { FilterScope, Filter } from "./sessionHelpers"
+import { FILTER_SCOPES, SORT_OPTS } from "./sessionTypes"
+import type { FilterScope, Filter } from "./sessionTypes"
 import type { TraceEvent } from "./types"
 import { Overlay, HelpOverlay } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 import { DetailMeta, EventDetailBody } from "./SessionDetail"
 import { DialogSelect } from "./DialogSelect"
 import type { DialogItem } from "./DialogSelect"
-import { SORT_OPTS } from "./sessionHelpers"
 
 // --- Filter Overlay ---
 
@@ -191,12 +190,6 @@ export function ConfirmExitOverlay({ dirty }: { dirty: boolean }) {
       {dirty && <text fg={theme.warning} marginTop={1}>{"⚠ unapplied changes will be lost · Ctrl+S to apply first"}</text>}
     </ConfirmOverlay>
   )
-}
-
-// --- Confirm Delete Event ---
-
-export function ConfirmDeleteOverlay() {
-  return <ConfirmOverlay question="Delete this event?" />
 }
 
 // --- Zoom Overlay ---

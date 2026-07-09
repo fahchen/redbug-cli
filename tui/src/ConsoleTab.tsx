@@ -7,7 +7,7 @@ import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./mus
 import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, useSpinner } from "./ui"
+import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, wrapText } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 import { DialogSelect } from "./DialogSelect"
 
@@ -96,7 +96,7 @@ function ConsoleView({
 
   const cur = history[Math.min(sel, history.length - 1)] ?? null
   const runningCount = history.filter((e) => e.status === "running").length
-  const nodeSpin = useSpinner(nodeStatus === "connecting", "braille")
+  const nodeSpin = useSpinner(nodeStatus === "connecting")
   const leftBorderColor =
     nodeStatus === "error" ? theme.error
     : nodeStatus === "connecting" ? theme.warning
@@ -337,7 +337,7 @@ function ConsoleView({
 function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
   const bg = active ? theme.backgroundElement : theme.background
   const fg = active ? theme.text : theme.textMuted
-  const spin = useSpinner(exec.status === "running", "braille")
+  const spin = useSpinner(exec.status === "running")
   const glyph = exec.status === "running" ? spin : statusGlyph(exec.status)
   const label = exec.name?.trim() ? exec.name : firstLine(exec.code)
   return (
@@ -376,7 +376,7 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
   const dur = exec.duration_ms == null ? "—" : `${exec.duration_ms}ms`
   const code = exec.code.split("\n").slice(0, 12).join("\n")
   const errTone = exec.status === "error" || exec.status === "timeout"
-  const spin = useSpinner(exec.status === "running", "braille")
+  const spin = useSpinner(exec.status === "running")
   const glyph = exec.status === "running" ? spin : statusGlyph(exec.status)
   return (
     <>
@@ -402,7 +402,7 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
       {exec.output?.trim() !== "" && (
         <>
           <text fg={theme.textMuted} marginTop={1}>Stdout</text>
-          {wrap(exec.output, 60).slice(0, 10).map((l, i) => (
+          {exec.output.split("\n").flatMap((l) => wrapText(l, 60)).slice(0, 10).map((l, i) => (
             <text key={`o${i}`} fg={theme.textMuted}>{l}</text>
           ))}
         </>
@@ -460,14 +460,5 @@ async function viewExec(
 
 function firstLine(s: string): string {
   const line = s.split("\n").find((l) => l.trim() !== "") ?? ""
-  return line.length > 28 ? line.slice(0, 27) + "…" : line
-}
-
-function wrap(s: string, width: number): string[] {
-  const out: string[] = []
-  for (const raw of (s ?? "").split("\n")) {
-    if (raw.length <= width) out.push(raw)
-    else for (let i = 0; i < raw.length; i += width) out.push(raw.slice(i, i + width))
-  }
-  return out
+  return truncate(line, 28)
 }

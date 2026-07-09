@@ -461,15 +461,3 @@ export function setTheme(name: string) {
   theme = next
   kindColor = buildKind(next)
 }
-
-// Readable foreground for text drawn on an arbitrary background (opencode's
-// contrast-aware selected foreground). Relative luminance (sRGB, no gamma — good
-// enough for terminal hues) picks the theme's dark vs light text.
-export function readableOn(bg: string): string {
-  const h = bg.replace("#", "")
-  const r = parseInt(h.slice(0, 2), 16)
-  const g = parseInt(h.slice(2, 4), 16)
-  const b = parseInt(h.slice(4, 6), 16)
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return lum > 0.55 ? theme.background : theme.text
-}
