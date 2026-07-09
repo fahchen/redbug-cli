@@ -10,7 +10,7 @@ defmodule Server.Remote do
   remote work directly.
   """
 
-  alias Server.Remote.Console
+  alias Server.{Runners, Remote.Console}
 
   @registry Server.Remote.Registry
   @supervisor Server.Remote.Supervisor
@@ -24,59 +24,27 @@ defmodule Server.Remote do
 
   @doc "Run a code block on the session's node. Ensures a runner exists."
   def run(node_id, session_id, code, name) do
-    ensure_runner(node_id, session_id)
+    Runners.ensure(@registry, @supervisor, Console, node_id, session_id)
     Console.run(session_id, code, name)
   end
 
   @doc "Force-stop (kill) a running execution."
-  def stop(session_id, exec_id), do: with_runner(session_id, &Console.stop(&1, exec_id))
+  def stop(session_id, exec_id), do: Runners.with_runner(@registry, session_id, &Console.stop(&1, exec_id))
 
   @doc "Delete an execution entry from the history."
-  def delete_exec(session_id, exec_id), do: with_runner(session_id, &Console.delete(&1, exec_id))
+  def delete_exec(session_id, exec_id), do: Runners.with_runner(@registry, session_id, &Console.delete(&1, exec_id))
 
   @doc "Clear the execution history."
-  def clear(session_id), do: with_runner(session_id, &Console.clear/1)
+  def clear(session_id), do: Runners.with_runner(@registry, session_id, &Console.clear/1)
 
   @doc "Current execution history (newest first), or empty if no runner."
   def snapshot(session_id) do
-    case whereis(session_id) do
+    case Runners.whereis(@registry, session_id) do
       nil -> %{history: []}
       _pid -> Console.snapshot(session_id)
     end
   end
 
   @doc "Stop and remove a session's runner (on session delete)."
-  def terminate(session_id) do
-    case whereis(session_id) do
-      nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(@supervisor, pid)
-    end
-  end
-
-  # --- internals ---
-
-  defp ensure_runner(node_id, session_id) do
-    case whereis(session_id) do
-      nil ->
-        spec = {Console, node_id: node_id, session_id: session_id}
-        DynamicSupervisor.start_child(@supervisor, spec)
-
-      _pid ->
-        :ok
-    end
-  end
-
-  defp with_runner(session_id, fun) do
-    case whereis(session_id) do
-      nil -> :ok
-      _pid -> fun.(session_id)
-    end
-  end
-
-  defp whereis(session_id) do
-    case Registry.lookup(@registry, session_id) do
-      [{pid, _}] -> pid
-      [] -> nil
-    end
-  end
+  def terminate(session_id), do: Runners.terminate(@registry, @supervisor, session_id)
 end
