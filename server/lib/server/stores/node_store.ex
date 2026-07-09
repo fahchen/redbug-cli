@@ -61,11 +61,6 @@ defmodule Server.Stores.NodeStore do
     end
   end
 
-  command :dismissError do
-    payload do
-    end
-  end
-
   command :createSession do
     payload do
       field(:name, String.t())
@@ -141,11 +136,6 @@ defmodule Server.Stores.NodeStore do
 
   def handle_command(:disconnect, _payload, socket) do
     Config.disconnect_node(socket.assigns.node.id)
-    {:noreply, socket}
-  end
-
-  def handle_command(:dismissError, _payload, socket) do
-    Config.dismiss_node_error(socket.assigns.node.id)
     {:noreply, socket}
   end
 

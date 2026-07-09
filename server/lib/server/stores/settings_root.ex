@@ -44,10 +44,22 @@ defmodule Server.Stores.SettingsRoot do
 
   def handle_command(_name, _payload, socket), do: {:noreply, socket}
 
+  # Whitelist: only these client-sent string keys become atoms (guards against
+  # atom-table exhaustion from arbitrary wire input). Unknown keys → nil → dropped.
+  @known_keys %{
+    "columns" => :columns,
+    "default_sort" => :default_sort,
+    "default_limits" => :default_limits,
+    "theme" => :theme,
+    "show_hints" => :show_hints,
+    "console_timeout" => :console_timeout
+  }
+  @column_keys %{"name" => :name, "pid" => :pid, "mfa" => :mfa, "info" => :info}
+
   # Client sends string-keyed partial settings; convert top-level known keys to atoms.
   defp normalize(payload) do
     Enum.reduce(payload, %{}, fn {k, v}, acc ->
-      case to_known_key(k) do
+      case Map.get(@known_keys, to_string(k)) do
         nil -> acc
         key -> Map.put(acc, key, normalize_value(key, v))
       end
@@ -55,34 +67,8 @@ defmodule Server.Stores.SettingsRoot do
   end
 
   defp normalize_value(:columns, cols) when is_map(cols) do
-    for {k, v} <- cols, key = column_key(k), key != nil, into: %{}, do: {key, v}
+    for {k, v} <- cols, key = Map.get(@column_keys, to_string(k)), key != nil, into: %{}, do: {key, v}
   end
 
   defp normalize_value(_key, v), do: v
-
-  defp to_known_key(k) when is_atom(k), do: to_known_key(Atom.to_string(k))
-
-  defp to_known_key(k) when is_binary(k) do
-    case k do
-      "columns" -> :columns
-      "default_sort" -> :default_sort
-      "default_limits" -> :default_limits
-      "theme" -> :theme
-      "show_hints" -> :show_hints
-      "console_timeout" -> :console_timeout
-      _ -> nil
-    end
-  end
-
-  defp column_key(k) when is_atom(k), do: column_key(Atom.to_string(k))
-
-  defp column_key(k) when is_binary(k) do
-    case k do
-      "name" -> :name
-      "pid" -> :pid
-      "mfa" -> :mfa
-      "info" -> :info
-      _ -> nil
-    end
-  end
 end

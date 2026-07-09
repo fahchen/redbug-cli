@@ -159,9 +159,6 @@ defmodule Server.Config do
   """
   def request_connect(id), do: GenServer.cast(__MODULE__, {:request_connect, id})
 
-  @doc "Clear a node's `:error` status back to `:idle`."
-  def dismiss_node_error(id), do: GenServer.call(__MODULE__, {:dismiss_node_error, id})
-
   @doc "Set a session's runtime status (\"running\"/\"stopped\"); not persisted."
   def set_session_status(session_id, status),
     do: GenServer.call(__MODULE__, {:set_session_status, session_id, status})
@@ -412,11 +409,6 @@ defmodule Server.Config do
     {:reply, do_connect(id), state}
   end
 
-  def handle_call({:dismiss_node_error, id}, _from, state) do
-    set_status(id, %{state: :idle, error: nil, attempts: 0})
-    {:reply, :ok, state}
-  end
-
   def handle_call({:disconnect_node, id}, _from, state) do
     case fetch_node(id) do
       nil ->
@@ -644,7 +636,7 @@ defmodule Server.Config do
     dir = Path.dirname(path())
     File.mkdir_p!(dir)
     File.chmod(dir, 0o700)
-    File.write!(path(), Jason.encode!(to_json(config), pretty: true))
+    File.write!(path(), Jason.encode!(config, pretty: true))
     File.chmod(path(), 0o600)
   end
 
@@ -827,7 +819,4 @@ defmodule Server.Config do
       show_hints: Map.get(j, "show_hints", @default_settings.show_hints)
     }
   end
-
-  # Internal maps already use atom keys; Jason encodes atom keys as strings.
-  defp to_json(config), do: config
 end

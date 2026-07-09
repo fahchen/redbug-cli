@@ -94,11 +94,6 @@ defmodule Server.Stores.SessionRoot do
     end
   end
 
-  command :dismissError do
-    payload do
-    end
-  end
-
   command :reconnect do
     payload do
     end
@@ -265,10 +260,6 @@ defmodule Server.Stores.SessionRoot do
   def handle_command(:deleteEvent, payload, socket) do
     id = get(payload, "id")
     {:noreply, stream_delete_by_item_key(socket, :events, id)}
-  end
-
-  def handle_command(:dismissError, _payload, socket) do
-    {:noreply, assign(socket, :error, nil)}
   end
 
   # Manual retry after the node connect gave up (:error). request_connect resets
