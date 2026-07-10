@@ -270,6 +270,7 @@ defmodule Server.Config do
       ssh_port: blank_to_nil(Map.get(attrs, :ssh_port)),
       ssh_user: blank_to_nil(Map.get(attrs, :ssh_user)),
       container: blank_to_nil(Map.get(attrs, :container)),
+      label: blank_to_nil(Map.get(attrs, :label)),
       sessions: []
     }
 
@@ -290,6 +291,7 @@ defmodule Server.Config do
           |> maybe_put_opt(:ssh_port, attrs)
           |> maybe_put_opt(:ssh_user, attrs)
           |> maybe_put_opt(:container, attrs)
+          |> maybe_put_opt(:label, attrs)
         end)
 
       put_nodes(nodes)
@@ -761,6 +763,7 @@ defmodule Server.Config do
       ssh_port: blank_to_nil(Map.get(j, "ssh_port")),
       ssh_user: blank_to_nil(Map.get(j, "ssh_user")),
       container: blank_to_nil(Map.get(j, "container")),
+      label: blank_to_nil(Map.get(j, "label")),
       sessions: j |> Map.get("sessions", []) |> Enum.map(&session_from_json/1)
     }
   end

@@ -61,7 +61,8 @@ defmodule Server.Stores.NodesRoot do
         ssh_host: get(payload, "ssh_host", nil),
         ssh_port: get(payload, "ssh_port", nil),
         ssh_user: get(payload, "ssh_user", nil),
-        container: get(payload, "container", nil)
+        container: get(payload, "container", nil),
+        label: get(payload, "label", nil)
       })
     end
 

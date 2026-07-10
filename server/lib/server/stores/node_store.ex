@@ -110,6 +110,7 @@ defmodule Server.Stores.NodeStore do
         |> put_if(payload, "ssh_port", :ssh_port)
         |> put_if(payload, "ssh_user", :ssh_user)
         |> put_if(payload, "container", :container)
+        |> put_if(payload, "label", :label)
 
       Config.update_node(socket.assigns.node.id, attrs)
     end

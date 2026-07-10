@@ -22,7 +22,7 @@ defmodule Server.Stores.ChildStoresSmokeTest do
   test "node tree: root create + node/session child commands" do
     page = Testing.mount(Server.Stores.NodesRoot)
 
-    dispatch(page, :createNode, %{name: "n1@host", cookie: "c"})
+    dispatch(page, :createNode, %{name: "n1@host", cookie: "c", label: "prod"})
     # root render returns %Musubi.Child{} entries; only id is exposed here, the
     # resolved fields live behind the child store path
     assert [node] = Testing.render(page).nodes
@@ -31,11 +31,15 @@ defmodule Server.Stores.ChildStoresSmokeTest do
     # store_id path embeds the field-name segment: nodes/<id>, nodes/<id>/sessions/<id>
     node_path = ["nodes", nid]
     assert Testing.render(page, node_path).name == "n1@host"
+    # label must survive create; it rides through every node layer (createNode →
+    # Config.add_node → NodeStore.render), a path that silently dropped it before.
+    assert Testing.render(page, node_path).label == "prod"
     assert Testing.render(page, node_path).sessions == []
 
     # editNode on the node child — no id in payload
-    dispatch(page, :editNode, %{name: "renamed"}, node_path)
+    dispatch(page, :editNode, %{name: "renamed", label: "staging"}, node_path)
     assert Testing.render(page, node_path).name == "renamed"
+    assert Testing.render(page, node_path).label == "staging"
 
     # createSession on the node child
     dispatch(page, :createSession, %{name: "s1", from_preset_id: nil}, node_path)
