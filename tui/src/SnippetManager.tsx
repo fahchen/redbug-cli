@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { SNIPPETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
-import { CodeBlock } from "./CodeBlock"
+import { elixirStyle, tsClient } from "./treesitter"
 import { HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 
@@ -177,7 +177,12 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           ) : cur.code.trim() === "" ? (
             <text fg={theme.dim}>Empty · e to edit in $EDITOR</text>
           ) : (
-            <CodeBlock content={cur.code} />
+            <code
+              content={cur.code}
+              filetype="elixir"
+              syntaxStyle={elixirStyle}
+              treeSitterClient={tsClient}
+            />
           )}
           </scrollbox>
         </Panel>

@@ -4,7 +4,7 @@ import { splitEventInfo } from "./sessionHelpers"
 import { kindSym } from "./sessionTypes"
 import type { TraceEvent } from "./types"
 import { Chip } from "./ui"
-import { CodeBlock } from "./CodeBlock"
+import { elixirStyle, tsClient } from "./treesitter"
 
 export function DetailMeta({ ev }: { ev: TraceEvent }) {
   const sym = kindSym[ev.kind] ?? "?"
@@ -45,7 +45,12 @@ export function EventDetailBody({ ev }: { ev: TraceEvent }) {
   return (
     <>
       <text fg={theme.textMuted} marginTop={1}>{payloadLabel}</text>
-      <CodeBlock content={payload} />
+      <code
+        content={payload}
+        filetype="elixir"
+        syntaxStyle={elixirStyle}
+        treeSitterClient={tsClient}
+      />
       {stack.length > 0 && (
         <>
           <text fg={theme.textMuted} marginTop={1}>stack</text>

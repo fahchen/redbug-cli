@@ -8,8 +8,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@lumis-sh/lumis": "^0.5.2",
-    "@lumis-sh/themes": "^0.2.2",
     "@musubi/client": "workspace:*",
     "@musubi/react": "workspace:*",
     "@opentui/core": "latest",

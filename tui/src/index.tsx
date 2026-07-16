@@ -4,13 +4,13 @@ import { createRoot } from "@opentui/react"
 
 import { App } from "./App"
 import { connect, MusubiProvider, socket } from "./musubi"
-import { warmHighlighter } from "./CodeBlock"
+import { ensureTreeSitter } from "./treesitter"
 
 const renderer = await createCliRenderer({ exitOnCtrlC: true })
 const connection = await connect(socket)
 
-// warm the lumis Elixir highlighter so code blocks paint highlighted on mount
-void warmHighlighter()
+// warm the Elixir tree-sitter parser so <code> highlights on first paint
+void ensureTreeSitter()
 
 createRoot(renderer).render(
   // MusubiProvider is a React context provider typed for the React DOM JSX

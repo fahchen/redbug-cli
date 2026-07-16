@@ -455,13 +455,9 @@ const buildKind = (t: Theme): Record<string, string> => ({
 
 export let theme: Theme = themes["tokyo-night"]
 export let kindColor: Record<string, string> = buildKind(theme)
-// The active theme's name, so code highlighting can pick a matching lumis theme
-// (see CodeBlock.tsx). Tracked here because `theme` itself carries no name.
-export let currentThemeName = "tokyo-night"
 
 export function setTheme(name: string) {
   const next = themes[name] ?? themes["tokyo-night"]
   theme = next
   kindColor = buildKind(next)
-  currentThemeName = name
 }
