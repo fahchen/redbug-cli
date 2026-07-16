@@ -3,8 +3,24 @@ erlang = "28.3"
 elixir = "1.19.5-otp-28"
 bun = "1.3"
 
+[tasks.setup]
+description = "Install all deps: Elixir controller (server) + Bun/opentui/lumis (TUI)"
+run = """
+set -e
+# Elixir deps. Ensure hex/rebar exist first so a fresh toolchain doesn't prompt;
+# the check keeps this a fast no-op once installed (setup runs before dev/package).
+cd server
+mix hex.info >/dev/null 2>&1 || { mix local.hex --force && mix local.rebar --force; }
+mix deps.get
+# TUI deps (opentui, lumis, react, musubi workspace links); no-op when the bun
+# lockfile is already satisfied.
+cd ../tui
+bun install
+"""
+
 [tasks.dev]
 description = "Start server (random free port) then TUI; cookie via RB_COOKIE (default rbtest)"
+depends = ["setup"]
 dir = "server"
 run = """
 set -e
@@ -36,6 +52,7 @@ cd ../tui && REDBUG_PORT="$port" bun run dev
 
 [tasks.package]
 description = "Build single-file dist/redbug (bun --compile embedding the server release)"
+depends = ["setup"]
 run = """
 set -e
 root="$(pwd)"
@@ -47,7 +64,7 @@ tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" serve
 # Compiles straight into the root dist/ (build script targets ../dist).
 rm -rf "$root/dist"
 mkdir -p "$root/dist"
-cd "$root/tui" && bun install && bun run build:redbug
+cd "$root/tui" && bun run build:redbug
 chmod +x "$root/dist/redbug"
 echo "packaged -> dist/redbug (single file; run it to launch)"
 """
