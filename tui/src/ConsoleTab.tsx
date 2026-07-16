@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
-import { elixirStyle, tsClient } from "./treesitter"
+import { CodeBlock } from "./CodeBlock"
 import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, wrapText } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 import { DialogSelect } from "./DialogSelect"
@@ -387,16 +387,11 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
         <Chip label="Ts" value={exec.ts} />
       </box>
       <text fg={theme.textMuted} marginTop={1}>Code</text>
-      <code content={code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
+      <CodeBlock content={code} />
       {exec.result?.trim() !== "" && (
         <>
           <text fg={theme.textMuted} marginTop={1}>Result</text>
-          <code
-            content={exec.result.split("\n").slice(0, 10).join("\n")}
-            filetype="elixir"
-            syntaxStyle={elixirStyle}
-            treeSitterClient={tsClient}
-          />
+          <CodeBlock content={exec.result.split("\n").slice(0, 10).join("\n")} />
         </>
       )}
       {exec.output?.trim() !== "" && (
