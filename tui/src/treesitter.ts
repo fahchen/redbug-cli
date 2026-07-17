@@ -2,12 +2,12 @@ import { SyntaxStyle, TreeSitterClient } from "@opentui/core"
 
 import { theme } from "./theme"
 
-declare const Bun: { fileURLToPath(url: URL): string }
-
-// Vendored Elixir grammar + highlights query (see tui/assets/elixir). Loaded from
-// local file paths so the compiled dist stays offline-capable.
-const wasm = Bun.fileURLToPath(new URL("../assets/elixir/tree-sitter-elixir.wasm", import.meta.url))
-const highlights = Bun.fileURLToPath(new URL("../assets/elixir/highlights.scm", import.meta.url))
+// Vendored Elixir grammar + highlights query (see tui/assets/elixir), imported as
+// files so `bun --compile` embeds them into the single-file binary. A bare
+// `new URL(..., import.meta.url)` asset is dropped from the compiled dist, so the
+// wasm would go missing at runtime in the packaged CLI (see embed.d.ts).
+import wasm from "../assets/elixir/tree-sitter-elixir.wasm" with { type: "file" }
+import highlights from "../assets/elixir/highlights.scm" with { type: "file" }
 
 export const tsClient = new TreeSitterClient({ dataPath: "/tmp/redbug-ts-cache" })
 
