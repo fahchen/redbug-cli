@@ -1,13 +1,15 @@
 /** @jsxImportSource @opentui/react */
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
+import type { RefObject } from "react"
+import type { ScrollBoxRenderable } from "@opentui/core"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, wrapText } from "./ui"
+import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, useScrollFollow, wrapText } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 import { DialogSelect } from "./DialogSelect"
 
@@ -95,6 +97,8 @@ function ConsoleView({
   const [modal, setModal] = useState<Modal>({ kind: "none" })
 
   const cur = history[Math.min(sel, history.length - 1)] ?? null
+  const historyScrollRef = useScrollFollow(cur?.id)
+  const detailScrollRef = useRef<ScrollBoxRenderable>(null)
   const runningCount = history.filter((e) => e.status === "running").length
   const nodeSpin = useSpinner(nodeStatus === "connecting")
   const leftBorderColor =
@@ -174,6 +178,10 @@ function ConsoleView({
       return
     }
 
+    // ⌃F/⌃B page-scroll the detail pane (j/k are taken by history nav)
+    if (key.ctrl && n === "f") { detailScrollRef.current?.scrollBy(1, "viewport"); return }
+    if (key.ctrl && n === "b") { detailScrollRef.current?.scrollBy(-1, "viewport"); return }
+
     switch (n) {
       case "escape":
         onBack()
@@ -181,10 +189,12 @@ function ConsoleView({
       case "j":
       case "down":
         setSel((i) => (i + 1 >= history.length ? 0 : i + 1))
+        detailScrollRef.current?.scrollTo(0)
         break
       case "k":
       case "up":
         setSel((i) => (i <= 0 ? Math.max(0, history.length - 1) : i - 1))
+        detailScrollRef.current?.scrollTo(0)
         break
       case "n":
         setPick(0)
@@ -234,15 +244,15 @@ function ConsoleView({
           {history.length === 0 ? (
             <text fg={theme.textMuted}>No executions yet · n to run</text>
           ) : (
-            <scrollbox scrollY stickyStart="top" flexGrow={1}>
+            <scrollbox ref={historyScrollRef} scrollY stickyStart="top" flexGrow={1}>
               {history.map((e, i) => (
-                <HistoryRow key={e.id} exec={e} active={i === sel} />
+                <HistoryRow key={e.id} id={e.id} exec={e} active={i === sel} />
               ))}
             </scrollbox>
           )}
         </box>
 
-        <ExecDetail exec={cur} />
+        <ExecDetail exec={cur} scrollRef={detailScrollRef} />
       </box>
 
       <StatusBar
@@ -251,7 +261,7 @@ function ConsoleView({
           : nodeStatus === "error" ? "✖ can't reach node"
           : `${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`
         }
-        hints="j/k move · n compose · e edit+run · r run · v view · s save · d del · x stop · ⌃L clear · [/] tabs · ? help · esc back"
+        hints="j/k move · ⌃F/⌃B scroll · n compose · e edit+run · r run · v view · s save · d del · x stop · ⌃L clear · [/] tabs · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -334,14 +344,14 @@ function ConsoleView({
   )
 }
 
-function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
+function HistoryRow({ exec, active, id }: { exec: Exec; active: boolean; id?: string }) {
   const bg = active ? theme.backgroundElement : theme.background
   const fg = active ? theme.text : theme.textMuted
   const spin = useSpinner(exec.status === "running")
   const glyph = exec.status === "running" ? spin : statusGlyph(exec.status)
   const label = exec.name?.trim() ? exec.name : firstLine(exec.code)
   return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+    <box id={id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={statusColor(exec.status)}>{`${glyph} `}</text>
       <text bg={bg} fg={theme.textMuted}>{`${exec.ts} `}</text>
       <text bg={bg} fg={fg}>{label}</text>
@@ -349,7 +359,7 @@ function HistoryRow({ exec, active }: { exec: Exec; active: boolean }) {
   )
 }
 
-function ExecDetail({ exec }: { exec: Exec | null }) {
+function ExecDetail({ exec, scrollRef }: { exec: Exec | null; scrollRef?: RefObject<ScrollBoxRenderable | null> }) {
   return (
     <box
       border
@@ -366,7 +376,9 @@ function ExecDetail({ exec }: { exec: Exec | null }) {
       {exec === null ? (
         <text fg={theme.textMuted}>No execution selected · n to run</text>
       ) : (
-        <ExecDetailBody exec={exec} />
+        <scrollbox ref={scrollRef} scrollY stickyStart="top" flexGrow={1}>
+          <ExecDetailBody exec={exec} />
+        </scrollbox>
       )}
     </box>
   )
@@ -374,7 +386,6 @@ function ExecDetail({ exec }: { exec: Exec | null }) {
 
 function ExecDetailBody({ exec }: { exec: Exec }) {
   const dur = exec.duration_ms == null ? "—" : `${exec.duration_ms}ms`
-  const code = exec.code.split("\n").slice(0, 12).join("\n")
   const errTone = exec.status === "error" || exec.status === "timeout"
   const spin = useSpinner(exec.status === "running")
   const glyph = exec.status === "running" ? spin : statusGlyph(exec.status)
@@ -387,12 +398,12 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
         <Chip label="Ts" value={exec.ts} />
       </box>
       <text fg={theme.textMuted} marginTop={1}>Code</text>
-      <code content={code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
+      <code content={exec.code} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
       {exec.result?.trim() !== "" && (
         <>
           <text fg={theme.textMuted} marginTop={1}>Result</text>
           <code
-            content={exec.result.split("\n").slice(0, 10).join("\n")}
+            content={exec.result}
             filetype="elixir"
             syntaxStyle={elixirStyle}
             treeSitterClient={tsClient}
@@ -402,7 +413,7 @@ function ExecDetailBody({ exec }: { exec: Exec }) {
       {exec.output?.trim() !== "" && (
         <>
           <text fg={theme.textMuted} marginTop={1}>Stdout</text>
-          {exec.output.split("\n").flatMap((l) => wrapText(l, 60)).slice(0, 10).map((l, i) => (
+          {exec.output.split("\n").flatMap((l) => wrapText(l, 60)).map((l, i) => (
             <text key={`o${i}`} fg={theme.textMuted}>{l}</text>
           ))}
         </>

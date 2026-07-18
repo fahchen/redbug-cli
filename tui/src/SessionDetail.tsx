@@ -1,4 +1,6 @@
 /** @jsxImportSource @opentui/react */
+import type { RefObject } from "react"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { theme, PANEL_BORDER } from "./theme"
 import { splitEventInfo } from "./sessionHelpers"
 import { kindSym } from "./sessionTypes"
@@ -19,7 +21,15 @@ export function DetailMeta({ ev }: { ev: TraceEvent }) {
   )
 }
 
-export function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }) {
+export function DetailPane({
+  ev,
+  focused,
+  scrollRef
+}: {
+  ev: TraceEvent
+  focused: boolean
+  scrollRef?: RefObject<ScrollBoxRenderable | null>
+}) {
   return (
     <box
       border
@@ -33,7 +43,9 @@ export function DetailPane({ ev, focused }: { ev: TraceEvent; focused: boolean }
       padding={1}
     >
       <DetailMeta ev={ev} />
-      <EventDetailBody ev={ev} />
+      <scrollbox ref={scrollRef} scrollY stickyStart="top" flexGrow={1}>
+        <EventDetailBody ev={ev} />
+      </scrollbox>
     </box>
   )
 }

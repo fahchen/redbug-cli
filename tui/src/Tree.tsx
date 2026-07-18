@@ -30,7 +30,7 @@ export function EmptyTree() {
   )
 }
 
-export function NodeRow({ node, active }: { node: Node; active: boolean }) {
+export function NodeRow({ node, active, id }: { node: Node; active: boolean; id?: string }) {
   const bg = active ? theme.backgroundElement : theme.background
   const spin = useSpinner(node.status === "connecting")
   const dot =
@@ -46,7 +46,7 @@ export function NodeRow({ node, active }: { node: Node; active: boolean }) {
   const nameColor = active || node.status === "connected" ? theme.text : theme.textMuted
   const displayName = node.label || node.name
   return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+    <box id={id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={dotColor}>{`${dot} `}</text>
       <text bg={bg} fg={nameColor}>{displayName}</text>
       {node.source === "env" && <text bg={bg} fg={theme.textMuted}>{"  env"}</text>}
@@ -60,19 +60,21 @@ export function SessionRow({
   session,
   index,
   nameWidth,
-  active
+  active,
+  id
 }: {
   session: Session
   index: number
   nameWidth: number
   active: boolean
+  id?: string
 }) {
   const bg = active ? theme.backgroundElement : theme.background
   const num = `${index} ·`
   const numFg = active ? theme.accent : theme.textMuted
   const nameFg = active ? theme.text : theme.textMuted
   return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+    <box id={id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={numFg}>{num.padStart(4)}</text>
       <text bg={bg} fg={nameFg}>{`  ${truncate(session.name, nameWidth)}`}</text>
     </box>

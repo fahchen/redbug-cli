@@ -2,12 +2,13 @@
 import { useState, useRef, useEffect } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
+import type { ScrollBoxRenderable } from "@opentui/core"
 
 import { SNIPPETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { editInEditor } from "./editor"
 import { theme } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
-import { HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
+import { HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField, useScrollFollow } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 
 type SnippetsStore = StoreProxy<"Server.Stores.SnippetsRoot", Musubi.Stores>
@@ -39,6 +40,8 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   const [modal, setModal] = useState<Modal>({ kind: "none" })
 
   const cur = snippets[Math.min(sel, snippets.length - 1)] ?? null
+  const snippetsScrollRef = useScrollFollow(cur?.id)
+  const codeScrollRef = useRef<ScrollBoxRenderable>(null)
   const numBuf = useRef("")
   const numTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSnippet = useRef<string | null>(null)
@@ -106,6 +109,10 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       return
     }
 
+    // ⌃F/⌃B page-scroll the code pane (j/k are taken by snippet nav)
+    if (key.ctrl && n === "f") { codeScrollRef.current?.scrollBy(1, "viewport"); return }
+    if (key.ctrl && n === "b") { codeScrollRef.current?.scrollBy(-1, "viewport"); return }
+
     switch (n) {
       case "escape":
         onBack()
@@ -113,10 +120,12 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
       case "j":
       case "down":
         setSel((i) => (i + 1 >= snippets.length ? 0 : i + 1))
+        codeScrollRef.current?.scrollTo(0)
         break
       case "k":
       case "up":
         setSel((i) => (i <= 0 ? Math.max(0, snippets.length - 1) : i - 1))
+        codeScrollRef.current?.scrollTo(0)
         break
       case "e":
         if (cur) editCode(cur)
@@ -161,17 +170,17 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <Panel heading={`Snippets (${snippets.length})`} active width={40}>
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox ref={snippetsScrollRef} scrollY flexGrow={1}>
           {snippets.length === 0 ? (
             <text fg={theme.dim}>No snippets yet · n to add</text>
           ) : (
-            snippets.map((s, i) => <SnippetRow key={s.id} snippet={s} active={i === sel} index={i + 1} />)
+            snippets.map((s, i) => <SnippetRow key={s.id} id={s.id} snippet={s} active={i === sel} index={i + 1} />)
           )}
           </scrollbox>
         </Panel>
 
         <Panel heading={cur ? cur.name : "—"} grow>
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox ref={codeScrollRef} scrollY flexGrow={1}>
           {!cur ? (
             <text fg={theme.dim}>Select a snippet</text>
           ) : cur.code.trim() === "" ? (
@@ -190,7 +199,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 
       <StatusBar
         statusText={`${snippets.length} snippets`}
-        hints="j/k move · e edit · n new · r rename · f format · d del · #g jump · ? help · esc back"
+        hints="j/k move · ⌃F/⌃B scroll · e edit · n new · r rename · f format · d del · #g jump · ? help · esc back"
       />
 
       {modal.kind === "help" && (
@@ -250,12 +259,12 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
   )
 }
 
-function SnippetRow({ snippet, active, index }: { snippet: Snippet; active: boolean; index: number }) {
+function SnippetRow({ snippet, active, index, id }: { snippet: Snippet; active: boolean; index: number; id?: string }) {
   const bg = active ? theme.backgroundElement : theme.background
   const fg = active ? theme.selectedForeground : theme.fg
   const numFg = active ? theme.accent : theme.dim
   return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+    <box id={id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={numFg}>{`${String(index).padStart(2)} · `}</text>
       <text bg={bg} fg={fg}>{snippet.name}</text>
     </box>

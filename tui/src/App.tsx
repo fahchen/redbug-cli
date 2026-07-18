@@ -13,7 +13,7 @@ import {
   useMusubiSnapshot
 } from "./musubi"
 import { theme, setTheme } from "./theme"
-import { Chip, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, truncate, useSpinner } from "./ui"
+import { Chip, HelpOverlay, HintProvider, Notice, Overlay, Panel, StatusBar, TextField, truncate, useSpinner, useScrollFollow } from "./ui"
 import { DialogSelect } from "./DialogSelect"
 import { NodeRow, SessionRow, NodeDetailBand, EmptyTree, isValidHost } from "./Tree"
 import { ModalLayer as NodeModalLayer } from "./NodeModal"
@@ -193,6 +193,8 @@ function S1View({
   const sessions = node?.sessions ?? []
   const sessIdx = Math.min(sessSel, Math.max(0, sessions.length - 1))
   const session = sessions[sessIdx] ?? null
+  const nodesScrollRef = useScrollFollow(node?.id)
+  const sessScrollRef = useScrollFollow(session?.id)
   const sessionProxy = node && session ? nodeProxy!.sessions[sessIdx] : undefined
 
   // `error` lives on the NodeStore child state (node-scoped); `Node` is aliased
@@ -499,12 +501,12 @@ function S1View({
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <Panel heading="Nodes" active={focus === "nodes"} width={40}>
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox ref={nodesScrollRef} scrollY flexGrow={1}>
           {nodeList.length === 0 ? (
             <EmptyTree />
           ) : (
             nodeList.map((n, i) => (
-              <NodeRow key={n.id} node={n} active={i === nodeIdx} />
+              <NodeRow key={n.id} id={n.id} node={n} active={i === nodeIdx} />
             ))
           )}
           </scrollbox>
@@ -512,14 +514,14 @@ function S1View({
 
         <Panel heading={node ? node.name : "—"} active={focus === "sessions"} grow>
           {node && <NodeDetailBand node={node} error={nodeError} />}
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox ref={sessScrollRef} scrollY flexGrow={1}>
           {!node ? (
             <text fg={theme.textMuted}>Select a node</text>
           ) : sessions.length === 0 ? (
             <text fg={theme.textMuted}>No sessions · s to add</text>
           ) : (
             sessions.map((s, i) => (
-              <SessionRow key={s.id} session={s} index={i + 1} nameWidth={sessNameWidth} active={focus === "sessions" && i === sessIdx} />
+              <SessionRow key={s.id} id={s.id} session={s} index={i + 1} nameWidth={sessNameWidth} active={focus === "sessions" && i === sessIdx} />
             ))
           )}
           </scrollbox>

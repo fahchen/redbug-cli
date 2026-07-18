@@ -1,8 +1,9 @@
 /** @jsxImportSource @opentui/react */
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import { useTerminalDimensions } from "@opentui/react"
 import { RGBA } from "@opentui/core"
+import type { ScrollBoxRenderable } from "@opentui/core"
 
 import { theme, type Theme, PANEL_BORDER } from "./theme"
 
@@ -23,6 +24,18 @@ export function useSpinner(active: boolean): string {
     return () => clearInterval(id)
   }, [active])
   return active ? SPIN_FRAMES[i % SPIN_FRAMES.length] : ""
+}
+
+// Keep the selected row visible in a <scrollbox>: give the active row an
+// `id={String(activeId)}` and pass the same `activeId` here. opentui only
+// scroll-follows on native focus, which this app bypasses (single global
+// keyboard handler), so we drive it imperatively via scrollChildIntoView.
+export function useScrollFollow(activeId: string | number | null | undefined) {
+  const ref = useRef<ScrollBoxRenderable>(null)
+  useEffect(() => {
+    if (activeId != null) ref.current?.scrollChildIntoView(String(activeId))
+  }, [activeId])
+  return ref
 }
 
 // Whether keybind hint footers are shown (driven by the `show_hints` setting).
@@ -58,7 +71,7 @@ export function StatusBar({
   // in the title hue, the rest stays dim. Segments split on " · ".
   const segs = hintText === "" ? [] : hintText.split(" · ")
   return (
-    <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} flexDirection="row">
+    <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} flexDirection="row" flexShrink={0}>
       {statChip}
       {left !== "" && (
         <text bg={theme.background} fg={theme[tone]}>
@@ -299,9 +312,12 @@ export function truncate(s: string, n: number): string {
 }
 
 // Truncate to `n` (with ellipsis) and pad to a fixed width — for table columns.
+// Collapses any whitespace runs (incl. newlines/tabs) to a single space first, so
+// a multi-line payload stays on one row instead of breaking the table layout.
 export function fit(s: string, n: number): string {
-  if (s.length > n) return s.slice(0, Math.max(0, n - 1)) + "…"
-  return s.padEnd(n)
+  const flat = s.replace(/\s+/g, " ")
+  if (flat.length > n) return flat.slice(0, Math.max(0, n - 1)) + "…"
+  return flat.padEnd(n)
 }
 
 // Full-screen single-line message (loading / error states).

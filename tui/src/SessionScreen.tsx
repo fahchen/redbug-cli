@@ -2,12 +2,12 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
-import type { TabSelectRenderable } from "@opentui/core"
+import type { TabSelectRenderable, ScrollBoxRenderable } from "@opentui/core"
 
 import { sessionRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
 import { theme, PANEL_BORDER } from "./theme"
-import { Flash, ErrorDetailOverlay, RootGate, StatusBar, useSpinner } from "./ui"
+import { Flash, ErrorDetailOverlay, RootGate, StatusBar, useSpinner, useScrollFollow } from "./ui"
 import { ConsoleTab } from "./ConsoleTab"
 
 import { parseSort, processEvents, sparkline, openInEditor } from "./sessionHelpers"
@@ -117,8 +117,10 @@ function SessionView({
   const [sel, setSel] = useState(0)
   const [detailOpen, setDetailOpen] = useState(false)
   const [focus, setFocus] = useState<Focus>("list")
-  const [, setDetailScroll] = useState(0)
   const [zoom, setZoom] = useState(false)
+  const detailScrollRef = useRef<ScrollBoxRenderable>(null)
+  const scrollDetail = (delta: number, page?: boolean) =>
+    detailScrollRef.current?.scrollBy(delta, page ? "viewport" : "absolute")
 
   const [overlay, setOverlay] = useState<Overlay>("none")
   const [sortIdx, setSortIdx] = useState(0)
@@ -149,16 +151,17 @@ function SessionView({
   )
 
   const selClamped = Math.min(sel, Math.max(0, count - 1))
-  const selectedEvent =
-    rows.find((r): r is Extract<DRow, { type: "event" }> => r.type === "event" && r.sidx === selClamped)
-      ?.ev ?? null
+  const selectedRow =
+    rows.find((r): r is Extract<DRow, { type: "event" }> => r.type === "event" && r.sidx === selClamped) ?? null
+  const selectedEvent = selectedRow?.ev ?? null
+  const listScrollRef = useScrollFollow(selectedRow?.key)
 
   const dispatch = dispatcher(store)
 
   const moveSel = (delta: number) => {
     const next = sel + delta
     setSel(next < 0 ? count - 1 : next >= count ? 0 : next)
-    setDetailScroll(0)
+    detailScrollRef.current?.scrollTo(0)
   }
 
   const exportSelected = () => {
@@ -208,9 +211,11 @@ function SessionView({
     }
 
     if (zoom) {
+      if (key.ctrl && n === "f") return scrollDetail(1, true)
+      if (key.ctrl && n === "b") return scrollDetail(-1, true)
       if (n === "escape" || n === "z") setZoom(false)
-      else if (n === "j" || n === "down") setDetailScroll((s) => s + 1)
-      else if (n === "k" || n === "up") setDetailScroll((s) => Math.max(0, s - 1))
+      else if (n === "j" || n === "down") scrollDetail(1)
+      else if (n === "k" || n === "up") scrollDetail(-1)
       else if (n === "v") exportSelected()
       return
     }
@@ -218,11 +223,13 @@ function SessionView({
     if (detailOpen && focus === "detail") {
       if (key.ctrl && (n === "j" || n === "down")) return moveSel(1)
       if (key.ctrl && (n === "k" || n === "up")) return moveSel(-1)
+      if (key.ctrl && n === "f") return scrollDetail(1, true)
+      if (key.ctrl && n === "b") return scrollDetail(-1, true)
       switch (n) {
         case "escape": setDetailOpen(false); setFocus("list"); break
         case "tab": setFocus("list"); break
-        case "j": case "down": setDetailScroll((s) => s + 1); break
-        case "k": case "up": setDetailScroll((s) => Math.max(0, s - 1)); break
+        case "j": case "down": scrollDetail(1); break
+        case "k": case "up": scrollDetail(-1); break
         case "z": if (selectedEvent) setZoom(true); break
         case "v": exportSelected(); break
       }
@@ -254,7 +261,7 @@ function SessionView({
       case "j": case "down": moveSel(1); break
       case "k": case "up": moveSel(-1); break
       case "return":
-        if (selectedEvent) { setDetailOpen(true); setFocus("detail"); setDetailScroll(0) }
+        if (selectedEvent) { setDetailOpen(true); setFocus("detail"); detailScrollRef.current?.scrollTo(0) }
         break
       case "tab": if (detailOpen) setFocus("detail"); break
       case "o":
@@ -401,7 +408,7 @@ function SessionView({
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row">
+      <box backgroundColor={theme.background} paddingLeft={1} paddingRight={1} paddingTop={1} flexDirection="row" flexShrink={0}>
         <text fg={theme.text}>{snap?.name ?? "session"}</text>
         <box flexGrow={1} backgroundColor={theme.background} />
         <tab-select
@@ -449,24 +456,26 @@ function SessionView({
           flexGrow={1}
           flexBasis={0}
           flexDirection="column"
+          overflow="hidden"
           padding={1}
         >
           <ColumnHeader cols={cols} pidWidth={pidWidth} />
           {rows.length === 0 ? (
             <text fg={theme.textMuted}>No events yet · space to start</text>
           ) : (
-            <scrollbox scrollY stickyStart="top" flexGrow={1}>
+            <scrollbox ref={listScrollRef} scrollY stickyStart="top" flexGrow={1}>
               {(() => {
                 const shown = rows.slice(0, 300)
                 const ditto = group === "none" && !filter?.query
                 return shown.map((row, i) => {
                   if (row.type === "header")
-                    return <text key={row.key} fg={theme.textMuted}>{`${row.label} · ${row.count}`}</text>
+                    return <text key={row.key} id={row.key} fg={theme.textMuted}>{`${row.label} · ${row.count}`}</text>
                   const prev = i > 0 ? shown[i - 1] : null
                   const prevEv = prev && prev.type === "event" ? prev.ev : null
                   return (
                     <EventRow
                       key={row.key}
+                      id={row.key}
                       ev={row.ev}
                       active={row.sidx === selClamped}
                       filter={filter}
@@ -483,7 +492,7 @@ function SessionView({
         </box>
 
         {detailOpen && !zoom && selectedEvent && (
-          <DetailPane ev={selectedEvent} focused={focus === "detail"} />
+          <DetailPane ev={selectedEvent} focused={focus === "detail"} scrollRef={detailScrollRef} />
         )}
       </box>
       )}
@@ -563,7 +572,7 @@ function SessionView({
         />
       )}
 
-      {zoom && selectedEvent && <ZoomOverlay ev={selectedEvent} />}
+      {zoom && selectedEvent && <ZoomOverlay ev={selectedEvent} scrollRef={detailScrollRef} />}
       </>
       )}
     </box>

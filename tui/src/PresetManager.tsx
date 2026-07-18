@@ -6,7 +6,7 @@ import type { StoreProxy } from "@musubi/react"
 import { PRESETS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { formatLimits, parseLimits } from "./limits"
 import { theme } from "./theme"
-import { Chip, HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField } from "./ui"
+import { Chip, HelpOverlay, Overlay, Panel, RootGate, StatusBar, TextField, useScrollFollow } from "./ui"
 import { ConfirmOverlay } from "./ConfirmOverlay"
 import { RtpCheatSheet } from "./RtpCheatSheet"
 
@@ -49,6 +49,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
   const cur = presets[Math.min(sel, presets.length - 1)] ?? null
   const traces = (cur?.traces ?? []) as Rtp[]
   const traceCur = traces[Math.min(traceSel, traces.length - 1)] ?? null
+  const presetsScrollRef = useScrollFollow(cur?.id)
+  const tracesScrollRef = useScrollFollow(traceCur?.id)
 
   // createPreset is the only root command; preset-scoped mutations dispatch on
   // the matching child proxy (store path is the routing — no preset_id payload).
@@ -172,19 +174,19 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" flexGrow={1} paddingTop={1}>
         <Panel heading="Presets" active={focus === "list"} width={40}>
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox ref={presetsScrollRef} scrollY flexGrow={1}>
           {presets.length === 0 ? (
             <text fg={theme.textMuted}>No presets yet · n to add</text>
           ) : (
             presets.map((p, i) => (
-              <PresetRow key={p.id} preset={p} active={i === sel} />
+              <PresetRow key={p.id} id={p.id} preset={p} active={i === sel} />
             ))
           )}
           </scrollbox>
         </Panel>
 
         <Panel heading="Traces" active={focus === "detail"} grow>
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox ref={tracesScrollRef} scrollY flexGrow={1}>
           {!cur ? (
             <text fg={theme.textMuted}>Select a preset</text>
           ) : (
@@ -198,7 +200,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
                 <text fg={theme.textMuted}>No patterns yet · enter, then n to add</text>
               ) : (
                 traces.map((t, i) => (
-                  <TraceRow key={t.id} rtp={t} active={focus === "detail" && i === traceSel} />
+                  <TraceRow key={t.id} id={t.id} rtp={t} active={focus === "detail" && i === traceSel} />
                 ))
               )}
             </>
@@ -328,11 +330,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
   )
 }
 
-function PresetRow({ preset, active }: { preset: Preset; active: boolean }) {
+function PresetRow({ preset, active, id }: { preset: Preset; active: boolean; id?: string }) {
   const bg = active ? theme.backgroundElement : theme.background
   const fg = active ? theme.text : theme.textMuted
   return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+    <box id={id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={fg}>{preset.name}</text>
       <box flexGrow={1} backgroundColor={bg} />
       <text bg={bg} fg={theme.textMuted}>{preset.traces.length}</text>
@@ -342,11 +344,11 @@ function PresetRow({ preset, active }: { preset: Preset; active: boolean }) {
 
 // Preset traces are always active (no per-trace toggle): a preset is a template
 // where every pattern is meant to run. Drop it from the preset to exclude it.
-function TraceRow({ rtp, active }: { rtp: Rtp; active: boolean }) {
+function TraceRow({ rtp, active, id }: { rtp: Rtp; active: boolean; id?: string }) {
   const bg = active ? theme.backgroundElement : theme.background
   const fg = active ? theme.text : theme.textMuted
   return (
-    <box backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
+    <box id={id} backgroundColor={bg} flexDirection="row" paddingLeft={1} paddingRight={1}>
       <text bg={bg} fg={fg}>{rtp.text}</text>
     </box>
   )

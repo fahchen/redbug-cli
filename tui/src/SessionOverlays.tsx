@@ -1,4 +1,7 @@
 /** @jsxImportSource @opentui/react */
+import type { RefObject } from "react"
+import { useTerminalDimensions } from "@opentui/react"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { theme } from "./theme"
 import { FILTER_SCOPES, SORT_OPTS } from "./sessionTypes"
 import type { FilterScope, Filter } from "./sessionTypes"
@@ -154,6 +157,7 @@ export function SessionHelpOverlay() {
           lines: [
             ["tab", "switch list ↔ detail focus"],
             ["j / k", "scroll detail"],
+            ["⌃F / ⌃B", "page down / up"],
             ["⌃J / ⌃K", "move selection from detail"]
           ]
         },
@@ -194,11 +198,21 @@ export function ConfirmExitOverlay({ dirty }: { dirty: boolean }) {
 
 // --- Zoom Overlay ---
 
-export function ZoomOverlay({ ev }: { ev: TraceEvent }) {
+export function ZoomOverlay({
+  ev,
+  scrollRef
+}: {
+  ev: TraceEvent
+  scrollRef?: RefObject<ScrollBoxRenderable | null>
+}) {
+  const { height } = useTerminalDimensions()
+  const bodyHeight = Math.max(5, height - 10)
   return (
-    <Overlay title="Detail · esc close · v view" minWidth={70}>
+    <Overlay title="Detail · esc close · j/k scroll · ⌃F/⌃B page · v view" minWidth={70}>
       <DetailMeta ev={ev} />
-      <EventDetailBody ev={ev} />
+      <scrollbox ref={scrollRef} scrollY stickyStart="top" height={bodyHeight}>
+        <EventDetailBody ev={ev} />
+      </scrollbox>
     </Overlay>
   )
 }
