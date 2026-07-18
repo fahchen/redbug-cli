@@ -157,6 +157,7 @@ function ConsoleView({
       if (n === "y") {
         dispatch("deleteExec", { id: modal.id })
         setModal({ kind: "none" })
+        setSel((i) => Math.max(0, i - 1))
       } else if (n === "n" || n === "escape") setModal({ kind: "none" })
       return
     }
@@ -174,7 +175,7 @@ function ConsoleView({
     }
 
     if (key.ctrl && n === "d") {
-      if (cur) dispatch("deleteExec", { id: cur.id })
+      if (cur) { dispatch("deleteExec", { id: cur.id }); setSel((i) => Math.max(0, i - 1)) }
       return
     }
 

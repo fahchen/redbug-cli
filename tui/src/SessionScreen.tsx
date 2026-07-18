@@ -200,7 +200,7 @@ function SessionView({
     }
 
     if (overlay === "confirmDelete") {
-      if (n === "y" && selectedEvent) dispatch("deleteEvent", { id: selectedEvent.id })
+      if (n === "y" && selectedEvent) { dispatch("deleteEvent", { id: selectedEvent.id }); setSel((i) => Math.max(0, i - 1)) }
       if (n === "y" || n === "n" || n === "escape") setOverlay("none")
       return
     }
@@ -240,7 +240,7 @@ function SessionView({
     if (key.ctrl) {
       if (n === "l") return dispatch("clearEvents")
       if (n === "s") return dispatch("applyRestart")
-      if (n === "d" && selectedEvent) return dispatch("deleteEvent", { id: selectedEvent.id })
+      if (n === "d" && selectedEvent) { dispatch("deleteEvent", { id: selectedEvent.id }); setSel((i) => Math.max(0, i - 1)); return }
       if (detailOpen && (n === "j" || n === "down")) return moveSel(1)
       if (detailOpen && (n === "k" || n === "up")) return moveSel(-1)
       return

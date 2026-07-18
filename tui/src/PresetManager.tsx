@@ -82,6 +82,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
           const p = presetProxyById(modal.presetId)
           if (p) dispatcher(p)("deletePresetTrace", { trace_id: modal.traceId })
           setModal({ kind: "none" })
+          setTraceSel((i) => Math.max(0, i - 1))
         } else if (n === "n" || n === "escape") setModal({ kind: "none" })
         return
       }
@@ -98,6 +99,7 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
       if (focus === "detail" && cur && traceCur) {
         const p = presetProxyById(cur.id)
         if (p) dispatcher(p)("deletePresetTrace", { trace_id: traceCur.id })
+        setTraceSel((i) => Math.max(0, i - 1))
       } else if (focus === "list" && cur) {
         const p = presetProxyById(cur.id)
         if (p) dispatcher(p)("deletePreset")

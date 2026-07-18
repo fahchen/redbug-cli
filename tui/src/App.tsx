@@ -96,6 +96,11 @@ function Router({
   const settings = settingsSnap?.settings as Server.Schema.Settings | undefined
   setTheme(settings?.theme ?? "dark")
 
+  // Tree selection lives here, not in S1View, so it survives opening a session
+  // (S1View unmounts while the SessionScreen is up).
+  const [nodeSel, setNodeSel] = useState(0)
+  const [sessSel, setSessSel] = useState(0)
+
   return (
     <HintProvider show={settings?.show_hints ?? true}>
       {renderScreen()}
@@ -124,6 +129,10 @@ function Router({
       <S1View
         nodesStore={nodesStore}
         presetsStore={presetsStore}
+        nodeSel={nodeSel}
+        setNodeSel={setNodeSel}
+        sessSel={sessSel}
+        setSessSel={setSessSel}
         onOpenSession={(nodeId, sessionId) => setScreen({ name: "session", nodeId, sessionId })}
         onOpenPresets={() => setScreen({ name: "presets" })}
         onOpenSnippets={() => setScreen({ name: "snippets" })}
@@ -134,15 +143,25 @@ function Router({
 
 type Focus = "nodes" | "sessions"
 
+type SetNum = (v: number | ((prev: number) => number)) => void
+
 function S1View({
   nodesStore,
   presetsStore,
+  nodeSel,
+  setNodeSel,
+  sessSel,
+  setSessSel,
   onOpenSession,
   onOpenPresets,
   onOpenSnippets
 }: {
   nodesStore: NodesStore
   presetsStore: PresetsStore
+  nodeSel: number
+  setNodeSel: SetNum
+  sessSel: number
+  setSessSel: SetNum
   onOpenSession: (nodeId: string, sessionId: string) => void
   onOpenPresets: () => void
   onOpenSnippets: () => void
@@ -160,8 +179,6 @@ function S1View({
   const envMode = nodeList.some((n) => n.source === "env")
   const connCount = nodeList.filter((n) => n.status === "connected").length
 
-  const [nodeSel, setNodeSel] = useState(0)
-  const [sessSel, setSessSel] = useState(0)
   // number-nav for the session list: accumulate typed digits (so 10+ is
   // reachable), jump to that 1-based session, reset the buffer after a pause.
   const sessNumBuf = useRef("")
@@ -345,6 +362,7 @@ function S1View({
     if (focus === "sessions") {
       if (key.ctrl && name === "d" && node && session && sessionProxy) {
         dispatcher(sessionProxy)("deleteSession")
+        setSessSel((i) => Math.max(0, i - 1))
         return
       }
       switch (name) {
@@ -389,7 +407,11 @@ function S1View({
             setModal({
               kind: "confirm",
               label: `Delete session "${session.name}"?`,
-              run: () => proxy && dispatcher(proxy)("deleteSession")
+              run: () => {
+                if (!proxy) return
+                dispatcher(proxy)("deleteSession")
+                setSessSel((i) => Math.max(0, i - 1))
+              }
             })
           }
           break
@@ -413,6 +435,8 @@ function S1View({
     // focus === "nodes"
     if (key.ctrl && name === "d" && node && node.source !== "env" && nodeProxy) {
       dispatcher(nodeProxy)("deleteNode")
+      setNodeSel((i) => Math.max(0, i - 1))
+      setSessSel(0)
       return
     }
     switch (name) {
@@ -471,7 +495,11 @@ function S1View({
           setModal({
             kind: "confirm",
             label: `Delete node "${node.name}" and all its sessions?`,
-            run: () => dispatcher(proxy)("deleteNode")
+            run: () => {
+              dispatcher(proxy)("deleteNode")
+              setNodeSel((i) => Math.max(0, i - 1))
+              setSessSel(0)
+            }
           })
         }
         break
