@@ -6,16 +6,16 @@ bun = "1.3"
 [tasks.setup]
 description = "Install all deps: Elixir controller (server) + Bun/opentui/lumis (TUI)"
 run = """
-set -e
-# Elixir deps. Ensure hex/rebar exist first so a fresh toolchain doesn't prompt;
-# the check keeps this a fast no-op once installed (setup runs before dev/package).
-cd server
+set -eu
+root="$PWD"
+# Elixir deps (mix has no --cwd, so run it from server/). Ensure hex/rebar exist
+# first so a fresh toolchain doesn't prompt; the check is a fast no-op once installed.
+cd "$root/server"
 mix hex.info >/dev/null 2>&1 || { mix local.hex --force && mix local.rebar --force; }
 mix deps.get
-# TUI deps (opentui, lumis, react, musubi workspace links); no-op when the bun
-# lockfile is already satisfied.
-cd ../tui
-bun install
+# TUI deps (opentui, lumis, react, musubi workspace links); --cwd avoids a second
+# cd, no-op when the bun lockfile is already satisfied.
+bun --cwd="$root/tui" install
 """
 
 [tasks.dev]
@@ -23,7 +23,7 @@ description = "Start server (random free port) then TUI; cookie via RB_COOKIE (d
 depends = ["setup"]
 dir = "server"
 run = """
-set -e
+set -eu
 cookie="${RB_COOKIE:-rbtest}"
 port_file="/tmp/redbug.port"
 rm -f "$port_file"
@@ -47,24 +47,42 @@ trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
 until [ -f "$port_file" ]; do sleep 0.2; done
 port=$(cat "$port_file")
 until nc -z 127.0.0.1 "$port" 2>/dev/null; do sleep 0.2; done
-cd ../tui && REDBUG_PORT="$port" bun run dev
+# --cwd runs the TUI from tui/ without leaving the server dir (this task's dir).
+REDBUG_PORT="$port" bun --cwd=../tui run dev
 """
 
 [tasks.package]
-description = "Build single-file dist/redbug (bun --compile embedding the server release)"
+description = "Build single-file redbug (OUT=<path> overrides dist/redbug; bun --compile embeds the server release)"
 depends = ["setup"]
 run = """
-set -e
+set -eu
 root="$(pwd)"
-# Build the controller release (ERTS bundled) and tar it for embedding.
+
+# OUT picks the output path; unset -> dist/redbug. Set OUT=<path-on-PATH> to
+# build straight onto PATH (the binary is self-contained, so a cp installs it too).
+if [ -n "${OUT:-}" ]; then out="$OUT"; else out="$root/dist/redbug"; fi
+mkdir -p "$(dirname "$out")"
+
+echo "==> building release"
 cd "$root/server" && MIX_ENV=prod mix release server --overwrite
+
+echo "==> packing release"
 mkdir -p "$root/tui/embed"
 tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
-# redbug = single file (main.tsx embeds the tarball, extracts + spawns it at runtime).
-# Compiles straight into the root dist/ (build script targets ../dist).
-rm -rf "$root/dist"
-mkdir -p "$root/dist"
-cd "$root/tui" && bun run build:redbug
-chmod +x "$root/dist/redbug"
-echo "packaged -> dist/redbug (single file; run it to launch)"
+
+echo "==> compiling single-file binary"
+# main.tsx embeds the tarball and extracts + spawns the server at runtime.
+# --no-compile-autoload-* stops the runtime from picking up a stray bunfig.toml
+# or .env from whatever dir the installed binary happens to run in.
+bun --cwd="$root/tui" build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv src/main.tsx --outfile "$out"
+chmod 755 "$out"
+
+# macOS arm64 SIGKILLs an unsigned/quarantined binary; clear attrs + ad-hoc sign
+# so it still runs after being copied or downloaded. No-op off macOS.
+if [ "$(uname)" = "Darwin" ]; then
+  xattr -c "$out"
+  codesign --force --sign - "$out"
+fi
+
+echo "packaged -> $out"
 """
