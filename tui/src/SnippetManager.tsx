@@ -22,16 +22,16 @@ type Modal =
   | { kind: "rename"; id: string; name: string }
   | { kind: "confirmDelete"; id: string; name: string }
 
-export function SnippetManager({ onBack }: { onBack: () => void }) {
+export function SnippetManager({ onBack, onOpenSettings }: { onBack: () => void; onOpenSettings: () => void }) {
   const root = useMusubiRoot(SNIPPETS_ROOT)
   return (
     <RootGate root={root} loading="Loading snippets…" errorLabel="Snippets">
-      {(store) => <SnippetView store={store} onBack={onBack} />}
+      {(store) => <SnippetView store={store} onBack={onBack} onOpenSettings={onOpenSettings} />}
     </RootGate>
   )
 }
 
-function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => void }) {
+function SnippetView({ store, onBack, onOpenSettings }: { store: SnippetsStore; onBack: () => void; onOpenSettings: () => void }) {
   const snap = useMusubiSnapshot(store)
   const snippets = (snap?.snippets ?? []) as Snippet[]
   const renderer = useRenderer()
@@ -153,6 +153,9 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
           if (numTimer.current) clearTimeout(numTimer.current)
         }
         break
+      case ",":
+        onOpenSettings()
+        break
       case "?":
         setModal({ kind: "help" })
         break
@@ -199,7 +202,7 @@ function SnippetView({ store, onBack }: { store: SnippetsStore; onBack: () => vo
 
       <StatusBar
         statusText={`${snippets.length} snippets`}
-        hints="j/k move · ⌃F/⌃B scroll · e edit · n new · r rename · f format · d del · #g jump · ? help · esc back"
+        hints="j/k move · ⌃F/⌃B scroll · e edit · n new · r rename · f format · d del · #g jump · , settings · ? help · esc back"
       />
 
       {modal.kind === "help" && (

@@ -50,18 +50,20 @@ export function ConsoleTab({
   sessionId,
   nodeStatus,
   onSwitchToEvents,
-  onBack
+  onBack,
+  onOpenSettings
 }: {
   nodeId: string
   sessionId: string
   nodeStatus: string
   onSwitchToEvents: () => void
   onBack: () => void
+  onOpenSettings: () => void
 }) {
   const root = useMusubiRoot(consoleRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading console…" errorLabel="Console">
-      {(store) => <ConsoleView store={store} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} />}
+      {(store) => <ConsoleView store={store} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} onOpenSettings={onOpenSettings} />}
     </RootGate>
   )
 }
@@ -79,12 +81,14 @@ function ConsoleView({
   store,
   nodeStatus,
   onSwitchToEvents,
-  onBack
+  onBack,
+  onOpenSettings
 }: {
   store: ConsoleStore
   nodeStatus: string
   onSwitchToEvents: () => void
   onBack: () => void
+  onOpenSettings: () => void
 }) {
   const snap = useMusubiSnapshot(store)
   const history = (snap?.history ?? []) as Exec[]
@@ -222,6 +226,9 @@ function ConsoleView({
       case "x":
         if (cur && cur.status === "running") setModal({ kind: "confirmStop", id: cur.id })
         break
+      case ",":
+        onOpenSettings()
+        break
       case "?":
         setModal({ kind: "help" })
         break
@@ -262,7 +269,7 @@ function ConsoleView({
           : nodeStatus === "error" ? "✖ can't reach node"
           : `${history.length} runs${runningCount > 0 ? ` · ${runningCount} running` : ""}`
         }
-        hints="j/k move · ⌃F/⌃B scroll · n compose · e edit+run · r run · v view · s save · d del · x stop · ⌃L clear · [/] tabs · ? help · esc back"
+        hints="j/k move · ⌃F/⌃B scroll · n compose · e edit+run · r run · v view · s save · d del · x stop · ⌃L clear · [/] tabs · , settings · ? help · esc back"
       />
 
       {modal.kind === "help" && (

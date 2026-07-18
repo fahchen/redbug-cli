@@ -98,9 +98,8 @@ export function ModalLayer({
             {
               lines: [
                 ["j / k", "move"],
-                ["enter", "sessions / open"],
+                ["enter", "sessions"],
                 ["n", "new node"],
-                ["s", "new session"],
                 ["e", "edit node"],
                 ["c", "connect / disconnect"],
                 ["d", "delete"],
@@ -113,7 +112,7 @@ export function ModalLayer({
                 ["j / k", "move"],
                 ["enter", "open session"],
                 ["r", "rename"],
-                ["s", "new session"],
+                ["n", "new session"],
                 ["d", "delete"],
                 ["#g", "jump to session #"],
                 ["tab / esc / h", "back to nodes"]

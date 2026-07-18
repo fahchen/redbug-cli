@@ -28,16 +28,16 @@ type Modal =
   | { kind: "confirmPreset"; id: string; name: string }
   | { kind: "confirmTrace"; presetId: string; traceId: string }
 
-export function PresetManager({ onBack }: { onBack: () => void }) {
+export function PresetManager({ onBack, onOpenSettings }: { onBack: () => void; onOpenSettings: () => void }) {
   const root = useMusubiRoot(PRESETS_ROOT)
   return (
     <RootGate root={root} loading="Loading presets…" errorLabel="Presets">
-      {(store) => <PresetView store={store} onBack={onBack} />}
+      {(store) => <PresetView store={store} onBack={onBack} onOpenSettings={onOpenSettings} />}
     </RootGate>
   )
 }
 
-function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void }) {
+function PresetView({ store, onBack, onOpenSettings }: { store: PresetsStore; onBack: () => void; onOpenSettings: () => void }) {
   const snap = useMusubiSnapshot(store)
   const presets = (snap?.presets ?? []) as Preset[]
 
@@ -92,6 +92,11 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
 
     if (n === "?") {
       setModal({ kind: "help" })
+      return
+    }
+
+    if (n === ",") {
+      onOpenSettings()
       return
     }
 
@@ -215,8 +220,8 @@ function PresetView({ store, onBack }: { store: PresetsStore; onBack: () => void
         statusText={`${presets.length} presets`}
         hints={
           focus === "list"
-            ? "j/k move · enter traces · n new · r rename · d del · ? help · esc back"
-            : "j/k move · n add · e edit · l limits · d del · ? help · tab/esc back"
+            ? "j/k move · enter traces · n new · r rename · d del · , settings · ? help · esc back"
+            : "j/k move · n add · e edit · l limits · d del · , settings · ? help · tab/esc back"
         }
       />
 

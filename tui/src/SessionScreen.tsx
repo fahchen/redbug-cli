@@ -37,13 +37,15 @@ export function SessionScreen({
   sessionId,
   settings,
   presets,
-  onBack
+  onBack,
+  onOpenSettings
 }: {
   nodeId: string
   sessionId: string
   settings?: Server.Schema.Settings
   presets?: Server.Schema.Preset[]
   onBack: () => void
+  onOpenSettings: () => void
 }) {
   const root = useMusubiRoot(sessionRoot(nodeId, sessionId))
   return (
@@ -56,6 +58,7 @@ export function SessionScreen({
           settings={settings}
           presets={presets ?? []}
           onBack={onBack}
+          onOpenSettings={onOpenSettings}
         />
       )}
     </RootGate>
@@ -68,7 +71,8 @@ function SessionView({
   sessionId,
   settings,
   presets,
-  onBack
+  onBack,
+  onOpenSettings
 }: {
   store: SessionStore
   nodeId: string
@@ -76,6 +80,7 @@ function SessionView({
   settings?: Server.Schema.Settings
   presets: Server.Schema.Preset[]
   onBack: () => void
+  onOpenSettings: () => void
 }) {
   const [tab, setTab] = useState<"events" | "console">("events")
   const tabRef = useRef<TabSelectRenderable>(null)
@@ -114,7 +119,9 @@ function SessionView({
   const [filterFocus, setFilterFocus] = useState<"query" | "scope">("query")
   const [group, setGroup] = useState<GroupKey>("none")
 
-  const [sel, setSel] = useState(0)
+  // -1 = nothing selected: no row is highlighted until the user moves with j/k,
+  // so a live ts↓ stream doesn't paint (and re-paint) the top row as "selected".
+  const [sel, setSel] = useState(-1)
   const [detailOpen, setDetailOpen] = useState(false)
   const [focus, setFocus] = useState<Focus>("list")
   const [zoom, setZoom] = useState(false)
@@ -150,7 +157,7 @@ function SessionView({
     [events]
   )
 
-  const selClamped = Math.min(sel, Math.max(0, count - 1))
+  const selClamped = sel < 0 ? -1 : Math.min(sel, Math.max(0, count - 1))
   const selectedRow =
     rows.find((r): r is Extract<DRow, { type: "event" }> => r.type === "event" && r.sidx === selClamped) ?? null
   const selectedEvent = selectedRow?.ev ?? null
@@ -261,7 +268,9 @@ function SessionView({
       case "j": case "down": moveSel(1); break
       case "k": case "up": moveSel(-1); break
       case "return":
+        // nothing selected yet → select the first event and open it in one press
         if (selectedEvent) { setDetailOpen(true); setFocus("detail"); detailScrollRef.current?.scrollTo(0) }
+        else if (count > 0) { setSel(0); setDetailOpen(true); setFocus("detail"); detailScrollRef.current?.scrollTo(0) }
         break
       case "tab": if (detailOpen) setFocus("detail"); break
       case "o":
@@ -286,6 +295,7 @@ function SessionView({
       case "x": if (sessionState === "running") dispatch("stopTrace"); break
       case "e": if (error?.detail) setOverlay("errorDetail"); break
       case "d": if (selectedEvent) setOverlay("confirmDelete"); break
+      case ",": onOpenSettings(); break
       case "?": setOverlay("help"); break
     }
   })
@@ -402,7 +412,13 @@ function SessionView({
     : sessionState === "ended" || sessionState === "failed" ? "space restart"
     : sessionState === "running" ? (dirty ? "x stop · ⌃S apply" : "x stop")
     : ""
-  const eventsHints = ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", "? help", "esc back"]
+  const eventsHints = (
+    !detailOpen
+      ? ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", ", settings", "? help", "esc back"]
+      : focus === "detail"
+        ? ["j/k scroll", "⌃F/⌃B page", "⌃J/⌃K sel", "z zoom", "v view", "tab list", "esc close"]
+        : ["j/k move", "tab detail", "z zoom", "v view", "d del", "? help", "esc close"]
+  )
     .filter((s) => s !== "")
     .join(" · ")
 
@@ -436,6 +452,7 @@ function SessionView({
           nodeStatus={nodeStatus}
           onSwitchToEvents={() => setTab("events")}
           onBack={onBack}
+          onOpenSettings={onOpenSettings}
         />
       ) : (
       <>

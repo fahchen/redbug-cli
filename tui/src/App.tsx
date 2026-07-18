@@ -38,11 +38,11 @@ type Screen =
   | { name: "session"; nodeId: string; sessionId: string }
   | { name: "presets" }
   | { name: "snippets" }
+  | { name: "settings"; from: Screen }
 
 type Modal =
   | { kind: "none" }
   | { kind: "help" }
-  | { kind: "settings" }
   | { kind: "newNode" }
   | { kind: "editNode"; id: string }
   | { kind: "newSessionName"; nodeId: string }
@@ -108,6 +108,13 @@ function Router({
   )
 
   function renderScreen(): ReactNode {
+    // Settings is reachable from every screen via `,`; it remembers where it was
+    // opened from so closing returns there.
+    if (screen.name === "settings")
+      return <SettingsOverlay onClose={() => setScreen(screen.from)} />
+
+    const openSettings = () => setScreen({ name: "settings", from: screen })
+
     if (screen.name === "session")
       return (
         <SessionScreen
@@ -116,14 +123,15 @@ function Router({
           settings={settings}
           presets={presetsSnap?.presets as Server.Schema.Preset[] | undefined}
           onBack={() => setScreen({ name: "tree" })}
+          onOpenSettings={openSettings}
         />
       )
 
     if (screen.name === "presets")
-      return <PresetManager onBack={() => setScreen({ name: "tree" })} />
+      return <PresetManager onBack={() => setScreen({ name: "tree" })} onOpenSettings={openSettings} />
 
     if (screen.name === "snippets")
-      return <SnippetManager onBack={() => setScreen({ name: "tree" })} />
+      return <SnippetManager onBack={() => setScreen({ name: "tree" })} onOpenSettings={openSettings} />
 
     return (
       <S1View
@@ -136,6 +144,7 @@ function Router({
         onOpenSession={(nodeId, sessionId) => setScreen({ name: "session", nodeId, sessionId })}
         onOpenPresets={() => setScreen({ name: "presets" })}
         onOpenSnippets={() => setScreen({ name: "snippets" })}
+        onOpenSettings={openSettings}
       />
     )
   }
@@ -154,7 +163,8 @@ function S1View({
   setSessSel,
   onOpenSession,
   onOpenPresets,
-  onOpenSnippets
+  onOpenSnippets,
+  onOpenSettings
 }: {
   nodesStore: NodesStore
   presetsStore: PresetsStore
@@ -165,6 +175,7 @@ function S1View({
   onOpenSession: (nodeId: string, sessionId: string) => void
   onOpenPresets: () => void
   onOpenSnippets: () => void
+  onOpenSettings: () => void
 }) {
   const nodesSnap = useMusubiSnapshot(nodesStore)
   const presetsSnap = useMusubiSnapshot(presetsStore)
@@ -278,10 +289,6 @@ function S1View({
         setModal({ kind: "none" })
         return
 
-      case "settings":
-        // SettingsOverlay owns its own keyboard handling while open.
-        return
-
       case "confirm":
         if (name === "y") {
           modal.run()
@@ -384,7 +391,7 @@ function S1View({
         case "return":
           if (node && session) onOpenSession(node.id, session.id)
           break
-        case "s":
+        case "n":
           newSession()
           break
         case "r":
@@ -453,16 +460,14 @@ function S1View({
       case "return":
       case "tab":
       case "right":
-        if (node && sessions.length > 0) {
+        // focus sessions even when empty, so `n` there creates the first one
+        if (node) {
           setSessSel(0)
           setFocus("sessions")
         }
         break
       case "n":
         openNewNode()
-        break
-      case "s":
-        newSession()
         break
       case "e":
         // env nodes are read-only
@@ -510,7 +515,7 @@ function S1View({
         onOpenSnippets()
         break
       case ",":
-        setModal({ kind: "settings" })
+        onOpenSettings()
         break
       case "?":
         setModal({ kind: "help" })
@@ -546,7 +551,7 @@ function S1View({
           {!node ? (
             <text fg={theme.textMuted}>Select a node</text>
           ) : sessions.length === 0 ? (
-            <text fg={theme.textMuted}>No sessions · s to add</text>
+            <text fg={theme.textMuted}>No sessions · n to add</text>
           ) : (
             sessions.map((s, i) => (
               <SessionRow key={s.id} id={s.id} session={s} index={i + 1} nameWidth={sessNameWidth} active={focus === "sessions" && i === sessIdx} />
@@ -561,17 +566,13 @@ function S1View({
         hints={
           focus === "nodes"
             ? envMode
-              ? "j/k node · enter sessions · n new · s new · c connect · e edit · d del · p presets · l snippets · env read-only · , settings · ? help · q quit"
-              : "j/k node · enter sessions · n new · s new · c connect · e edit · d del · p presets · l snippets · , settings · ? help · q quit"
-            : "j/k session · enter open · r rename · s new · d del · #g jump · tab/esc nodes · ? help"
+              ? "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · l snippets · env read-only · , settings · ? help · q quit"
+              : "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · l snippets · , settings · ? help · q quit"
+            : "j/k session · enter open · r rename · n new · d del · #g jump · tab/esc nodes · ? help"
         }
       />
 
-      {modal.kind === "settings" && (
-        <SettingsOverlay onClose={() => setModal({ kind: "none" })} />
-      )}
-
-      {modal.kind !== "none" && modal.kind !== "settings" && (
+      {modal.kind !== "none" && (
         <NodeModalLayer
           modal={modal}
           presetList={presetList}
