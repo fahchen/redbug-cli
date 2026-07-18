@@ -16,10 +16,10 @@ export type DRow =
   | { type: "event"; key: string; ev: TraceEvent; sidx: number }
 
 export const kindSym: Record<string, string> = {
-  call: "↓",
-  retn: "↑",
-  send: "→",
-  recv: "←",
+  call: "→",
+  retn: "←",
+  send: "↑",
+  recv: "↓",
   restart: "·"
 }
 
