@@ -5,7 +5,7 @@ import type { StoreProxy } from "@musubi/react"
 
 import { SETTINGS_ROOT, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
 import { DEFAULT_LIMITS, formatLimits, parseLimits } from "./limits"
-import { editorName } from "./editor"
+import { editorArgv } from "./editor"
 import { theme, themeNames } from "./theme"
 import { HelpOverlay, Overlay, RootGate, TextField, fit } from "./ui"
 
@@ -35,7 +35,7 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
   const curSort = s?.default_sort ?? "ts_desc"
   const showHints = s?.show_hints ?? true
   const consoleTimeout = s?.console_timeout ?? 15000
-  const editor = editorName()
+  const editor = editorArgv().join(" ")
 
   const [sel, setSel] = useState(0)
   const [limitsDraft, setLimitsDraft] = useState<string | null>(null)

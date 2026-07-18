@@ -6,12 +6,43 @@ declare const Bun: {
     cmd: string[],
     opts?: { stdin?: string; stdout?: string; stderr?: string }
   ): { stdout: { toString(): string } }
+  spawn(
+    cmd: string[],
+    opts?: { stdin?: string; stdout?: string; stderr?: string }
+  ): { exited: Promise<number> }
 }
 
 type Renderer = { suspend: () => void; resume: () => void }
 
+// GUI editors fork and return immediately, so we must pass a "wait" flag or we'd
+// read the file back before the user saves. Keyed by the command basename;
+// terminal editors (vi/vim/nvim/nano/emacs/helix/micro) block on their own.
+const WAIT_FLAG: Record<string, string> = {
+  code: "--wait",
+  "code-insiders": "--wait",
+  codium: "--wait",
+  "vscodium": "--wait",
+  cursor: "--wait",
+  windsurf: "--wait",
+  zed: "--wait",
+  atom: "--wait",
+  subl: "-w",
+  mate: "-w"
+}
+
 export function editorName(): string {
   return process.env.EDITOR || process.env.VISUAL || "vi"
+}
+
+// Split $EDITOR into argv (it may already carry flags, e.g. "code --wait") and
+// auto-append the wait flag for known GUI editors when the user hasn't already.
+export function editorArgv(): string[] {
+  const parts = editorName().trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ["vi"]
+  const base = parts[0].split("/").pop() ?? parts[0]
+  const flag = WAIT_FLAG[base]
+  if (flag && !parts.some((p) => p === "-w" || p === "--wait")) parts.push(flag)
+  return parts
 }
 
 // Find the git repository root from the current working directory,
@@ -40,7 +71,12 @@ export async function editInEditor(
   await Bun.write(path, opts.seed)
   renderer.suspend()
   try {
-    Bun.spawnSync([editorName(), path], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+    // Async spawn (not spawnSync): a synchronous spawn blocks Bun's single event
+    // loop for the whole editor session, starving the Phoenix heartbeat so the
+    // server drops the socket and live stores disconnect. Awaiting `exited` keeps
+    // the loop running (heartbeats fire) while the editor owns the terminal.
+    const proc = Bun.spawn([...editorArgv(), path], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+    await proc.exited
   } finally {
     renderer.resume()
   }
