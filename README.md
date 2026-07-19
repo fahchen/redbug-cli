@@ -6,15 +6,10 @@ anything to the target node.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Demo
-
-<!--
-Add the demo GIF here before publishing, for example:
-
 ![redbug-cli tracing demo](docs/demo.gif)
--->
 
-_Demo GIF coming soon._
+> Connect to a live node, stream call/return events, fold each pair into one row, and open any
+> event in a detail pane — all from the terminal.
 
 ## Why redbug-cli?
 
@@ -178,7 +173,6 @@ Node -> Session -> Trace patterns -> Events
 - [Architecture](docs/ARCHITECTURE.md)
 - [Remote nodes](docs/remote-nodes.md)
 - [Testing & screenshots](docs/testing.md)
-- [Demo script](docs/demo-script.md)
 
 ## License
 

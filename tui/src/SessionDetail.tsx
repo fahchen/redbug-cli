@@ -61,7 +61,7 @@ export function EventDetailBody({ ev, ret }: { ev: TraceEvent; ret?: string }) {
   const payloadLabel = ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
 
   return (
-    <>
+    <box flexDirection="column" paddingLeft={1}>
       <text fg={theme.textMuted} marginTop={1}>{payloadLabel}</text>
       <code
         content={payload}
@@ -88,6 +88,6 @@ export function EventDetailBody({ ev, ret }: { ev: TraceEvent; ret?: string }) {
           </box>
         </>
       )}
-    </>
+    </box>
   )
 }
