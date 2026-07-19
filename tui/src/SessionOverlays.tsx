@@ -144,6 +144,7 @@ export function SessionHelpOverlay() {
             ["enter", "open detail"],
             ["v", "view event in $EDITOR"],
             ["z", "zoom detail"],
+            ["f", "fold call+return into one row"],
             ["o", "sort"],
             ["/", "filter"],
             ["g", "cycle grouping"],
@@ -200,9 +201,11 @@ export function ConfirmExitOverlay({ dirty }: { dirty: boolean }) {
 
 export function ZoomOverlay({
   ev,
+  ret,
   scrollRef
 }: {
   ev: TraceEvent
+  ret?: string
   scrollRef?: RefObject<ScrollBoxRenderable | null>
 }) {
   const { height } = useTerminalDimensions()
@@ -211,7 +214,7 @@ export function ZoomOverlay({
     <Overlay title="Detail · esc close · j/k scroll · ⌃F/⌃B page · v view" minWidth={70}>
       <DetailMeta ev={ev} />
       <scrollbox ref={scrollRef} scrollY stickyStart="top" height={bodyHeight}>
-        <EventDetailBody ev={ev} />
+        <EventDetailBody ev={ev} ret={ret} />
       </scrollbox>
     </Overlay>
   )

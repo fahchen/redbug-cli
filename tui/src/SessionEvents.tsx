@@ -9,11 +9,12 @@ import { fit } from "./ui"
 export function ColumnHeader({ cols, pidWidth }: { cols: Cols; pidWidth: number }) {
   return (
     <box flexDirection="row" flexWrap="no-wrap">
+      <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit("#", COL.pair)}</text>
       <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit("Ts", COL.ts)}</text>
-      <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit(" k ", COL.k)}</text>
       {cols.name && <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit("Name", COL.name)}</text>}
       {cols.pid && <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit("Pid", pidWidth)}</text>}
-      {cols.mfa && <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit("Mfa", COL.mfa)}</text>}
+      {/* leading 2 cols reserve the kind-glyph slot that rides in front of Mfa */}
+      {cols.mfa && <text flexShrink={0} fg={theme.dim} marginRight={COLGAP}>{fit("  Mfa", COL.mfa + 2)}</text>}
       {cols.info && <text flexShrink={0} fg={theme.dim}>{fit("Info", COL.info)}</text>}
     </box>
   )
@@ -21,6 +22,7 @@ export function ColumnHeader({ cols, pidWidth }: { cols: Cols; pidWidth: number 
 
 export function EventRow({
   ev,
+  ret,
   active,
   filter,
   cols,
@@ -30,6 +32,7 @@ export function EventRow({
   id
 }: {
   ev: TraceEvent
+  ret?: string
   active: boolean
   filter: Filter | null
   cols: Cols
@@ -49,15 +52,30 @@ export function EventRow({
     filter && (filter.scope === scope || filter.scope === "all") ? filter.query : ""
   const nameFg = dittoName && !active ? theme.dim : fg
   const pidFg = dittoPid && !active ? theme.dim : fg
+  // Nesting indent for the payload; the pair id (#N) rides in its own leading col.
+  const lead = "  ".repeat(Math.min(ev.depth, 8))
+  // fold mode: the paired return is merged onto the call row as "args → ret".
+  const info = ret != null ? `${ev.info} → ${ret}` : ev.info
 
   return (
     <box id={id} backgroundColor={bg} flexDirection="row" flexWrap="no-wrap">
+      <text flexShrink={0} bg={bg} fg={theme.dim} marginRight={COLGAP}>{fit(ev.pair ? `#${ev.pair}` : "", COL.pair)}</text>
       <text flexShrink={0} bg={bg} fg={theme.dim} marginRight={COLGAP}>{fit(ev.ts, COL.ts)}</text>
-      <text flexShrink={0} bg={bg} fg={kc} marginRight={COLGAP}>{fit(` ${sym} `, COL.k)}</text>
       {cols.name && <Cell text={fit(ev.name || "-", COL.name)} bg={bg} fg={nameFg} q={hl("all")} mr />}
       {cols.pid && <Cell text={fit(ev.pid, pidWidth)} bg={bg} fg={pidFg} q={hl("pid")} mr />}
-      {cols.mfa && <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} mr />}
-      {cols.info && <Cell text={fit(ev.info, COL.info)} bg={bg} fg={fg} q={hl("info")} />}
+      {/* kind glyph (colored) folded in front of the Mfa — no separate column */}
+      {cols.mfa && (
+        <box flexShrink={0} flexDirection="row" flexWrap="no-wrap" backgroundColor={bg} marginRight={COLGAP}>
+          <text bg={bg} fg={kc}>{`${sym} `}</text>
+          <Cell text={fit(ev.mfa || "-", COL.mfa)} bg={bg} fg={fg} q={hl("mfa")} />
+        </box>
+      )}
+      {cols.info && (
+        <box flexShrink={0} flexDirection="row" flexWrap="no-wrap" backgroundColor={bg}>
+          {lead !== "" && <text bg={bg} fg={theme.dim}>{lead}</text>}
+          <Cell text={fit(info, COL.info)} bg={bg} fg={fg} q={hl("info")} />
+        </box>
+      )}
     </box>
   )
 }

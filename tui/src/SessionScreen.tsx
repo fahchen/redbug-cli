@@ -118,6 +118,7 @@ function SessionView({
   const [filterDraft, setFilterDraft] = useState("")
   const [filterFocus, setFilterFocus] = useState<"query" | "scope">("query")
   const [group, setGroup] = useState<GroupKey>("none")
+  const [fold, setFold] = useState(false)
 
   // -1 = nothing selected: no row is highlighted until the user moves with j/k,
   // so a live ts↓ stream doesn't paint (and re-paint) the top row as "selected".
@@ -148,8 +149,8 @@ function SessionView({
   prevDirty.current = dirty
 
   const { rows, count } = useMemo(
-    () => processEvents(events, filter, sort, group),
-    [events, filter, sort, group]
+    () => processEvents(events, filter, sort, group, fold),
+    [events, filter, sort, group, fold]
   )
 
   const pidWidth = useMemo(
@@ -284,6 +285,7 @@ function SessionView({
         setOverlay("filter")
         break
       case "g": setGroup((g) => GROUP_CYCLE[(GROUP_CYCLE.indexOf(g) + 1) % GROUP_CYCLE.length]); break
+      case "f": setFold((v) => !v); break
       case "l": setLimitsDraft(formatLimits(limits)); setOverlay("limits"); break
       case "z": if (selectedEvent) { setDetailOpen(true); setZoom(true) }; break
       case "t": setRtpSel(0); setOverlay("editor"); break
@@ -414,7 +416,7 @@ function SessionView({
     : ""
   const eventsHints = (
     !detailOpen
-      ? ["j/k move", "enter detail", "t traces", "d del", spaceAction, "[/] tabs", ", settings", "? help", "esc back"]
+      ? ["j/k move", "enter detail", `f ${fold ? "unfold" : "fold"}`, "t traces", "d del", spaceAction, "[/] tabs", ", settings", "? help", "esc back"]
       : focus === "detail"
         ? ["j/k scroll", "⌃F/⌃B page", "⌃J/⌃K sel", "z zoom", "v view", "tab list", "esc close"]
         : ["j/k move", "tab detail", "z zoom", "v view", "d del", "? help", "esc close"]
@@ -465,7 +467,7 @@ function SessionView({
           title={
             detailOpen
               ? undefined
-              : ` Sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"} · Filter:${filter ? `${filter.scope}/${filter.query}` : "-"} · Group:${group} `
+              : ` Sort:${sort.key}${sort.dir === "asc" ? "↑" : "↓"} · Filter:${filter ? `${filter.scope}/${filter.query}` : "-"} · Group:${group}${fold ? " · Fold" : ""} `
           }
           titleAlignment="right"
           titleColor={theme.textMuted}
@@ -494,6 +496,7 @@ function SessionView({
                       key={row.key}
                       id={row.key}
                       ev={row.ev}
+                      ret={row.ret}
                       active={row.sidx === selClamped}
                       filter={filter}
                       cols={cols}
@@ -509,7 +512,7 @@ function SessionView({
         </box>
 
         {detailOpen && !zoom && selectedEvent && (
-          <DetailPane ev={selectedEvent} focused={focus === "detail"} scrollRef={detailScrollRef} />
+          <DetailPane ev={selectedEvent} ret={selectedRow?.ret} focused={focus === "detail"} scrollRef={detailScrollRef} />
         )}
       </box>
       )}
@@ -589,7 +592,7 @@ function SessionView({
         />
       )}
 
-      {zoom && selectedEvent && <ZoomOverlay ev={selectedEvent} scrollRef={detailScrollRef} />}
+      {zoom && selectedEvent && <ZoomOverlay ev={selectedEvent} ret={selectedRow?.ret} scrollRef={detailScrollRef} />}
       </>
       )}
     </box>

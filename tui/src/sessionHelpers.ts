@@ -22,7 +22,8 @@ export function processEvents(
   events: readonly TraceEvent[],
   filter: Filter | null,
   sort: Sort,
-  group: GroupKey
+  group: GroupKey,
+  fold = false
 ): { rows: DRow[]; count: number } {
   const filtering = !!(filter && filter.query)
   let evs = events.slice()
@@ -31,13 +32,25 @@ export function processEvents(
   if (!keepRestart) evs = evs.filter((e) => e.kind !== "restart")
   if (filtering) evs = evs.filter((e) => matchFilter(e, filter!))
 
+  // Fold mode: hide a return whose call is present and carry its value onto the
+  // call row (paired exactly by `pair` id — no heuristic).
+  const retByPair = new Map<string, string>()
+  if (fold) {
+    const callPairs = new Set(evs.filter((e) => e.kind === "call" && e.pair).map((e) => e.pair))
+    for (const e of evs) if (e.kind === "retn" && e.pair) retByPair.set(e.pair, e.info)
+    evs = evs.filter((e) => !(e.kind === "retn" && e.pair && callPairs.has(e.pair)))
+  }
+
+  const retOf = (ev: TraceEvent) =>
+    fold && ev.kind === "call" && ev.pair ? retByPair.get(ev.pair) : undefined
+
   evs = sortEvents(evs, sort)
 
   const rows: DRow[] = []
   let sidx = 0
 
   if (group === "none") {
-    for (const ev of evs) rows.push({ type: "event", key: ev.id, ev, sidx: sidx++ })
+    for (const ev of evs) rows.push({ type: "event", key: ev.id, ev, sidx: sidx++, ret: retOf(ev) })
     return { rows, count: sidx }
   }
 
@@ -50,7 +63,7 @@ export function processEvents(
   }
   for (const [k, list] of groups) {
     rows.push({ type: "header", key: `h:${k}`, label: k || "-", count: list.length })
-    for (const ev of list) rows.push({ type: "event", key: ev.id, ev, sidx: sidx++ })
+    for (const ev of list) rows.push({ type: "event", key: ev.id, ev, sidx: sidx++, ret: retOf(ev) })
   }
   return { rows, count: sidx }
 }

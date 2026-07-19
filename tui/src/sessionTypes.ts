@@ -13,7 +13,9 @@ export const ALL_COLS: Cols = { name: true, pid: true, mfa: true, info: true }
 
 export type DRow =
   | { type: "header"; key: string; label: string; count: number }
-  | { type: "event"; key: string; ev: TraceEvent; sidx: number }
+  // `ret` is set only in fold mode on a call row: the return value of the paired
+  // retn (which is then hidden), so the row can render "args → ret".
+  | { type: "event"; key: string; ev: TraceEvent; sidx: number; ret?: string }
 
 export const kindSym: Record<string, string> = {
   call: "→",
@@ -42,7 +44,7 @@ export const RTP_EXAMPLES: [string, string][] = [
   ["Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"]
 ]
 
-export const COL = { ts: 12, k: 3, name: 16, pid: 11, mfa: 22, info: 44 }
+export const COL = { pair: 6, ts: 12, k: 3, name: 16, pid: 11, mfa: 22, info: 44 }
 export const COLGAP = 2
 export const SPARK_N = 12
 export const SPARK_RAMP = "▁▂▃▄▅▆▇█"

@@ -11,22 +11,28 @@ import { elixirStyle, tsClient } from "./treesitter"
 export function DetailMeta({ ev }: { ev: TraceEvent }) {
   const sym = kindSym[ev.kind] ?? "?"
   return (
-    <box flexDirection="row" flexWrap="wrap">
-      <Chip label="Kind" value={`${sym} ${ev.kind}`} />
-      <Chip label="Ts" value={ev.ts} />
-      <Chip label="Pid" value={ev.pid} />
-      <Chip label="Name" value={ev.name || "-"} />
-      <Chip label="Mfa" value={ev.mfa || "-"} />
-    </box>
+    <>
+      <box flexDirection="row" flexWrap="wrap">
+        <Chip label="Kind" value={`${sym} ${ev.kind}`} />
+        <Chip label="Ts" value={ev.ts} />
+        <Chip label="Pid" value={ev.pid} />
+        <Chip label="Name" value={ev.name || "-"} />
+      </box>
+      <box flexDirection="row" marginTop={1}>
+        <Chip label="Mfa" value={ev.mfa || "-"} />
+      </box>
+    </>
   )
 }
 
 export function DetailPane({
   ev,
+  ret,
   focused,
   scrollRef
 }: {
   ev: TraceEvent
+  ret?: string
   focused: boolean
   scrollRef?: RefObject<ScrollBoxRenderable | null>
 }) {
@@ -44,13 +50,13 @@ export function DetailPane({
     >
       <DetailMeta ev={ev} />
       <scrollbox ref={scrollRef} scrollY stickyStart="top" flexGrow={1}>
-        <EventDetailBody ev={ev} />
+        <EventDetailBody ev={ev} ret={ret} />
       </scrollbox>
     </box>
   )
 }
 
-export function EventDetailBody({ ev }: { ev: TraceEvent }) {
+export function EventDetailBody({ ev, ret }: { ev: TraceEvent; ret?: string }) {
   const { payload, stack } = splitEventInfo(ev)
   const payloadLabel = ev.kind === "call" ? "args" : ev.kind === "retn" ? "return" : "payload"
 
@@ -63,6 +69,12 @@ export function EventDetailBody({ ev }: { ev: TraceEvent }) {
         syntaxStyle={elixirStyle}
         treeSitterClient={tsClient}
       />
+      {ret != null && (
+        <>
+          <text fg={theme.textMuted} marginTop={1}>return</text>
+          <code content={ret} filetype="elixir" syntaxStyle={elixirStyle} treeSitterClient={tsClient} />
+        </>
+      )}
       {stack.length > 0 && (
         <>
           <text fg={theme.textMuted} marginTop={1}>stack</text>

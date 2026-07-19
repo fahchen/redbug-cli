@@ -133,7 +133,7 @@ function SettingsView({ store, onClose }: { store: SettingsStore; onClose: () =>
           <text fg={theme.dim}>{fit("$EDITOR", 16)}</text>
           <text fg={theme.dim}>{`${editor} (read-only · set via env)`}</text>
         </box>
-        <text fg={theme.dim}>ts and k columns are always shown.</text>
+        <text fg={theme.dim}>ts is always shown; the kind glyph rides in front of mfa.</text>
         <text fg={theme.dim} marginTop={1}>j/k move · space toggle · ? help · esc close</text>
       </Overlay>
 
