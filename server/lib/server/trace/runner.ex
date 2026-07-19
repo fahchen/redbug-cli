@@ -32,7 +32,11 @@ defmodule Server.Trace.Runner do
     buffer: [],
     keep: 500,
     event_count: 0,
-    applied_sig: nil
+    applied_sig: nil,
+    # per-pid LIFO stack of {pair_id, mfa} for open calls, used to give a call
+    # and its return a shared `pair` id and the call `depth`.
+    call_stack: %{},
+    pair_seq: 0
   ]
 
   # --- API ---
@@ -94,7 +98,7 @@ defmodule Server.Trace.Runner do
   end
 
   def handle_call(:clear, _from, state) do
-    new_state = %{state | buffer: []}
+    new_state = %{state | buffer: [], call_stack: %{}}
     broadcast(state.session_id, {:trace_reset})
     {:reply, :ok, new_state}
   end
@@ -120,14 +124,9 @@ defmodule Server.Trace.Runner do
 
   @impl true
   def handle_info({:redbug, msg}, state) do
-    case to_event(msg) do
-      nil ->
-        {:noreply, state}
-
-      event ->
-        new_state = %{push_event(state, event) | event_count: state.event_count + 1}
-        broadcast(state.session_id, {:trace_event, event})
-        {:noreply, new_state}
+    case cook(msg, state) do
+      {:emit, event, state} -> {:noreply, emit_event(state, event)}
+      {:ignore, state} -> {:noreply, state}
     end
   end
 
@@ -192,6 +191,8 @@ defmodule Server.Trace.Runner do
             |> Map.put(:started_at, System.monotonic_time(:millisecond))
             |> Map.put(:applied_limits, session.limits)
             |> Map.put(:event_count, 0)
+            |> Map.put(:call_stack, %{})
+            |> Map.put(:pair_seq, 0)
             |> Map.put(:applied_sig, Server.Trace.Signature.compute(session.traces, session.limits))
             |> monitor_redbug(proc)
             |> maybe_separator(separator?)
@@ -234,8 +235,18 @@ defmodule Server.Trace.Runner do
   defp require_patterns([]), do: {:error, :no_enabled_rtp}
 
   defp require_patterns(enabled) do
-    {:ok,
-     Enum.map(enabled, &(&1.text |> Server.Trace.Pattern.to_redbug() |> String.to_charlist()))}
+    {:ok, Enum.map(enabled, &to_pattern(&1.text))}
+  end
+
+  # redbug takes the atoms `send`/`'receive'` to trace messages (node-wide) and a
+  # charlist RTP for call/return tracing. A bare "send"/"receive" RTP means "trace
+  # messages"; everything else is a normal MFA pattern.
+  defp to_pattern(text) do
+    case String.trim(text) do
+      "send" -> :send
+      "receive" -> :receive
+      _ -> text |> Server.Trace.Pattern.to_redbug() |> String.to_charlist()
+    end
   end
 
   defp fetch_node(node_id) do
@@ -347,34 +358,80 @@ defmodule Server.Trace.Runner do
 
   # --- event mapping (from redbug print_fun message) ---
 
-  defp separator_event do
-    %Server.Schema.TraceEvent{
-      id: event_id(),
-      kind: "restart",
-      pid: "",
-      name: "",
-      mfa: "",
-      info: "restarted " <> Server.Time.hms(),
-      ts: Server.Time.hms()
-    }
+  # Broadcast an event and buffer it (newest first, capped), counting it toward
+  # the msgs limit.
+  defp emit_event(state, event) do
+    broadcast(state.session_id, {:trace_event, event})
+    %{push_event(state, event) | event_count: state.event_count + 1}
   end
 
-  defp to_event({tag, payload, {pid, name_or_call}, ts})
-       when tag in [:call, :retn, :send, :recv] do
-    {mfa, info} = describe(tag, payload)
+  defp separator_event do
+    message_event("restart", "", "", "", "restarted " <> Server.Time.hms(), Server.Time.hms())
+  end
 
-    %Server.Schema.TraceEvent{
+  # A call: emit it right away (real-time) with a fresh `pair` id and the current
+  # nesting `depth`, and remember {pair, mfa} on the per-pid stack so its return
+  # can reuse the same pair id.
+  defp cook({:call, payload, {pid, name}, ts}, state) do
+    {mfa, info} = describe(:call, payload)
+    key = inspect(pid)
+    stack = Map.get(state.call_stack, key, [])
+    pair = Integer.to_string(state.pair_seq)
+
+    ev = %Server.Schema.TraceEvent{
       id: event_id(),
-      kind: Atom.to_string(tag),
-      pid: inspect(pid),
-      name: pid_name(name_or_call),
+      kind: "call",
+      pid: key,
+      name: pid_name(name),
       mfa: mfa,
       info: info,
+      pair: pair,
+      depth: length(stack),
       ts: fmt_ts(ts)
     }
+
+    state = %{state | call_stack: Map.put(state.call_stack, key, [{pair, mfa} | stack]), pair_seq: state.pair_seq + 1}
+    {:emit, ev, state}
   end
 
-  defp to_event(_other), do: nil
+  # A return: pop the matching open call (same pid, same MFA at the LIFO top) and
+  # reuse its pair id + depth. No match (call evicted, trace started mid-flight,
+  # or MFA mismatch) → emit unpaired (empty pair, depth 0).
+  defp cook({:retn, payload, {pid, name}, ts}, state) do
+    {mfa, ret} = describe(:retn, payload)
+    key = inspect(pid)
+
+    {pair, depth, stacks} =
+      case state.call_stack do
+        %{^key => [{pair, ^mfa} | rest]} -> {pair, length(rest), Map.put(state.call_stack, key, rest)}
+        _ -> {"", 0, state.call_stack}
+      end
+
+    ev = %{message_event("retn", key, pid_name(name), mfa, ret, fmt_ts(ts)) | pair: pair, depth: depth}
+    {:emit, ev, %{state | call_stack: stacks}}
+  end
+
+  defp cook({tag, payload, {pid, name}, ts}, state) when tag in [:send, :recv] do
+    {mfa, info} = describe(tag, payload)
+    {:emit, message_event(Atom.to_string(tag), inspect(pid), pid_name(name), mfa, info, fmt_ts(ts)), state}
+  end
+
+  defp cook(_other, state), do: {:ignore, state}
+
+  # Build a non-call event (no pairing): empty pair, depth 0.
+  defp message_event(kind, pid, name, mfa, info, ts) do
+    %Server.Schema.TraceEvent{
+      id: event_id(),
+      kind: kind,
+      pid: pid,
+      name: name,
+      mfa: mfa,
+      info: info,
+      pair: "",
+      depth: 0,
+      ts: ts
+    }
+  end
 
   defp describe(:call, {{m, f, args}, stack}) do
     info =
