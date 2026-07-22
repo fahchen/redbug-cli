@@ -9,7 +9,12 @@ import { theme } from "./theme"
 import wasm from "../assets/elixir/tree-sitter-elixir.wasm" with { type: "file" }
 import highlights from "../assets/elixir/highlights.scm" with { type: "file" }
 
-export const tsClient = new TreeSitterClient({ dataPath: "/tmp/redbug-ts-cache" })
+// autoStartWorker:false defers the worker spawn until initialize() (called from
+// ensureTreeSitter), so the compiled binary can first set
+// OTUI_TREE_SITTER_WORKER_PATH to the extracted worker (see ts-worker-bootstrap).
+// In dev that env var is unset and opentui resolves its own worker from
+// node_modules.
+export const tsClient = new TreeSitterClient({ dataPath: "/tmp/redbug-ts-cache" }, { autoStartWorker: false })
 
 // Map Elixir tree-sitter capture groups to theme colors. Unknown groups fall back
 // to `default`. Atoms/keys (string.special.symbol) get their own hue since they

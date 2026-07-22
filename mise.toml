@@ -70,6 +70,16 @@ echo "==> packing release"
 mkdir -p "$root/tui/embed"
 tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
 
+# Pre-bundle the opentui tree-sitter worker (+ its web-tree-sitter wasm sidecar)
+# into a self-contained dir, then tar it. bun --compile won't fold a Worker spawned
+# from a runtime path string into the binary, so we embed + extract it at startup
+# (see tui/src/ts-worker-bootstrap.ts).
+echo "==> packing tree-sitter worker"
+rm -rf "$root/tui/embed/ts-worker"
+bun --cwd="$root/tui" build node_modules/@opentui/core/parser.worker.js --target=bun --outdir "$root/tui/embed/ts-worker"
+tar -czf "$root/tui/embed/ts-worker.tar.gz" -C "$root/tui/embed" ts-worker
+rm -rf "$root/tui/embed/ts-worker"
+
 echo "==> compiling single-file binary"
 # main.tsx embeds the tarball and extracts + spawns the server at runtime.
 # --no-compile-autoload-* stops the runtime from picking up a stray bunfig.toml
