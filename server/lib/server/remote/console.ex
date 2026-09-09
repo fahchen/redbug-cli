@@ -9,9 +9,10 @@ defmodule Server.Remote.Console do
   runaway evals. Results, output and status flow back as PubSub broadcasts on
   `Server.Remote.topic/1`; the store mirrors them into its stream.
 
-  History is server-held, so it survives ws reconnects; `stop/2` requires the
-  caller to have confirmed (a TUI concern). Code is auto-formatted on run via
-  `Server.Code.Format`.
+  History is server-held, so it survives ws reconnects, and is mirrored to one
+  JSON file per session next to the config (see `path/1`) so it also survives a
+  restart. `stop/2` requires the caller to have confirmed (a TUI concern). Code
+  is auto-formatted on run via `Server.Code.Format`.
   """
 
   use GenServer, restart: :transient
@@ -47,10 +48,13 @@ defmodule Server.Remote.Console do
 
   @impl true
   def init(opts) do
+    session_id = Keyword.fetch!(opts, :session_id)
+
     {:ok,
      %__MODULE__{
        node_id: Keyword.fetch!(opts, :node_id),
-       session_id: Keyword.fetch!(opts, :session_id)
+       session_id: session_id,
+       history: load(session_id)
      }}
   end
 
@@ -99,12 +103,14 @@ defmodule Server.Remote.Console do
     if entry do
       broadcast(state, {:console_delete, exec_id})
     end
-    {:reply, :ok, %{state | history: Enum.reject(state.history, &(&1.id == exec_id))}}
+
+    state = persist(%{state | history: Enum.reject(state.history, &(&1.id == exec_id))})
+    {:reply, :ok, state}
   end
 
   def handle_call(:clear, _from, state) do
     broadcast(state, {:console_reset})
-    {:reply, :ok, %{state | history: []}}
+    {:reply, :ok, persist(%{state | history: []})}
   end
 
   def handle_call(:snapshot, _from, state) do
@@ -220,7 +226,9 @@ defmodule Server.Remote.Console do
 
     entry = Enum.find(history, &(&1.id == exec_id))
     if entry, do: broadcast(state, {:console_update, entry})
-    %{state | history: history, running: Map.delete(state.running, exec_id)}
+    # Persist here (not on every streamed chunk): a finished exec is the only
+    # state worth carrying across a restart.
+    persist(%{state | history: history, running: Map.delete(state.running, exec_id)})
   end
 
   # Append a streamed stdout chunk to a still-running exec and rebroadcast.
@@ -252,6 +260,46 @@ defmodule Server.Remote.Console do
 
   defp find_by_ref(running, ref) do
     Enum.find_value(running, fn {id, meta} -> if meta.ref == ref, do: {id, meta} end)
+  end
+
+  # --- persistence ---
+
+  @doc "Absolute path of a session's persisted history file."
+  def path(session_id) do
+    Path.join([Path.dirname(Config.path()), "console", session_id <> ".json"])
+  end
+
+  defp load(session_id) do
+    with {:ok, body} <- File.read(path(session_id)),
+         {:ok, list} when is_list(list) <- Jason.decode(body) do
+      list |> Enum.map(&from_json/1) |> Enum.take(@keep)
+    else
+      _ -> []
+    end
+  end
+
+  # The file holds code the user ran, so it gets the same 0600 treatment as the
+  # config it sits next to.
+  defp persist(state) do
+    file = path(state.session_id)
+    File.mkdir_p!(Path.dirname(file))
+    File.write(file, Jason.encode!(Enum.map(state.history, &Map.from_struct/1)))
+    File.chmod(file, 0o600)
+    state
+  end
+
+  defp from_json(j) do
+    %ConsoleExec{
+      id: Map.get(j, "id", Config.gen_id()),
+      name: Map.get(j, "name", ""),
+      code: Map.get(j, "code", ""),
+      # Nothing is running after a restart: a "running" row would spin forever.
+      status: if(Map.get(j, "status") == "running", do: "stopped", else: Map.get(j, "status", "ok")),
+      result: Map.get(j, "result", ""),
+      output: Map.get(j, "output", ""),
+      ts: Map.get(j, "ts", ""),
+      duration_ms: Map.get(j, "duration_ms")
+    }
   end
 
   defp cancel(%{ref: ref, timer: timer}) do

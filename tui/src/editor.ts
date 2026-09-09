@@ -1,3 +1,5 @@
+import { readdir, unlink } from "node:fs/promises"
+
 declare const process: { env: Record<string, string | undefined>; cwd(): string }
 declare const Bun: {
   write(path: string, data: string): Promise<number>
@@ -56,6 +58,27 @@ function redbugDir(): string {
     // not in a git repo — fall through to cwd
   }
   return `${process.cwd()}/.redbug`
+}
+
+// Drop an edit buffer whose subject is gone (e.g. the execution it was opened
+// for got deleted), so .redbug/ doesn't collect orphans. Missing file is fine.
+export async function removeEditFile(file: string): Promise<void> {
+  try {
+    await unlink(`${redbugDir()}/${file}`)
+  } catch {
+    // already gone
+  }
+}
+
+// Same, for every buffer of a subject that owns several (all of a session's
+// console files, say). Prefix match — file names are ours, not user input.
+export async function removeEditFiles(prefix: string): Promise<void> {
+  try {
+    const names = await readdir(redbugDir())
+    await Promise.all(names.filter((n) => n.startsWith(prefix)).map((n) => removeEditFile(n)))
+  } catch {
+    // no .redbug/ yet
+  }
 }
 
 // Seed a temp file under .redbug/ so it lives inside the project tree

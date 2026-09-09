@@ -20,6 +20,8 @@ import { ModalLayer as NodeModalLayer } from "./NodeModal"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
+import { sessionPrefix } from "./ConsoleTab"
+import { removeEditFiles } from "./editor"
 import { SettingsOverlay } from "./SettingsScreen"
 
 declare const process: { exit(code?: number): never }
@@ -358,6 +360,12 @@ function S1View({
         return
     }
 
+    // The server drops a deleted session's console history; its .redbug/ edit
+    // buffers are ours to sweep (nothing else records their names).
+    const sweepSessionFiles = (ids: string[]) => {
+      ids.forEach((id) => void removeEditFiles(sessionPrefix(id)))
+    }
+
     // no modal — two-pane navigation
     const newSession = () => {
       if (node) {
@@ -369,6 +377,7 @@ function S1View({
     if (focus === "sessions") {
       if (key.ctrl && name === "d" && node && session && sessionProxy) {
         dispatcher(sessionProxy)("deleteSession")
+        sweepSessionFiles([session.id])
         setSessSel((i) => Math.max(0, i - 1))
         return
       }
@@ -417,6 +426,7 @@ function S1View({
               run: () => {
                 if (!proxy) return
                 dispatcher(proxy)("deleteSession")
+                sweepSessionFiles([session.id])
                 setSessSel((i) => Math.max(0, i - 1))
               }
             })
@@ -442,6 +452,7 @@ function S1View({
     // focus === "nodes"
     if (key.ctrl && name === "d" && node && node.source !== "env" && nodeProxy) {
       dispatcher(nodeProxy)("deleteNode")
+      sweepSessionFiles(node.sessions.map((s) => s.id))
       setNodeSel((i) => Math.max(0, i - 1))
       setSessSel(0)
       return
@@ -502,6 +513,7 @@ function S1View({
             label: `Delete node "${node.name}" and all its sessions?`,
             run: () => {
               dispatcher(proxy)("deleteNode")
+              sweepSessionFiles(node.sessions.map((s) => s.id))
               setNodeSel((i) => Math.max(0, i - 1))
               setSessSel(0)
             }

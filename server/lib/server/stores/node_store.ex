@@ -12,7 +12,7 @@ defmodule Server.Stores.NodeStore do
 
   import Server.Stores.Payload, only: [get: 2, get: 3, put_if: 4]
 
-  alias Server.Config
+  alias Server.{Config, Remote}
   alias Server.Stores.SessionItemStore
 
   attr(:node, map(), required: true)
@@ -121,7 +121,11 @@ defmodule Server.Stores.NodeStore do
   def handle_command(:deleteNode, _payload, socket) do
     unless env?(socket) do
       node = socket.assigns.node
-      Enum.each(node.sessions, &Server.Trace.terminate(&1.id))
+      Enum.each(node.sessions, fn s ->
+        Server.Trace.terminate(s.id)
+        Remote.purge(s.id)
+      end)
+
       Config.delete_node(node.id)
     end
 

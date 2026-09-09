@@ -9,7 +9,7 @@ defmodule Server.Stores.SessionItemStore do
 
   use Musubi.Store
 
-  alias Server.{Config, Trace}
+  alias Server.{Config, Remote, Trace}
 
   attr(:session, map(), required: true)
   attr(:node_id, String.t(), required: true)
@@ -64,6 +64,7 @@ defmodule Server.Stores.SessionItemStore do
   def handle_command(:deleteSession, _payload, socket) do
     s = socket.assigns.session
     Trace.terminate(s.id)
+    Remote.purge(s.id)
     Config.delete_session(socket.assigns.node_id, s.id)
     {:noreply, socket}
   end

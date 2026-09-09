@@ -7,3 +7,4 @@ tui/src/generated/musubi.d.ts
 dist/
 .DS_Store
 .review-shots/
+.redbug/
