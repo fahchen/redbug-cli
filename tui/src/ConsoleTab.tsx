@@ -6,7 +6,7 @@ import type { RefObject } from "react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
-import { editInEditor, reconcileEditFiles, removeEditFile } from "./editor"
+import { composeFile, editInEditor, reconcileEditFiles, sessionPrefix, viewFile } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, useScrollFollow, wrapText } from "./ui"
@@ -63,7 +63,7 @@ export function ConsoleTab({
   const root = useMusubiRoot(consoleRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading console…" errorLabel="Console">
-      {(store) => <ConsoleView store={store} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} onOpenSettings={onOpenSettings} />}
+      {(store) => <ConsoleView store={store} sessionId={sessionId} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} onOpenSettings={onOpenSettings} />}
     </RootGate>
   )
 }
@@ -79,19 +79,20 @@ type Modal =
 
 function ConsoleView({
   store,
+  sessionId,
   nodeStatus,
   onSwitchToEvents,
   onBack,
   onOpenSettings
 }: {
   store: ConsoleStore
+  sessionId: string
   nodeStatus: string
   onSwitchToEvents: () => void
   onBack: () => void
   onOpenSettings: () => void
 }) {
   const snap = useMusubiSnapshot(store)
-  const sessionId = snap?.session_id ?? ""
   const history = (snap?.history ?? []) as Exec[]
   const snippets = (snap?.snippets ?? []) as Snippet[]
   const renderer = useRenderer()
@@ -111,25 +112,18 @@ function ConsoleView({
     : nodeStatus === "connecting" ? theme.warning
     : theme.borderActive
 
-  // History is capped server-side, so entries also vanish by eviction — there is
-  // no delete to hook onto for those. Reconcile the whole session's buffers
-  // whenever the set of ids changes, keyed on the ids rather than on `history`
-  // so streamed output updates don't trigger a directory scan.
+  // The single cleanup path for view buffers: an execution leaves history by
+  // delete, by clear, or by server-side eviction, and only the last of those has
+  // no event to hook onto. Keyed on the ids rather than on `history` so streamed
+  // output updates don't trigger a directory scan.
   const idSig = history.map((e) => e.id).join(",")
   useEffect(() => {
-    if (sessionId === "") return
     const ids = idSig.split(",").filter((id) => id !== "")
     void reconcileEditFiles(sessionPrefix(sessionId), [
       composeFile(sessionId),
       ...ids.map((id) => viewFile(sessionId, id))
     ])
   }, [sessionId, idSig])
-
-  // Deleting an execution takes its view buffer with it.
-  const deleteExec = (id: string) => {
-    dispatch("deleteExec", { id })
-    void removeEditFile(viewFile(sessionId, id))
-  }
 
   const composeAndRun = (seed: string, name: string | null) => {
     void (async () => {
@@ -168,7 +162,6 @@ function ConsoleView({
     if (modal.kind === "confirmClear") {
       if (n === "y") {
         dispatch("clearHistory")
-        history.forEach((e) => void removeEditFile(viewFile(sessionId, e.id)))
         setModal({ kind: "none" })
       } else if (n === "n" || n === "escape") setModal({ kind: "none" })
       return
@@ -181,7 +174,7 @@ function ConsoleView({
 
     if (modal.kind === "confirmDelete") {
       if (n === "y") {
-        deleteExec(modal.id)
+        dispatch("deleteExec", { id: modal.id })
         setModal({ kind: "none" })
         setSel((i) => Math.max(0, i - 1))
       } else if (n === "n" || n === "escape") setModal({ kind: "none" })
@@ -201,7 +194,7 @@ function ConsoleView({
     }
 
     if (key.ctrl && n === "d") {
-      if (cur) { deleteExec(cur.id); setSel((i) => Math.max(0, i - 1)) }
+      if (cur) { dispatch("deleteExec", { id: cur.id }); setSel((i) => Math.max(0, i - 1)) }
       return
     }
 
@@ -499,22 +492,6 @@ async function viewExec(
 }
 
 // --- pure helpers ---
-
-// Every console buffer of a session shares this prefix, so deleting the session
-// can sweep them all (see removeEditFiles).
-export function sessionPrefix(sessionId: string): string {
-  return `console-${sessionId}-`
-}
-
-// One reused compose buffer per session (no timestamped leftovers).
-function composeFile(sessionId: string): string {
-  return `${sessionPrefix(sessionId)}compose.exs`
-}
-
-// One view buffer per execution, so deleting the execution can delete the file.
-function viewFile(sessionId: string, id: string): string {
-  return `${sessionPrefix(sessionId)}view-${id}.exs`
-}
 
 function firstLine(s: string): string {
   const line = s.split("\n").find((l) => l.trim() !== "") ?? ""

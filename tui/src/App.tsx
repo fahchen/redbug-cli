@@ -20,8 +20,7 @@ import { ModalLayer as NodeModalLayer } from "./NodeModal"
 import { SessionScreen } from "./SessionScreen"
 import { PresetManager } from "./PresetManager"
 import { SnippetManager } from "./SnippetManager"
-import { sessionPrefix } from "./ConsoleTab"
-import { removeEditFiles } from "./editor"
+import { reconcileEditFiles, sessionPrefix } from "./editor"
 import { SettingsOverlay } from "./SettingsScreen"
 
 declare const process: { exit(code?: number): never }
@@ -363,7 +362,7 @@ function S1View({
     // The server drops a deleted session's console history; its .redbug/ edit
     // buffers are ours to sweep (nothing else records their names).
     const sweepSessionFiles = (ids: string[]) => {
-      ids.forEach((id) => void removeEditFiles(sessionPrefix(id)))
+      ids.forEach((id) => void reconcileEditFiles(sessionPrefix(id), []))
     }
 
     // no modal — two-pane navigation

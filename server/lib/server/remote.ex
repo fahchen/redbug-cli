@@ -64,7 +64,10 @@ defmodule Server.Remote do
   """
   def purge(session_id) do
     terminate(session_id)
-    File.rm(Console.path(session_id))
+    file = Console.path(session_id)
+    File.rm(file)
+    # a crash between write and rename can leave this behind
+    File.rm(file <> ".tmp")
     :ok
   end
 end

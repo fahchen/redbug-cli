@@ -26,6 +26,9 @@ defmodule Server.Remote.Console do
   @pubsub Server.PubSub
   @timeout 15_000
   @keep 200
+  # A runaway `IO.puts` loop would otherwise grow one exec's output without
+  # bound — and every finalize rewrites the whole history file.
+  @max_output 64_000
 
   defstruct [:node_id, :session_id, history: [], running: %{}]
 
@@ -218,7 +221,7 @@ defmodule Server.Remote.Console do
       Enum.map(state.history, fn e ->
         if e.id == exec_id do
           # nil output keeps the already-streamed stdout (see :DOWN handler).
-          %{e | status: status, result: text, output: output || e.output, duration_ms: duration}
+          %{e | status: status, result: text, output: cap(output || e.output), duration_ms: duration}
         else
           e
         end
@@ -235,7 +238,7 @@ defmodule Server.Remote.Console do
   defp append_output(state, exec_id, chunk) do
     history =
       Enum.map(state.history, fn e ->
-        if e.id == exec_id, do: %{e | output: e.output <> chunk}, else: e
+        if e.id == exec_id, do: %{e | output: cap(e.output <> chunk)}, else: e
       end)
 
     entry = Enum.find(history, &(&1.id == exec_id))
@@ -246,6 +249,12 @@ defmodule Server.Remote.Console do
   defp push(state, entry) do
     %{state | history: Enum.take([entry | state.history], @keep)}
   end
+
+  # Slice by characters, not bytes: cutting mid-codepoint would produce invalid
+  # UTF-8 that Jason.encode! then refuses. Re-capping an already-capped string is
+  # a no-op beyond the marker.
+  defp cap(text) when byte_size(text) <= @max_output, do: text
+  defp cap(text), do: String.slice(text, 0, @max_output) <> "\n… output truncated"
 
   defp split({:ok, text}), do: {"ok", text}
   defp split({:error, text}), do: {"error", text}
@@ -306,7 +315,7 @@ defmodule Server.Remote.Console do
 
   defp from_json(j) do
     %ConsoleExec{
-      id: Map.get(j, "id", Config.gen_id()),
+      id: Map.get(j, "id") || Config.gen_id(),
       name: Map.get(j, "name", ""),
       code: Map.get(j, "code", ""),
       # Nothing is running after a restart: a "running" row would spin forever.

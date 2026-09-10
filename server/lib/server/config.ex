@@ -437,7 +437,8 @@ defmodule Server.Config do
     {:reply, :ok, state}
   end
 
-  # --- ETS write helpers (run in GenServer) ---
+  # --- connection teardown ---
+
   # Fields that decide *what* we dial and *how*; a change to any of them
   # invalidates a live link. `label` is cosmetic, so it is not listed.
   @dial_fields [:name, :cookie, :port, :ssh_host, :ssh_port, :ssh_user, :container]
@@ -457,6 +458,7 @@ defmodule Server.Config do
     drop_connected(node.id)
   end
 
+  # --- ETS write helpers (run in GenServer) ---
 
   defp put_nodes(nodes) do
     :ets.insert(@table, {:nodes, nodes})
