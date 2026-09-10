@@ -112,17 +112,18 @@ function ConsoleView({
     : theme.borderActive
 
   // History is capped server-side, so entries also vanish by eviction — there is
-  // no delete to hook onto for those. Reconcile the whole session's buffers once
-  // per mount instead of only on explicit delete/clear.
-  const reconciled = useRef(false)
+  // no delete to hook onto for those. Reconcile the whole session's buffers
+  // whenever the set of ids changes, keyed on the ids rather than on `history`
+  // so streamed output updates don't trigger a directory scan.
+  const idSig = history.map((e) => e.id).join(",")
   useEffect(() => {
-    if (reconciled.current || sessionId === "") return
-    reconciled.current = true
+    if (sessionId === "") return
+    const ids = idSig.split(",").filter((id) => id !== "")
     void reconcileEditFiles(sessionPrefix(sessionId), [
       composeFile(sessionId),
-      ...history.map((e) => viewFile(sessionId, e.id))
+      ...ids.map((id) => viewFile(sessionId, id))
     ])
-  }, [sessionId, history])
+  }, [sessionId, idSig])
 
   // Deleting an execution takes its view buffer with it.
   const deleteExec = (id: string) => {
