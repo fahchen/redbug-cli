@@ -41,4 +41,10 @@ defmodule Server.Remote.ConsoleHistoryTest do
     Remote.purge(ctx.session_id)
     refute File.exists?(ctx.path)
   end
+
+  test "a session id can't escape the console directory", ctx do
+    dir = Path.dirname(ctx.path)
+    assert Path.dirname(Console.path("../../etc/passwd")) == dir
+    assert Path.dirname(Console.path("a/b")) == dir
+  end
 end

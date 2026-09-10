@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/react */
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 import type { RefObject } from "react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
-import { editInEditor, removeEditFile } from "./editor"
+import { editInEditor, reconcileEditFiles, removeEditFile } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, useScrollFollow, wrapText } from "./ui"
@@ -111,6 +111,19 @@ function ConsoleView({
     : nodeStatus === "connecting" ? theme.warning
     : theme.borderActive
 
+  // History is capped server-side, so entries also vanish by eviction — there is
+  // no delete to hook onto for those. Reconcile the whole session's buffers once
+  // per mount instead of only on explicit delete/clear.
+  const reconciled = useRef(false)
+  useEffect(() => {
+    if (reconciled.current || sessionId === "") return
+    reconciled.current = true
+    void reconcileEditFiles(sessionPrefix(sessionId), [
+      composeFile(sessionId),
+      ...history.map((e) => viewFile(sessionId, e.id))
+    ])
+  }, [sessionId, history])
+
   // Deleting an execution takes its view buffer with it.
   const deleteExec = (id: string) => {
     dispatch("deleteExec", { id })
@@ -120,7 +133,7 @@ function ConsoleView({
   const composeAndRun = (seed: string, name: string | null) => {
     void (async () => {
       const code = await editInEditor(renderer, {
-        file: `${sessionPrefix(sessionId)}compose.exs`,
+        file: composeFile(sessionId),
         seed
       })
       if (code !== null && code.trim() !== "") {
@@ -490,6 +503,11 @@ async function viewExec(
 // can sweep them all (see removeEditFiles).
 export function sessionPrefix(sessionId: string): string {
   return `console-${sessionId}-`
+}
+
+// One reused compose buffer per session (no timestamped leftovers).
+function composeFile(sessionId: string): string {
+  return `${sessionPrefix(sessionId)}compose.exs`
 }
 
 // One view buffer per execution, so deleting the execution can delete the file.

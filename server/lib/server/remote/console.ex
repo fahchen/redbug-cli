@@ -266,7 +266,15 @@ defmodule Server.Remote.Console do
 
   @doc "Absolute path of a session's persisted history file."
   def path(session_id) do
-    Path.join([Path.dirname(Config.path()), "console", session_id <> ".json"])
+    Path.join([Path.dirname(Config.path()), "console", file_name(session_id)])
+  end
+
+  # `session_id` reaches us as a client-supplied mount param, so it never hits
+  # the filesystem raw: hashing it yields a fixed-length name that can't contain
+  # a separator or `..`. The id is opaque anyway, so nothing readable is lost.
+  defp file_name(session_id) do
+    digest = :sha256 |> :crypto.hash(session_id) |> Base.url_encode64(padding: false)
+    digest <> ".json"
   end
 
   defp load(session_id) do
@@ -280,11 +288,19 @@ defmodule Server.Remote.Console do
 
   # The file holds code the user ran, so it gets the same 0600 treatment as the
   # config it sits next to.
+  # Write-then-rename: a crash mid-write would otherwise leave truncated JSON,
+  # which load/1 can only treat as "no history". chmod before the rename so the
+  # file is never briefly world-readable.
   defp persist(state) do
     file = path(state.session_id)
     File.mkdir_p!(Path.dirname(file))
-    File.write(file, Jason.encode!(Enum.map(state.history, &Map.from_struct/1)))
-    File.chmod(file, 0o600)
+    tmp = file <> ".tmp"
+
+    with :ok <- File.write(tmp, Jason.encode!(Enum.map(state.history, &Map.from_struct/1))),
+         :ok <- File.chmod(tmp, 0o600) do
+      File.rename(tmp, file)
+    end
+
     state
   end
 

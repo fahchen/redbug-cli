@@ -81,6 +81,20 @@ export async function removeEditFiles(prefix: string): Promise<void> {
   }
 }
 
+// Sweep the buffers under `prefix` whose subject is gone, keeping only the file
+// names the caller still knows about.
+export async function reconcileEditFiles(prefix: string, keep: string[]): Promise<void> {
+  const wanted = new Set(keep)
+  try {
+    const names = await readdir(redbugDir())
+    await Promise.all(
+      names.filter((n) => n.startsWith(prefix) && !wanted.has(n)).map((n) => removeEditFile(n))
+    )
+  } catch {
+    // no .redbug/ yet
+  }
+}
+
 // Seed a temp file under .redbug/ so it lives inside the project tree
 // (autocomplete, LSP, go-to-def) instead of a bare /tmp path.
 export async function editInEditor(
