@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/react */
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { StoreProxy } from "@musubi/react"
 import type { RefObject } from "react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 
 import { consoleRoot, dispatcher, useMusubiRoot, useMusubiSnapshot } from "./musubi"
-import { editInEditor } from "./editor"
+import { composeFile, editInEditor, reconcileEditFiles, sessionPrefix, viewFile } from "./editor"
 import { theme, PANEL_BORDER } from "./theme"
 import { elixirStyle, tsClient } from "./treesitter"
 import { Chip, HelpOverlay, Overlay, RootGate, StatusBar, TextField, truncate, useSpinner, useScrollFollow, wrapText } from "./ui"
@@ -63,7 +63,7 @@ export function ConsoleTab({
   const root = useMusubiRoot(consoleRoot(nodeId, sessionId))
   return (
     <RootGate root={root} loading="Loading console…" errorLabel="Console">
-      {(store) => <ConsoleView store={store} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} onOpenSettings={onOpenSettings} />}
+      {(store) => <ConsoleView store={store} sessionId={sessionId} nodeStatus={nodeStatus} onSwitchToEvents={onSwitchToEvents} onBack={onBack} onOpenSettings={onOpenSettings} />}
     </RootGate>
   )
 }
@@ -79,12 +79,14 @@ type Modal =
 
 function ConsoleView({
   store,
+  sessionId,
   nodeStatus,
   onSwitchToEvents,
   onBack,
   onOpenSettings
 }: {
   store: ConsoleStore
+  sessionId: string
   nodeStatus: string
   onSwitchToEvents: () => void
   onBack: () => void
@@ -110,10 +112,23 @@ function ConsoleView({
     : nodeStatus === "connecting" ? theme.warning
     : theme.borderActive
 
+  // The single cleanup path for view buffers: an execution leaves history by
+  // delete, by clear, or by server-side eviction, and only the last of those has
+  // no event to hook onto. Keyed on the ids rather than on `history` so streamed
+  // output updates don't trigger a directory scan.
+  const idSig = history.map((e) => e.id).join(",")
+  useEffect(() => {
+    const ids = idSig.split(",").filter((id) => id !== "")
+    void reconcileEditFiles(sessionPrefix(sessionId), [
+      composeFile(sessionId),
+      ...ids.map((id) => viewFile(sessionId, id))
+    ])
+  }, [sessionId, idSig])
+
   const composeAndRun = (seed: string, name: string | null) => {
     void (async () => {
       const code = await editInEditor(renderer, {
-        file: `redbug-console-compose-${Date.now()}.exs`,
+        file: composeFile(sessionId),
         seed
       })
       if (code !== null && code.trim() !== "") {
@@ -209,7 +224,7 @@ function ConsoleView({
         if (cur) composeAndRun(cur.code, cur.name || null)
         break
       case "v":
-        if (cur) void viewExec(renderer, cur)
+        if (cur) void viewExec(renderer, sessionId, cur)
         break
       case "r":
         if (cur) {
@@ -454,6 +469,7 @@ async function runAfterEdit(store: ConsoleStore, code: string, name: string | nu
 
 async function viewExec(
   renderer: { suspend: () => void; resume: () => void },
+  sessionId: string,
   exec: Exec
 ): Promise<void> {
   const body = [
@@ -469,7 +485,7 @@ async function viewExec(
     ""
   ].join("\n")
   await editInEditor(renderer, {
-    file: `redbug-console-view-${exec.id}-${Date.now()}.exs`,
+    file: viewFile(sessionId, exec.id),
     seed: body,
     readBack: false
   })

@@ -9,9 +9,10 @@ defmodule Server.Remote.Console do
   runaway evals. Results, output and status flow back as PubSub broadcasts on
   `Server.Remote.topic/1`; the store mirrors them into its stream.
 
-  History is server-held, so it survives ws reconnects; `stop/2` requires the
-  caller to have confirmed (a TUI concern). Code is auto-formatted on run via
-  `Server.Code.Format`.
+  History is server-held, so it survives ws reconnects, and is mirrored to one
+  JSON file per session next to the config (see `path/1`) so it also survives a
+  restart. `stop/2` requires the caller to have confirmed (a TUI concern). Code
+  is auto-formatted on run via `Server.Code.Format`.
   """
 
   use GenServer, restart: :transient
@@ -25,6 +26,9 @@ defmodule Server.Remote.Console do
   @pubsub Server.PubSub
   @timeout 15_000
   @keep 200
+  # A runaway `IO.puts` loop would otherwise grow one exec's output without
+  # bound — and every finalize rewrites the whole history file.
+  @max_output 64_000
 
   defstruct [:node_id, :session_id, history: [], running: %{}]
 
@@ -47,10 +51,13 @@ defmodule Server.Remote.Console do
 
   @impl true
   def init(opts) do
+    session_id = Keyword.fetch!(opts, :session_id)
+
     {:ok,
      %__MODULE__{
        node_id: Keyword.fetch!(opts, :node_id),
-       session_id: Keyword.fetch!(opts, :session_id)
+       session_id: session_id,
+       history: load(session_id)
      }}
   end
 
@@ -99,12 +106,14 @@ defmodule Server.Remote.Console do
     if entry do
       broadcast(state, {:console_delete, exec_id})
     end
-    {:reply, :ok, %{state | history: Enum.reject(state.history, &(&1.id == exec_id))}}
+
+    state = persist(%{state | history: Enum.reject(state.history, &(&1.id == exec_id))})
+    {:reply, :ok, state}
   end
 
   def handle_call(:clear, _from, state) do
     broadcast(state, {:console_reset})
-    {:reply, :ok, %{state | history: []}}
+    {:reply, :ok, persist(%{state | history: []})}
   end
 
   def handle_call(:snapshot, _from, state) do
@@ -212,7 +221,7 @@ defmodule Server.Remote.Console do
       Enum.map(state.history, fn e ->
         if e.id == exec_id do
           # nil output keeps the already-streamed stdout (see :DOWN handler).
-          %{e | status: status, result: text, output: output || e.output, duration_ms: duration}
+          %{e | status: status, result: text, output: cap(output || e.output), duration_ms: duration}
         else
           e
         end
@@ -220,14 +229,16 @@ defmodule Server.Remote.Console do
 
     entry = Enum.find(history, &(&1.id == exec_id))
     if entry, do: broadcast(state, {:console_update, entry})
-    %{state | history: history, running: Map.delete(state.running, exec_id)}
+    # Persist here (not on every streamed chunk): a finished exec is the only
+    # state worth carrying across a restart.
+    persist(%{state | history: history, running: Map.delete(state.running, exec_id)})
   end
 
   # Append a streamed stdout chunk to a still-running exec and rebroadcast.
   defp append_output(state, exec_id, chunk) do
     history =
       Enum.map(state.history, fn e ->
-        if e.id == exec_id, do: %{e | output: e.output <> chunk}, else: e
+        if e.id == exec_id, do: %{e | output: cap(e.output <> chunk)}, else: e
       end)
 
     entry = Enum.find(history, &(&1.id == exec_id))
@@ -238,6 +249,12 @@ defmodule Server.Remote.Console do
   defp push(state, entry) do
     %{state | history: Enum.take([entry | state.history], @keep)}
   end
+
+  # Slice by characters, not bytes: cutting mid-codepoint would produce invalid
+  # UTF-8 that Jason.encode! then refuses. Re-capping an already-capped string is
+  # a no-op beyond the marker.
+  defp cap(text) when byte_size(text) <= @max_output, do: text
+  defp cap(text), do: String.slice(text, 0, @max_output) <> "\n… output truncated"
 
   defp split({:ok, text}), do: {"ok", text}
   defp split({:error, text}), do: {"error", text}
@@ -252,6 +269,62 @@ defmodule Server.Remote.Console do
 
   defp find_by_ref(running, ref) do
     Enum.find_value(running, fn {id, meta} -> if meta.ref == ref, do: {id, meta} end)
+  end
+
+  # --- persistence ---
+
+  @doc "Absolute path of a session's persisted history file."
+  def path(session_id) do
+    Path.join([Path.dirname(Config.path()), "console", file_name(session_id)])
+  end
+
+  # `session_id` reaches us as a client-supplied mount param, so it never hits
+  # the filesystem raw: hashing it yields a fixed-length name that can't contain
+  # a separator or `..`. The id is opaque anyway, so nothing readable is lost.
+  defp file_name(session_id) do
+    digest = :sha256 |> :crypto.hash(session_id) |> Base.url_encode64(padding: false)
+    digest <> ".json"
+  end
+
+  defp load(session_id) do
+    with {:ok, body} <- File.read(path(session_id)),
+         {:ok, list} when is_list(list) <- Jason.decode(body) do
+      list |> Enum.map(&from_json/1) |> Enum.take(@keep)
+    else
+      _ -> []
+    end
+  end
+
+  # The file holds code the user ran, so it gets the same 0600 treatment as the
+  # config it sits next to.
+  # Write-then-rename: a crash mid-write would otherwise leave truncated JSON,
+  # which load/1 can only treat as "no history". chmod before the rename so the
+  # file is never briefly world-readable.
+  defp persist(state) do
+    file = path(state.session_id)
+    File.mkdir_p!(Path.dirname(file))
+    tmp = file <> ".tmp"
+
+    with :ok <- File.write(tmp, Jason.encode!(Enum.map(state.history, &Map.from_struct/1))),
+         :ok <- File.chmod(tmp, 0o600) do
+      File.rename(tmp, file)
+    end
+
+    state
+  end
+
+  defp from_json(j) do
+    %ConsoleExec{
+      id: Map.get(j, "id") || Config.gen_id(),
+      name: Map.get(j, "name", ""),
+      code: Map.get(j, "code", ""),
+      # Nothing is running after a restart: a "running" row would spin forever.
+      status: if(Map.get(j, "status") == "running", do: "stopped", else: Map.get(j, "status", "ok")),
+      result: Map.get(j, "result", ""),
+      output: Map.get(j, "output", ""),
+      ts: Map.get(j, "ts", ""),
+      duration_ms: Map.get(j, "duration_ms")
+    }
   end
 
   defp cancel(%{ref: ref, timer: timer}) do

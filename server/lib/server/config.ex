@@ -281,6 +281,8 @@ defmodule Server.Config do
   def handle_call({:update_node, id, attrs}, _from, state) do
     # env nodes are read-only; only config nodes can be edited.
     unless env_id?(id) do
+      previous = fetch_node(id)
+
       nodes =
         update_in_list(lookup(:nodes, []), id, fn node ->
           node
@@ -295,6 +297,14 @@ defmodule Server.Config do
         end)
 
       put_nodes(nodes)
+
+      # A live link pins the values it was opened with: the dist cookie is set
+      # once at connect, and SshTunnel caches the discovered name/cookie per node
+      # id and hands the cached pair back on reuse (which persist_discovered/4
+      # then writes back over the edit). So edited dial fields would stay
+      # invisible until restart. Drop the link + tunnel; the next connect
+      # re-resolves from the new values.
+      if previous && dial_changed?(previous, fetch_node(id)), do: reset_connection(previous)
     end
 
     {:reply, :ok, state}
@@ -413,19 +423,10 @@ defmodule Server.Config do
 
   def handle_call({:disconnect_node, id}, _from, state) do
     case fetch_node(id) do
-      nil ->
-        :ok
-
-      node ->
-        # stop any running trace on the target *before* dropping the link, so
-        # redbug is torn off the node (terminate/2 → :redbug.stop) rather than left
-        # running; then disconnect and close the tunnel.
-        Enum.each(node.sessions, &Server.Trace.terminate(&1.id))
-        Node.disconnect(String.to_atom(node.name))
-        if node[:ssh_host] not in [nil, ""], do: Server.SshTunnel.close(id)
+      nil -> drop_connected(id)
+      node -> reset_connection(node)
     end
 
-    drop_connected(id)
     {:reply, :ok, state}
   end
 
@@ -434,6 +435,27 @@ defmodule Server.Config do
     :ets.insert(@table, {:session_status, Map.put(statuses, session_id, status)})
     broadcast()
     {:reply, :ok, state}
+  end
+
+  # --- connection teardown ---
+
+  # Fields that decide *what* we dial and *how*; a change to any of them
+  # invalidates a live link. `label` is cosmetic, so it is not listed.
+  @dial_fields [:name, :cookie, :port, :ssh_host, :ssh_port, :ssh_user, :container]
+
+  defp dial_changed?(previous, current) do
+    Enum.any?(@dial_fields, &(Map.get(previous, &1) != Map.get(current, &1)))
+  end
+
+  # Tear a node's link down and land it back on :idle. Stop any running trace on
+  # the target *before* dropping the link, so redbug is torn off the node
+  # (terminate/2 → :redbug.stop) rather than left running; then disconnect and
+  # close the tunnel. Takes the pre-edit node so it disconnects the old name.
+  defp reset_connection(node) do
+    Enum.each(node.sessions, &Server.Trace.terminate(&1.id))
+    Node.disconnect(String.to_atom(node.name))
+    if node[:ssh_host] not in [nil, ""], do: Server.SshTunnel.close(node.id)
+    drop_connected(node.id)
   end
 
   # --- ETS write helpers (run in GenServer) ---

@@ -66,6 +66,9 @@ defmodule Server.Stores.ConsoleRoot do
     Config.subscribe()
     Remote.subscribe(session_id)
 
+    # Starting the runner here (rather than on first run) is what brings the
+    # persisted history back after a restart.
+    Remote.ensure(node_id, session_id)
     snap = Remote.snapshot(session_id)
 
     socket =

@@ -1,3 +1,5 @@
+import { readdir, unlink } from "node:fs/promises"
+
 declare const process: { env: Record<string, string | undefined>; cwd(): string }
 declare const Bun: {
   write(path: string, data: string): Promise<number>
@@ -56,6 +58,38 @@ function redbugDir(): string {
     // not in a git repo — fall through to cwd
   }
   return `${process.cwd()}/.redbug`
+}
+
+// Every console buffer of a session shares this prefix, so one sweep covers all
+// of them. Session ids are fixed-length, so no prefix can swallow another's.
+export function sessionPrefix(sessionId: string): string {
+  return `console-${sessionId}-`
+}
+
+// One reused compose buffer per session (no timestamped leftovers).
+export function composeFile(sessionId: string): string {
+  return `${sessionPrefix(sessionId)}compose.exs`
+}
+
+// One view buffer per execution, so a vanished execution can take its file.
+export function viewFile(sessionId: string, execId: string): string {
+  return `${sessionPrefix(sessionId)}view-${execId}.exs`
+}
+
+// Sweep the buffers under `prefix` whose subject is gone, keeping only the file
+// names the caller still knows about. Pass `[]` to drop the whole prefix.
+export async function reconcileEditFiles(prefix: string, keep: string[]): Promise<void> {
+  const wanted = new Set(keep)
+  try {
+    const names = await readdir(redbugDir())
+    await Promise.all(
+      names
+        .filter((n) => n.startsWith(prefix) && !wanted.has(n))
+        .map((n) => unlink(`${redbugDir()}/${n}`).catch(() => {}))
+    )
+  } catch {
+    // no .redbug/ yet
+  }
 }
 
 // Seed a temp file under .redbug/ so it lives inside the project tree
