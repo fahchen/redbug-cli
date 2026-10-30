@@ -106,4 +106,20 @@ defmodule Server.Tui.Ui do
         ])
     end) ++ [text(""), text("press any key to close", fg: Theme.color(:muted))]
   end
+
+  # tui/src/sessionTypes.ts:44-49
+  @rtp_examples [
+    {"Enum.map/2 -> return", "call args + return value"},
+    {"MyMod.func -> return;stack", "+ call stack"},
+    {"Demo.tick when '$1' > 100 -> return", "guard on 1st arg"},
+    {"Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"}
+  ]
+
+  @doc "The RTP cheat sheet below the trace pattern inputs (tui/src/RtpCheatSheet.tsx)."
+  def rtp_cheat_sheet do
+    [text(""), text("Common RTP rules (Elixir)", fg: Theme.color(:muted))] ++
+      Enum.map(@rtp_examples, fn {pattern, description} ->
+        text(String.pad_trailing(pattern, 38) <> description, fg: Theme.color(:muted))
+      end)
+  end
 end

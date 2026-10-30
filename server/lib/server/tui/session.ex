@@ -12,7 +12,7 @@ defmodule Server.Tui.Session do
   import Terra.View
 
   alias Server.{Config, Trace}
-  alias Server.Tui.{Highlight, Theme, Ui}
+  alias Server.Tui.{Console, Highlight, Theme, Ui}
   alias Terra.Widget
 
   # tui/src/sessionTypes.ts
@@ -54,6 +54,9 @@ defmodule Server.Tui.Session do
       group: "none",
       fold: false,
       page: :events,
+      # the tab of the screen (:events or :console) and the console state
+      tab: :events,
+      console: nil,
       editor_sel: 0,
       highlight: %{},
       # running time and the event rate for the status chip
@@ -110,6 +113,12 @@ defmodule Server.Tui.Session do
   def trace({:trace_error, error}, s, _keep), do: %{s | error: error, status: "stopped"}
   def trace(:trace_reset, s, _keep), do: %{s | events: [], sel: nil, highlight: %{}}
 
+  @doc "Applies a console message of the bridge to the console tab."
+  def console(_message, %{console: nil} = s), do: s
+
+  def console(message, s),
+    do: %{s | console: message |> Console.message(s.console) |> Console.cache()}
+
   # A new run starts the clock and the sparkline again.
   defp put_status(%{status: "running"} = s, "running"), do: s
 
@@ -140,9 +149,21 @@ defmodule Server.Tui.Session do
 
   @doc """
   Applies a key. `node` is the node of the session from the config. Returns
-  `{:ok, session}`, or `:close` when the user leaves the session screen.
+  `{:ok, session}`; `{:console, session}` when the console tab opens the first
+  time (the app then asks the bridge for the console messages);
+  `{:settings, session}` to open the settings; or `:close` when the user
+  leaves the session screen.
   """
   def key(key, s, node, size)
+
+  def key(key, %{tab: :console} = s, _node, size) do
+    case Console.key(key, s.console, size) do
+      {:ok, c} -> {:ok, %{s | console: Console.cache(c)}}
+      {:settings, c} -> {:settings, %{s | console: c}}
+      :events -> {:ok, %{s | tab: :events}}
+      :close -> :close
+    end
+  end
 
   def key(key, %{page: {:detail, offset}} = s, _node, size), do: detail_key(key, offset, s, size)
   def key(key, %{page: :editor} = s, node, _size), do: editor_key(key, s, node)
@@ -150,6 +171,8 @@ defmodule Server.Tui.Session do
   def key(key, %{page: {:filter, _, _, _}} = s, _node, _size), do: filter_key(key, s)
   def key(key, %{page: {:sort, _}} = s, _node, _size), do: sort_key(key, s)
   def key(key, %{page: {:confirm, _, _, _}} = s, node, _size), do: confirm_key(key, s, node)
+  def key(key, %{page: {:import, _}} = s, _node, _size), do: import_key(key, s)
+  def key(key, %{page: {:import, _, _, _}} = s, node, _size), do: import_traces_key(key, s, node)
   def key(_key, %{page: :help} = s, _node, _size), do: {:ok, %{s | page: :events}}
 
   def key(key, %{page: :error} = s, _node, _size) when key in [:esc, {:char, "e"}],
@@ -231,6 +254,14 @@ defmodule Server.Tui.Session do
   defp events_key({:char, "l"}, s, node, _size), do: {:ok, limits_input(s, node, :events)}
   defp events_key({:char, "t"}, s, _node, _size), do: {:ok, %{s | page: :editor, editor_sel: 0}}
   defp events_key({:char, "?"}, s, _node, _size), do: {:ok, %{s | page: :help}}
+  defp events_key({:char, ","}, s, _node, _size), do: {:settings, s}
+
+  defp events_key({:char, t}, %{console: nil} = s, _node, _size) when t in ["[", "]"],
+    do: {:console, %{s | tab: :console, console: Console.new(s.node_id, s.id)}}
+
+  defp events_key({:char, t}, s, _node, _size) when t in ["[", "]"],
+    do: {:ok, %{s | tab: :console}}
+
   defp events_key(_key, s, _node, _size), do: {:ok, s}
 
   defp put_error(s, :ok), do: %{s | error: nil}
@@ -428,10 +459,16 @@ defmodule Server.Tui.Session do
   defp confirm_key(_key, s, _node), do: {:ok, s}
 
   defp back({:delete_trace, _id}), do: :editor
+  defp back({:save_preset, _name}), do: :editor
   defp back(_action), do: :events
 
   defp confirm(:leave, _s, _node), do: :close
   defp confirm(:delete_event, s, _node), do: {:ok, delete_event(s)}
+
+  defp confirm({:save_preset, name}, s, node) do
+    save_preset(name, s, node)
+    {:ok, s}
+  end
 
   defp confirm({:delete_trace, id}, s, node) do
     update_traces(node, s, &Enum.reject(&1, fn t -> t.id == id end))
@@ -450,6 +487,15 @@ defmodule Server.Tui.Session do
 
   defp editor_key({:char, "n"}, s, _node), do: {:ok, %{s | page: {:input, :add, "", 0, :editor}}}
   defp editor_key({:char, "l"}, s, node), do: {:ok, limits_input(s, node, :editor)}
+
+  # tui/src/SessionScreen.tsx:377: Ctrl+W saves the patterns as a preset.
+  defp editor_key({:ctrl, :w}, s, _node),
+    do: {:ok, %{s | page: {:input, :save_preset, "", 0, :editor}}}
+
+  # tui/src/SessionScreen.tsx:399-401: i imports patterns from a preset.
+  defp editor_key({:char, "i"}, s, _node) do
+    if Config.presets() == [], do: {:ok, s}, else: {:ok, %{s | page: {:import, 0}}}
+  end
 
   defp editor_key(key, s, node) do
     case {key, Enum.at(traces(node, s), s.editor_sel)} do
@@ -520,6 +566,16 @@ defmodule Server.Tui.Session do
     s
   end
 
+  # A preset of the same name asks first; both add a preset, as the
+  # saveAsPreset command of SessionRoot (tui/src/SessionEditor.tsx:109-138).
+  defp submit(:save_preset, "", s, _node), do: s
+
+  defp submit(:save_preset, name, s, node) do
+    if Enum.any?(Config.presets(), &(&1.name == name)),
+      do: %{s | page: {:confirm, ~s(Overwrite preset "#{name}"?), [], {:save_preset, name}}},
+      else: tap(s, &save_preset(name, &1, node))
+  end
+
   defp submit(:limits, text, s, node) do
     case parse_limits(text) do
       {:ok, keep, time, msgs} ->
@@ -540,6 +596,75 @@ defmodule Server.Tui.Session do
 
       _ ->
         :error
+    end
+  end
+
+  defp save_preset(name, s, node) do
+    traces = Enum.map(traces(node, s), &%{&1 | id: Config.gen_id()})
+    Config.add_preset(%{name: name, traces: traces, limits: session_limits(node, s)})
+  end
+
+  # --- import from a preset (tui/src/SessionScreen.tsx:319-368) ---
+
+  defp import_key(k, %{page: {:import, i}} = s) when k in [:down, {:char, "j"}],
+    do: {:ok, %{s | page: {:import, min(i + 1, length(Config.presets()) - 1)}}}
+
+  defp import_key(k, %{page: {:import, i}} = s) when k in [:up, {:char, "k"}],
+    do: {:ok, %{s | page: {:import, max(i - 1, 0)}}}
+
+  defp import_key(:enter, %{page: {:import, i}} = s) do
+    case Enum.at(Config.presets(), i) do
+      nil -> {:ok, s}
+      p -> {:ok, %{s | page: {:import, i, all(p.traces), 0}}}
+    end
+  end
+
+  defp import_key(:esc, s), do: {:ok, %{s | page: :editor}}
+  defp import_key(_key, s), do: {:ok, s}
+
+  defp all(traces), do: MapSet.new(0..(length(traces) - 1)//1)
+
+  defp import_traces_key(key, %{page: {:import, i, selected, sel}} = s, node) do
+    traces = (Enum.at(Config.presets(), i) || %{traces: []}).traces
+    page = fn selected, sel -> {:ok, %{s | page: {:import, i, selected, sel}}} end
+
+    case key do
+      k when k in [:esc, :tab] ->
+        {:ok, %{s | page: {:import, i}}}
+
+      k when k in [:down, {:char, "j"}] ->
+        page.(selected, min(sel + 1, max(length(traces) - 1, 0)))
+
+      k when k in [:up, {:char, "k"}] ->
+        page.(selected, max(sel - 1, 0))
+
+      {:char, " "} ->
+        if MapSet.member?(selected, sel),
+          do: page.(MapSet.delete(selected, sel), sel),
+          else: page.(MapSet.put(selected, sel), sel)
+
+      {:char, "a"} ->
+        if MapSet.size(selected) == length(traces),
+          do: page.(MapSet.new(), sel),
+          else: page.(all(traces), sel)
+
+      :enter ->
+        if MapSet.size(selected) == 0 do
+          {:ok, s}
+        else
+          existing = MapSet.new(traces(node, s), & &1.text)
+
+          added =
+            for {t, j} <- Enum.with_index(traces),
+                MapSet.member?(selected, j) and not MapSet.member?(existing, t.text),
+                do: %{id: Config.gen_id(), text: t.text, enabled: true}
+
+          if added != [], do: update_traces(node, s, &(&1 ++ added))
+          {:ok, %{s | page: :editor}}
+        end
+
+      _ ->
+        {:ok, s}
     end
   end
 
@@ -646,6 +771,9 @@ defmodule Server.Tui.Session do
   # --- views ---
 
   @doc "The view of the screen. `tick` drives the connecting spinner."
+  def view(%{tab: :console} = s, node, _settings, width, height, _tick),
+    do: Console.view(s.console, node, header(node, s), width, height)
+
   def view(s, node, settings, width, height, tick) do
     case s.page do
       {:detail, offset} -> detail_view(s, offset, width, height)
@@ -653,6 +781,8 @@ defmodule Server.Tui.Session do
       {:input, kind, value, cursor, _back} -> input_view(kind, value, cursor, width, height)
       {:filter, query, cursor, scope} -> filter_view(query, cursor, scope, width, height)
       {:sort, i} -> sort_view(i, width, height)
+      {:import, i} -> import_view(i, width, height)
+      {:import, i, selected, sel} -> import_traces_view(i, selected, sel, width, height)
       {:confirm, question, notes, _} -> Ui.confirm(width, height, question, notes)
       :help -> Ui.page(width, height, "Help · session", Ui.help_lines(help_rows()))
       :error -> error_view(s, width, height)
@@ -728,9 +858,19 @@ defmodule Server.Tui.Session do
     node_name = if node, do: node.name, else: "?"
     name = if c = config(node, s), do: c.name, else: "?"
 
+    # tui/src/SessionScreen.tsx:430-447: the session name and the two tabs
+    tab = fn label, tab ->
+      if s.tab == tab,
+        do: text(" #{label} ", fg: Theme.color(:title), bold: true),
+        else: text(" #{label} ", fg: Theme.color(:muted))
+    end
+
     hstack([
       text(" redbug ", fg: Theme.color(:title), bold: true),
-      text(" #{node_name} ▸ #{name} ", fg: Theme.color(:text), bg: Theme.color(:element))
+      text(" #{node_name} ▸ #{name} ", fg: Theme.color(:text), bg: Theme.color(:element)),
+      text("  "),
+      tab.("Traces", :events),
+      tab.("Console", :console)
     ])
   end
 
@@ -857,6 +997,8 @@ defmodule Server.Tui.Session do
         "t traces",
         "d del",
         space,
+        "[/] tabs",
+        ", settings",
         "? help",
         "esc back"
       ]
@@ -864,6 +1006,7 @@ defmodule Server.Tui.Session do
       |> Enum.join(" · ")
 
     room = width - Terra.Width.string(chip) - String.length(dirty) - 3
+    hints = if Map.get(Config.settings(), :show_hints, true), do: hints, else: ""
 
     hstack(
       [text(chip, fg: Theme.color(color)), text(dirty, fg: Theme.color(:warning)), text("   ")] ++
@@ -922,6 +1065,8 @@ defmodule Server.Tui.Session do
       {"Ctrl+L", "clear the events"},
       {"e / d", "error detail / delete event"},
       {"Ctrl+D", "delete event (no confirm)"},
+      {"[ / ]", "switch Events ⇄ Console"},
+      {",", "settings"},
       {"esc", "back (asks while the trace runs)"},
       {:section, "detail page"},
       {"j/k", "scroll"},
@@ -982,7 +1127,8 @@ defmodule Server.Tui.Session do
         error ++
         [
           text(""),
-          text("j/k move · space on/off · n new · e edit · d del · l limits · esc back",
+          text(
+            "j/k move · space on/off · n new · e edit · d del · l limits · i import · ^W save preset · esc back",
             fg: Theme.color(:muted)
           )
         ]
@@ -1003,6 +1149,9 @@ defmodule Server.Tui.Session do
         {:edit, _} ->
           {"Edit trace pattern", [], "Enum.map/2 -> return"}
 
+        :save_preset ->
+          {"Save as preset", ["Name"], "preset name"}
+
         :limits ->
           {"Session limits",
            [
@@ -1020,6 +1169,45 @@ defmodule Server.Tui.Session do
           Widget.input(value, cursor: cursor, placeholder: placeholder),
           text(""),
           text("Enter save · Esc cancel", fg: Theme.color(:muted))
+        ] ++ if(kind == :add or match?({:edit, _}, kind), do: Ui.rtp_cheat_sheet(), else: [])
+    )
+  end
+
+  defp import_view(index, width, height) do
+    options =
+      Config.presets()
+      |> Enum.with_index()
+      |> Enum.map(fn {p, i} -> line("#{p.name} (#{length(p.traces)})", i == index) end)
+
+    Ui.page(
+      width,
+      height,
+      "Import from preset",
+      options ++ [text(""), text("j/k move · Enter pick · Esc cancel", fg: Theme.color(:muted))]
+    )
+  end
+
+  # tui/src/SessionEditor.tsx:83-105
+  defp import_traces_view(index, selected, sel, width, height) do
+    preset = Enum.at(Config.presets(), index) || %{name: "?", traces: []}
+
+    rows =
+      preset.traces
+      |> Enum.with_index()
+      |> Enum.map(fn {t, j} ->
+        line("#{if MapSet.member?(selected, j), do: "[x]", else: "[ ]"} #{t.text}", j == sel)
+      end)
+
+    Ui.page(
+      width,
+      height,
+      "Import from #{preset.name} · #{MapSet.size(selected)} selected",
+      rows ++
+        [
+          text(""),
+          text("j/k move · space toggle · a all/none · Enter import · Esc back",
+            fg: Theme.color(:muted)
+          )
         ]
     )
   end
