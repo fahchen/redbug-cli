@@ -17,6 +17,8 @@ defmodule Server.Tui.Bridge do
     spawn_link(fn ->
       Process.monitor(runtime)
       Config.subscribe()
+      # A change between the snapshot of init/1 and the subscription has no broadcast left.
+      send_state(runtime)
       # The runtime handles this call after its init/1, which starts the bridge.
       if Keyword.fetch!(opts, :query_size), do: Terra.Runtime.resize(runtime)
       loop(runtime)
@@ -27,7 +29,7 @@ defmodule Server.Tui.Bridge do
     receive do
       {:config_updated} ->
         flush()
-        GenServer.cast(runtime, {:event, {:nodes, Config.nodes(), Config.settings()}})
+        send_state(runtime)
         loop(runtime)
 
       {:DOWN, _ref, :process, ^runtime, _reason} ->
@@ -37,6 +39,9 @@ defmodule Server.Tui.Bridge do
         loop(runtime)
     end
   end
+
+  defp send_state(runtime),
+    do: GenServer.cast(runtime, {:event, {:nodes, Config.nodes(), Config.settings()}})
 
   # One batch for each burst: drop the updates that are already queued.
   defp flush do

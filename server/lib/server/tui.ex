@@ -30,9 +30,10 @@ defmodule Server.Tui do
           Terra.run(Server.Tui.App, app: [query_size: true], theme: Server.Tui.Theme.terra())
 
         0
-      rescue
-        error ->
-          Logger.error("TUI crashed: " <> Exception.format(:error, error, __STACKTRACE__))
+      catch
+        # Terra re-raises the class of a callback error; a call timeout is an exit.
+        kind, reason ->
+          Logger.error("TUI crashed: " <> Exception.format(kind, reason, __STACKTRACE__))
           1
       end
 

@@ -18,7 +18,7 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 
 - Original: the right panel grows to fill the width (`flexGrow=1`), the status bar does not shrink, and the detail chips wrap in a row (`tui/src/App.tsx:545-584`, `tui/src/Tree.tsx:91-111`).
 - Now: the app keeps the size of the last `{:resize, w, h}`. The node list is 40 columns, and the detail panel takes the other columns. Each detail chip is on its own line.
-- Reason: Terra has no flex grow or shrink and no wrap. A Terra box also fills all the rows below it, so the app puts the panels in a box with no border and one row of bottom padding to keep the status line free.
+- Reason: Terra has no flex grow or shrink and no wrap. A Terra box also fills all the rows and columns that it gets: the app puts the panels in a box with no border and one row of bottom padding to keep the status line free, and the detail box starts on the last column of the list box, so the two boxes share one border column with a `┌` (not a `┬`) at the top.
 - Restore: Terra needs grow and shrink in stacks, and wrap in an hstack.
 - Status: simplified, #7.
 
@@ -61,6 +61,22 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 - Reason: the full-screen page has no scroll, and `Terra.Widget.input/2` shows the placeholder only when the input has focus.
 - Restore: a scroll for the page, and a placeholder option for an input without focus.
 - Status: simplified, #7.
+
+## Form inputs have no Home, End, or Delete
+
+- Original: the form inputs are opentui `<input>` fields, which move the cursor with Home and End and delete forward with Delete (`tui/src/NodeModal.tsx:286-314`).
+- Now: the inputs take characters, Backspace, and the left and right arrows.
+- Reason: the Terra input parser has no Home, End, or Delete events, and `Terra.Widget.input_event/4` has no forward delete.
+- Restore: Terra needs these keys in its parser and its input widget.
+- Status: simplified, #7.
+
+## Node delete does not sweep `$EDITOR` buffers
+
+- Original: a node delete also removes the `$EDITOR` buffer files of its sessions under `.redbug/` (`tui/src/App.tsx:364-369`, `reconcileEditFiles`).
+- Now: the Terra TUI deletes the node and stops its traces and consoles, and leaves files that the Bun TUI wrote.
+- Reason: the Terra TUI has no `$EDITOR` (Terra has no suspend and resume of the terminal), so it writes no buffer files.
+- Restore: not needed while the TUI has no `$EDITOR`. #1426 removes the Bun TUI, which writes the files.
+- Status: cut, #7.
 
 ## No connection notices
 

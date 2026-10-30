@@ -124,9 +124,21 @@ defmodule Server.Tui.AppTest do
 
   test "the layout follows the resize event", %{machine: m} do
     Terra.Test.resize(m, 60, 12)
+    assert %{width: 60, height: 12} = Terra.Test.state(m)
     lines = m |> screen() |> String.split("\n")
-    assert length(lines) == 12
-    assert Enum.all?(lines, &(String.length(&1) <= 60))
+    assert List.last(lines) =~ "0/0 connected"
+    # the bottom border of the panels is on the row above the status line
+    assert Enum.at(lines, -2) =~ "└"
+  end
+
+  test "a wide label fits the list row", %{machine: m} do
+    {:ok, _} =
+      Config.add_node(%{name: "w@127.0.0.1", cookie: "c", label: String.duplicate("节", 30)})
+
+    eventually(fn -> screen(m) =~ "节" end)
+    row = m |> screen() |> String.split("\n") |> Enum.find(&(&1 =~ "节"))
+    # the session count stays in the row, and the label ends with the cut mark
+    assert row =~ "… 0"
   end
 
   test "? shows the help, and q asks before it quits", %{machine: m} do

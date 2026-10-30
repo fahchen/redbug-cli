@@ -298,12 +298,14 @@ defmodule Server.Tui.App do
   def view(state) do
     # The panels take the rows between the tab row and the status line.
     body = max(state.height - 2, 3)
-    detail_width = max(state.width - @list_width, 10)
+    # Terra draws a box over all the width it gets, so the detail box starts on
+    # the last column of the list box: the two boxes share one border column.
+    detail_width = max(state.width - @list_width + 1, 10)
 
     panels =
       hstack(
         [
-          box(list_view(state, body - 2), title: "Nodes", width: @list_width),
+          box(list_view(state, body - 2), title: "Nodes", width: @list_width - 1),
           box(detail_view(state),
             title: detail_title(state),
             width: detail_width,
@@ -368,7 +370,8 @@ defmodule Server.Tui.App do
   end
 
   defp node_row(node, selected?, tick) do
-    # the inner width of the list box: border and one blank cell on each side
+    # the inner width of the list box: the shared border column, the left
+    # border, and one blank cell on each side
     width = @list_width - 4
     bg = if selected?, do: [bg: Theme.color(:element)], else: []
     {glyph, glyph_color} = glyph(node.status, tick)
@@ -393,10 +396,22 @@ defmodule Server.Tui.App do
 
   # Pad or cut `string` to `width` cells.
   defp fit(string, width) do
-    if String.length(string) > width,
-      do: String.slice(string, 0, width - 1) <> "…",
-      else: String.pad_trailing(string, width)
+    cells = Terra.Width.string(string)
+
+    if cells > width,
+      do: cut(String.graphemes(string), width - 1, []) <> "…",
+      else: string <> String.duplicate(" ", width - cells)
   end
+
+  # The graphemes that fit in `room` cells, padded to `room` cells (a wide
+  # grapheme that does not fit leaves one blank cell).
+  defp cut([g | rest], room, acc) do
+    w = Terra.Width.grapheme(g)
+    if w <= room, do: cut(rest, room - w, [g | acc]), else: cut([], room, acc)
+  end
+
+  defp cut([], room, acc),
+    do: IO.iodata_to_binary([Enum.reverse(acc), String.duplicate(" ", room)])
 
   # --- node detail ---
 
