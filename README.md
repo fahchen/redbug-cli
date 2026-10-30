@@ -85,7 +85,7 @@ mise run package
 server/_build/prod/rel/server/bin/server start
 ```
 
-The release includes the ERTS that builds it, and runs the controller and the TUI in one BEAM. When the TUI quits, the BEAM stops. A single-file executable is not available now: the Bun build that made `dist/redbug` is removed, and `mix pbeam.build` is the next step (see `docs/terra-gaps.md`).
+The release includes the ERTS that builds it, and runs the controller and the TUI in one BEAM. When the TUI quits, the BEAM stops. Use `bin/server start` in a terminal: the TUI needs the terminal, and the controller does not register in epmd, so `bin/server stop`, `rpc`, and `remote` cannot reach it. Quit with `q`. A single-file executable is not available now: the Bun build that made `dist/redbug` is removed, and `mix pbeam.build` is the next step (see `docs/terra-gaps.md`).
 
 Current packaging target: macOS arm64.
 
