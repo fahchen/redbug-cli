@@ -309,7 +309,7 @@ defmodule Server.Tui.SessionTest do
 
     # a bad text changes nothing, as in the Bun TUI
     keys(m, ["l"] ++ List.duplicate(:backspace, 20) ++ ["x", :enter])
-    refute screen(m) =~ "restart failed"
+    assert Terra.Test.state(m).session.error == nil
 
     assert Enum.find(Config.fetch_node(node_id).sessions, &(&1.id == sid)).limits ==
              %{keep: 10, time: 20, msgs: 30}

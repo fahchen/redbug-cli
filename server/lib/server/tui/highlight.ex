@@ -1,16 +1,13 @@
 defmodule Server.Tui.Highlight do
   @moduledoc """
   Colors a term text with the `makeup_elixir` lexer for the event detail page.
-  The result is a list of lines; each line is a list of `{text, color}` parts,
-  cut to the given width (Terra has no wrap). The session screen keeps the
-  result of `lex/1` for each event, so the lexer runs once for each event, and
-  cuts it with `wrap_lines/2` for the width of the screen.
+  `lex/1` gives a list of lines; each line is a list of `{text, color}` parts.
+  The session screen keeps the result for each event, so the lexer runs once
+  for each event, and cuts it with `wrap_lines/2` to the width of the screen
+  (Terra has no wrap).
   """
 
   alias Server.Tui.Theme
-
-  @spec lines(String.t(), pos_integer()) :: [[{String.t(), 0..255}]]
-  def lines(text, width), do: text |> lex() |> wrap_lines(width)
 
   @doc "The colored lines of `text`, not cut to a width. The lexer runs here."
   @spec lex(String.t()) :: [[{String.t(), 0..255}]]

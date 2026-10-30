@@ -138,7 +138,7 @@ the config local and private.
 | `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
 | `CONTROLLER_DISTRIBUTION` | server | `name` | Use `sname` for shortname targets |
 | `REDBUG_DIST` | server | on | `off` starts the controller without distribution (for a VM without distribution, such as PBeam): local nodes, sessions, presets, and snippets work, and a connect fails |
-| `REDBUG_TUI` | server | - | `terra` starts the Terra TUI in the controller BEAM (node screen only for now; see `docs/terra-gaps.md`) |
+| `REDBUG_TUI` | server | - | `terra` starts the Terra TUI in the controller BEAM (node screen and session screen for now; see `docs/terra-gaps.md`) |
 | `XDG_CONFIG_HOME` | server | `~/.config` | Config base directory |
 
 ## Security
