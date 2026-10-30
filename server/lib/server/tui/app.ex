@@ -16,7 +16,7 @@ defmodule Server.Tui.App do
   use Terra
 
   alias Server.{Config, Remote}
-  alias Server.Tui.{Bridge, Session, Theme, Ui}
+  alias Server.Tui.{Bridge, Presets, Session, Settings, Snippets, Theme, Ui}
   alias Terra.Widget
 
   @list_width 40
@@ -99,7 +99,23 @@ defmodule Server.Tui.App do
   defp handle(key, %{page: :session} = state) do
     case Session.key(key, state.session, session_node(state), {state.width, state.height}) do
       {:ok, session} -> %{state | session: session}
+      {:settings, session} -> open_screen(%{state | session: session}, Settings)
       :close -> close_session(state)
+    end
+  end
+
+  # The presets, snippets, and settings screens. `back` is the page to show
+  # when the screen closes (tui/src/App.tsx:113-136).
+  defp handle(key, %{page: {:screen, module, screen, back}} = state) do
+    case module.key(key, screen) do
+      {:ok, screen} ->
+        %{state | page: {:screen, module, screen, back}}
+
+      {:settings, screen} ->
+        open_screen(%{state | page: {:screen, module, screen, back}}, Settings)
+
+      :close ->
+        %{state | page: back}
     end
   end
 
@@ -290,6 +306,9 @@ defmodule Server.Tui.App do
     %{state | page: :session, session: Session.new(node_id, id, state.settings), digits: ""}
   end
 
+  defp open_screen(state, module),
+    do: %{state | page: {:screen, module, module.new(), state.page}}
+
   defp close_session(state) do
     Session.close(state.session)
     Bridge.watch(state.bridge, nil)
@@ -347,6 +366,9 @@ defmodule Server.Tui.App do
     end
   end
 
+  defp nodes_key({:char, "p"}, state), do: open_screen(state, Presets)
+  defp nodes_key({:char, "l"}, state), do: open_screen(state, Snippets)
+  defp nodes_key({:char, ","}, state), do: open_screen(state, Settings)
   defp nodes_key({:char, "?"}, state), do: %{state | page: :help}
   defp nodes_key({:char, "q"}, state), do: %{state | page: {:confirm, "Quit redbug?", :quit}}
   defp nodes_key(_key, state), do: state
@@ -534,6 +556,9 @@ defmodule Server.Tui.App do
       state.tick
     )
   end
+
+  def view(%{page: {:screen, module, screen, _back}} = state),
+    do: module.view(screen, state.width, state.height)
 
   def view(%{page: :help} = state), do: page(state, "Help", Ui.help_lines(help_rows()))
 
@@ -780,7 +805,8 @@ defmodule Server.Tui.App do
 
   defp hints(_state) do
     env = if Config.env_mode?(), do: " · env read-only", else: ""
-    "j/k node · enter sessions · n new · c connect · e edit · d del#{env} · ? help · q quit"
+
+    "j/k node · enter sessions · n new · c connect · e edit · d del · p presets · l snippets#{env} · , settings · ? help · q quit"
   end
 
   # --- form view ---
@@ -844,6 +870,9 @@ defmodule Server.Tui.App do
       {"c", "connect, or disconnect a connected node"},
       {"d", "delete the node (asks first)"},
       {"Ctrl+D", "delete the node (does not ask)"},
+      {"p", "presets"},
+      {"l", "snippets"},
+      {",", "settings"},
       {"q", "quit (asks first)"},
       {:section, "sessions"},
       {"j/k  ↓/↑", "move the session selection"},
