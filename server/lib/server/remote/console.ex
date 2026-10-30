@@ -3,9 +3,9 @@ defmodule Server.Remote.Console do
   Owns one session's Console: a capped, append-only history of code
   executions run on the target node.
 
-  Each execution spawns `Server.Remote.Worker` on the target (after injecting
-  its BEAM there) and monitors it, so a run is force-stoppable via
-  `Process.exit(pid, :kill)` over distribution. A `@timeout` watchdog kills
+  Each execution spawns `Server.Remote.Worker` on the target (after
+  `Server.Remote.Inject` loads it there) and monitors it, so a run is
+  force-stoppable via `Process.exit(pid, :kill)` over distribution. A `@timeout` watchdog kills
   runaway evals. Results, output and status flow back as PubSub broadcasts on
   `Server.Remote.topic/1`; the store mirrors them into its stream.
 
@@ -18,6 +18,7 @@ defmodule Server.Remote.Console do
   use GenServer, restart: :transient
 
   alias Server.{Code.Format, Config}
+  alias Server.Remote.Inject
   alias Server.Schema.ConsoleExec
 
   @registry Server.Remote.Registry
@@ -181,7 +182,7 @@ defmodule Server.Remote.Console do
     with {:ok, node} <- fetch_node(state.node_id),
          target = String.to_atom(node.name),
          :ok <- Config.connect_node(state.node_id),
-         :ok <- ensure_worker(target) do
+         :ok <- Inject.ensure_loaded(target, [Server.Remote.Worker]) do
       pid = Node.spawn(target, Server.Remote.Worker, :run, [self(), exec_id, code])
       ref = Process.monitor(pid)
       timer = Process.send_after(self(), {:timeout, exec_id}, timeout_ms())
@@ -193,20 +194,6 @@ defmodule Server.Remote.Console do
     case Config.fetch_node(node_id) do
       nil -> {:error, :node_not_found}
       node -> {:ok, node}
-    end
-  end
-
-  # Inject the worker BEAM onto the target so Node.spawn can reach it.
-  defp ensure_worker(target) do
-    case :code.get_object_code(Server.Remote.Worker) do
-      {mod, bin, file} ->
-        case :rpc.call(target, :code, :load_binary, [mod, file, bin]) do
-          {:module, ^mod} -> :ok
-          other -> {:error, other}
-        end
-
-      :error ->
-        {:error, :worker_unavailable}
     end
   end
 
