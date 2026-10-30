@@ -36,17 +36,18 @@ defmodule Server.Remote.Worker do
     send(reply_to, {:console_result, exec_id, result, output})
   end
 
-  # The Elixir path needs the Elixir runtime on the target. Without it, the code
-  # goes straight to the Erlang path, which calls no Elixir module, so a plain
-  # Erlang target runs it.
+  # A final dot marks Erlang code, which the Erlang path runs on each target, so
+  # Erlang code gives the same text on a target with and without Elixir. Code
+  # without the dot takes the Elixir path when the target has the Elixir runtime.
+  # The Erlang path calls no Elixir module, so a plain Erlang target runs it.
   defp eval(code) do
-    if match?({:module, _}, :code.ensure_loaded(Code)) do
-      elixir_eval(code)
-    else
+    if dot_terminated?(code) or not match?({:module, _}, :code.ensure_loaded(Code)) do
       case erl_eval(code) do
-        {:parse_error, info} -> {:error, fmt("~p", [info])}
+        {:parse_error, info} -> {:error, parse_error_text(info)}
         result -> result
       end
+    else
+      elixir_eval(code)
     end
   end
 
@@ -96,8 +97,15 @@ defmodule Server.Remote.Worker do
   # only: this runs on targets without Elixir.
   defp ensure_dot(code) do
     trimmed = :string.trim(code, :trailing)
-    if :binary.longest_common_suffix([trimmed, "."]) == 1, do: trimmed, else: trimmed <> "."
+    if dot_terminated?(trimmed), do: trimmed, else: trimmed <> "."
   end
+
+  defp dot_terminated?(code),
+    do: :binary.longest_common_suffix([:string.trim(code, :trailing), "."]) == 1
+
+  # `{Location, Module, Descriptor}` of erl_scan/erl_parse as one line of text.
+  defp parse_error_text({location, module, descriptor}),
+    do: fmt("~p: ~ts", [location, module.format_error(descriptor)])
 
   defp fmt(format, args), do: :erlang.iolist_to_binary(:io_lib.format(format, args))
 

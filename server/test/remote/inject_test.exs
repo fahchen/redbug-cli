@@ -75,11 +75,8 @@ defmodule Server.Remote.InjectTest do
         refute :rpc.call(node, :erlang, :check_old_code, [Server.Remote.Worker])
       end
 
-      test "gives the Erlang error of Erlang code", %{node_id: nid, session_id: sid} do
-        {:ok, _} = Remote.run(nid, sid, "lists:nth(0, [a]).", "erlang-error")
-
-        assert %{status: "error", result: "{error,function_clause}"} =
-                 await_final(sid, "erlang-error")
+      test "gives the Erlang text of Erlang code", %{node_id: nid, session_id: sid} do
+        assert_erlang_cases(nid, sid)
       end
 
       test "runs a redbug trace", %{node: node, node_id: nid, session_id: sid} do
@@ -107,16 +104,32 @@ defmodule Server.Remote.InjectTest do
         {:ok, _} = Remote.run(nid, sid, ~s|io:format("hi~n"), lists:seq(1, 3).|, "seq")
         assert %{status: "ok", result: "[1,2,3]", output: "hi\n"} = await_final(sid, "seq")
 
-        # The same text and format as on a target with Elixir (see the test above).
-        {:ok, _} = Remote.run(nid, sid, "lists:nth(0, [a]).", "erlang-error")
-
-        assert %{status: "error", result: "{error,function_clause}"} =
-                 await_final(sid, "erlang-error")
+        # The same text as on a target with Elixir (see the test above).
+        assert_erlang_cases(nid, sid)
 
         # Elixir code is not Erlang: the console gives the Erlang parse error.
         {:ok, _} = Remote.run(nid, sid, "Enum.sum([1, 2, 3])", "elixir")
-        assert %{status: "error", result: "{1,erl_parse," <> _} = await_final(sid, "elixir")
+
+        assert %{status: "error", result: "1: syntax error before: '.'"} =
+                 await_final(sid, "elixir")
       end
+    end
+  end
+
+  # Erlang code with a final dot, and its status and result on each target. The
+  # Elixir formatter and evaluator would read the last three cases as Elixir.
+  @erlang_cases [
+    {"lists:nth(0, [a]).", "error", "{error,function_clause}"},
+    {"lists:seq(1,.", "error", "1: syntax error before: '.'"},
+    {"{a, b}.", "ok", "{a,b}"},
+    {"[X || X <- [1, 2]].", "ok", "[1,2]"},
+    {"\#{a => 1}.", "ok", "\#{a => 1}"}
+  ]
+
+  defp assert_erlang_cases(nid, sid) do
+    for {code, status, result} <- @erlang_cases do
+      {:ok, _} = Remote.run(nid, sid, code, code)
+      assert %{status: ^status, result: ^result} = await_final(sid, code)
     end
   end
 

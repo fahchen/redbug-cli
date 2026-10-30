@@ -6,6 +6,7 @@ defmodule Server.Code.Format do
   language formatters touch the text. Language is auto-detected — Elixir is
   tried first via `Code.format_string!/2`; if it won't parse as Elixir the
   text is treated as Erlang (`:erl_scan` → `:erl_parse` → `:erl_prettypr`).
+  Text with a final dot is Erlang, and the Erlang output ends with a dot.
   Anything that fails both is returned verbatim, so formatting never blocks a
   save or a run.
   """
@@ -16,9 +17,15 @@ defmodule Server.Code.Format do
   @doc "Format `code`, auto-detecting Elixir vs Erlang. Returns raw on failure."
   @spec run(String.t()) :: String.t()
   def run(code) when is_binary(code) do
-    case format_elixir(code) do
-      {:ok, formatted} -> formatted
-      :error -> format_erlang(code)
+    # A final dot marks Erlang code (Elixir reads `#{...}` as a comment, for
+    # example), and the worker reads the dot too, so the Erlang output keeps it.
+    if code |> String.trim_trailing() |> String.ends_with?(".") do
+      format_erlang(code)
+    else
+      case format_elixir(code) do
+        {:ok, formatted} -> formatted
+        :error -> format_erlang(code)
+      end
     end
   end
 
@@ -29,12 +36,13 @@ defmodule Server.Code.Format do
   end
 
   defp format_erlang(code) do
-    charlist = String.to_charlist(code)
+    trimmed = String.trim_trailing(code)
+    text = if String.ends_with?(trimmed, "."), do: trimmed, else: trimmed <> "."
+    charlist = String.to_charlist(text)
 
     with {:ok, tokens, _} <- :erl_scan.string(charlist),
          {:ok, exprs} <- :erl_parse.parse_exprs(tokens) do
-      # keep the commas: the worker adds only the final dot before it evaluates.
-      Enum.map_join(exprs, ",\n", &(&1 |> :erl_prettypr.format() |> to_string()))
+      Enum.map_join(exprs, ",\n", &(&1 |> :erl_prettypr.format() |> to_string())) <> "."
     else
       _ -> code
     end

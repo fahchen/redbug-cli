@@ -107,9 +107,10 @@ sends the abstract code of the console worker and of the redbug target modules, 
 compiles them with its own `compiler` application. A target without `compiler` gets the
 controller's beams, and an older OTP can refuse them.
 
-The console runs Elixir code on a target with Elixir, and Erlang code on each target. A target
-without Elixir (a plain `erl` node) runs only Erlang code. Erlang code gives the same result and the
-same error text on both kinds of target.
+The console runs Elixir code on a target with Elixir, and Erlang code on each target. A final dot
+marks Erlang code: the console then formats and runs the code as Erlang on each target, so Erlang
+code gives the same result and the same error text on both kinds of target. A target without Elixir
+(a plain `erl` node) runs only Erlang code.
 
 redbug-cli supports three remote-node paths:
 
