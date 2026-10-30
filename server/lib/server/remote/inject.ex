@@ -5,7 +5,7 @@ defmodule Server.Remote.Inject do
   The controller and the target can run different OTP versions. A beam that
   OTP 29 compiles does not load on OTP 27 (`{:error, :badfile}`). So the
   controller sends the abstract code (the `Dbgi` chunk) of the module, and the
-  target compiles it with `:compile.forms/2` and loads the result.
+  target compiles it with `:compile.noenv_forms/2` and loads the result.
 
   The compiled module carries the md5 of the controller's beam in the
   `redbug_cli_md5` attribute. A later call skips a module whose attribute
@@ -21,6 +21,9 @@ defmodule Server.Remote.Inject do
   """
 
   @attr :redbug_cli_md5
+  # noenv: ERL_COMPILER_OPTIONS of the target (warnings_as_errors, for example)
+  # must not change how the target compiles the controller's code.
+  @opts [:binary, :return_errors]
 
   @doc "All modules that the controller loads onto target nodes."
   @spec modules() :: [module()]
@@ -66,9 +69,9 @@ defmodule Server.Remote.Inject do
   defp compile_on_target(target, beam, md5) do
     case :beam_lib.chunks(beam, [:abstract_code]) do
       {:ok, {_mod, [abstract_code: {:raw_abstract_v1, forms}]}} ->
-        case :rpc.call(target, :compile, :forms, [tag(forms, md5), [:binary, :return_errors]]) do
+        case :rpc.call(target, :compile, :noenv_forms, [tag(forms, md5), @opts]) do
           {:ok, mod, bin} -> {:ok, mod, bin}
-          {:badrpc, {:EXIT, {:undef, [{:compile, :forms, _, _} | _]}}} -> :use_beam
+          {:badrpc, {:EXIT, {:undef, [{:compile, :noenv_forms, _, _} | _]}}} -> :use_beam
           other -> {:error, other}
         end
 
