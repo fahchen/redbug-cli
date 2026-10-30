@@ -323,7 +323,7 @@ defmodule Server.Tui.SessionTest do
 
   test "Ctrl+W saves the patterns as a preset, and i imports from a preset", %{machine: m} do
     node_id = add_node(m)
-    sid = open(m, node_id, "presets")
+    sid = open(m, node_id, "keeper")
     patterns = fn -> Enum.find(Config.fetch_node(node_id).sessions, &(&1.id == sid)).traces end
 
     keys(m, ["t", "n"])
