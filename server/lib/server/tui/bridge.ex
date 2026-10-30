@@ -5,8 +5,10 @@ defmodule Server.Tui.Bridge do
   It subscribes to the config broadcasts and, for each burst of
   `{:config_updated}` messages, casts one `{:event, {:nodes, nodes, settings}}`
   to the runtime. While the TUI shows a session (`watch/2`), it also subscribes
-  to the trace topic of that session and casts the trace messages in batches:
-  `{:trace_events, session_id, events}` (newest first), `{:trace_status,
+  to the trace topic of that session, casts `{:trace_snapshot, session_id,
+  snapshot}` (`Server.Trace.snapshot/1` after the subscription), and casts the
+  trace messages in batches: `{:trace_events, session_id, events}` (newest
+  first; an event can also be in the snapshot), `{:trace_status,
   session_id, payload}`, `{:trace_error, session_id, error}`, and
   `{:trace_reset, session_id}`. It stops when the runtime stops.
   """
@@ -49,7 +51,7 @@ defmodule Server.Tui.Bridge do
 
       {:watch, next} ->
         if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Trace.topic(session))
-        if next, do: Trace.subscribe(next)
+        if next, do: watch_session(runtime, next)
         loop(runtime, next)
 
       {:trace_event, event} when session != nil ->
@@ -74,6 +76,12 @@ defmodule Server.Tui.Bridge do
       _other ->
         loop(runtime, session)
     end
+  end
+
+  # The snapshot comes after the subscription, so no event falls between them.
+  defp watch_session(runtime, session) do
+    Trace.subscribe(session)
+    cast(runtime, {:trace_snapshot, session, Trace.snapshot(session)})
   end
 
   defp cast(runtime, message), do: GenServer.cast(runtime, {:event, message})

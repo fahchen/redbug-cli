@@ -43,8 +43,8 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 - Original: the focused panel has the active border color and title color; the other panel has the subtle colors (`tui/src/ui.tsx:101-131`).
 - Now: all borders use the one `:border` color of the Terra theme.
 - Reason: Terra reads the border color from the theme, not from each box.
-- Restore: Terra needs a border style option on a box. The focus change between the node list and the sessions pane comes with #1424.
-- Status: simplified, #7.
+- Restore: Terra needs a border style option on a box. Without it, the focus between the node list and the sessions pane shows only as the selected session row, which has a background only while the sessions pane has the focus (#8). The events panel also does not take the warning or error border color of the node status (`tui/src/SessionScreen.tsx:405-409`).
+- Status: simplified, #7, #8.
 
 ## Long values are cut, not wrapped
 
@@ -85,6 +85,86 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 - Reason: architecture change, not a Terra limit.
 - Restore: not needed.
 - Status: cut, #7.
+
+## Session overlays become full-screen pages
+
+- Original: the sort dialog, the filter, the limits, the trace editor, the help, the error detail, and the questions (stop and leave, delete an event, delete a trace) show as overlays over the session screen (`tui/src/SessionScreen.tsx:521-600`, `tui/src/SessionOverlays.tsx:17-198`, `tui/src/SessionEditor.tsx`, `tui/src/DialogSelect.tsx`).
+- Now: each one is a full-screen page (`server/lib/server/tui/session.ex`). The sort page is a list without the type-to-search of the dialog.
+- Reason: Terra has no layers (see "Overlays become full-screen pages").
+- Restore: the same as for the node screen overlays.
+- Status: simplified, #8.
+
+## The detail pane becomes a page, and zoom is cut
+
+- Original: Enter opens the detail pane (46 columns) next to the event list. Tab moves the focus between the list and the pane. `z` zooms the detail to the full screen (`tui/src/SessionScreen.tsx:230-243`, `tui/src/SessionDetail.tsx:27-55`).
+- Now: Enter opens the detail as a full-screen page. Esc and Tab close it. `z` has no function, because the page is full-screen already.
+- Reason: Terra has no flex layout to share the width between a growing list and a fixed pane (see "Flex layout becomes sizes from the resize event").
+- Restore: a list and pane split from the resize width, and a focus between them.
+- Status: simplified, #8.
+
+## No `$EDITOR` view of an event
+
+- Original: `v` writes the event as an Elixir term to a file and opens it in `$EDITOR` (`tui/src/SessionScreen.tsx:291`, `tui/src/sessionHelpers.ts:150-190`).
+- Now: `v` has no function. The detail page shows the term.
+- Reason: Terra has no suspend and resume of the terminal for a child program.
+- Restore: Terra needs a suspend and resume of the terminal.
+- Status: cut, #8.
+
+## Ctrl+J and Ctrl+K become Ctrl+N and Ctrl+P in the detail
+
+- Original: in the detail pane, Ctrl+J and Ctrl+K select the next and the previous event (`tui/src/SessionScreen.tsx:231-232`).
+- Now: Ctrl+N and Ctrl+P select the next and the previous event.
+- Reason: the Terra input parser reads byte `0x0A` (Ctrl+J) as `:enter`.
+- Restore: Terra needs to tell Ctrl+J from Enter (for example with the kitty keyboard protocol).
+- Status: simplified, #8.
+
+## Ctrl+S becomes `a`
+
+- Original: Ctrl+S applies the changed patterns and limits, which restarts the trace (`tui/src/SessionScreen.tsx:250`).
+- Now: `a` applies the changes. The hints show `x stop · a apply` while the changes are not applied.
+- Reason: Terra takes raw mode from `:shell.start_interactive({:noshell, :raw})`. The raw mode of OTP clears only `ISTRIP` and `ICRNL` (OTP 29.1.1 `erts/emulator/nifs/common/prim_tty_nif.c:1111-1115`) and keeps `IXON`, so the terminal reads Ctrl+S as XOFF and stops the output. A PTY run showed the frozen screen.
+- Restore: Terra or OTP needs to clear `IXON` in raw mode.
+- Status: simplified, #8.
+
+## The event list has no scroll box
+
+- Original: the event list is a scroll box of up to 300 rows that sticks to the top while new events come (`stickyStart`), and the selection scrolls into view (`tui/src/SessionScreen.tsx:483-512`). The detail pane scrolls a page with Ctrl+F and Ctrl+B.
+- Now: the list shows a window of the rows that fits the screen. The window follows the selection; with no selection it shows the newest rows. The detail page scrolls by line with j and k and by page with Ctrl+F and Ctrl+B.
+- Reason: Terra has no scroll box.
+- Restore: Terra needs a scroll box with a scroll offset.
+- Status: simplified, #8.
+
+## Filter hits have no highlight, and the filter scope is a Tab cycle
+
+- Original: each part of a cell that matches the filter has the warning background (`tui/src/SessionEvents.tsx:84-104`). The filter overlay has a query field and a scope select, with Tab between them (`tui/src/SessionOverlays.tsx:17-100`).
+- Now: the matching rows show with no highlight. The filter page has the query input; Tab selects the next scope (all, mfa, pid, info).
+- Reason: Terra has no select widget, and the page has one input. The row is cut to the width part by part, and this PR does not split the parts at the hits (Terra can show a background on text).
+- Restore: split each cell at the hits before the cut; a select needs a Terra widget.
+- Status: simplified, #8.
+
+## The events title is on the left
+
+- Original: the sort, filter, group, and fold state is the right-aligned title of the events panel (`tui/src/SessionScreen.tsx:466-473`).
+- Now: the title starts with `Events ·` on the left of the top border.
+- Reason: a Terra box title is always on the left.
+- Restore: Terra needs a title alignment option on a box.
+- Status: simplified, #8.
+
+## tree-sitter becomes makeup_elixir with a cache
+
+- Original: the detail pane highlights the payload, the return, and the stack with the tree-sitter Elixir grammar in a worker (`tui/src/treesitter.ts`, `tui/src/SessionDetail.tsx:57-95`), in the colors of the theme.
+- Now: `Server.Tui.Highlight` lexes the text with `makeup_elixir` and maps the token types to 256 colors. The lexer runs once for each event, return, and width; the screen state keeps the result. The detail page cuts each line into lines of the page width.
+- Reason: the TUI runs in the BEAM with no tree-sitter. `makeup_elixir` takes 36 ms for each 46-line term on PBeam (2026-10-30), so the screen keeps the result.
+- Restore: not needed while the colors are close. The other themes need a token color map.
+- Status: simplified, #8.
+
+## The session number jump has no timeout
+
+- Original: in the sessions pane, the digits before `g` jump to that session. The digits clear after 2 s (`tui/src/App.tsx:410-446`).
+- Now: the digits clear on any key that is not a digit or `g`, and do not clear after a time.
+- Reason: a timeout needs a Terra tick and a timer state for one key buffer; the clear on the next key gives the same result in normal use.
+- Restore: a `{:tick, 2000, msg}` that clears the digits.
+- Status: simplified, #8.
 
 ## Known PBeam limit
 
