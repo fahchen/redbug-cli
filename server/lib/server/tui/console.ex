@@ -36,13 +36,21 @@ defmodule Server.Tui.Console do
   # --- console messages (Server.Stores.ConsoleRoot.handle_info/2) ---
 
   @doc "Applies a console message of the bridge."
-  def message({:console_snapshot, snap}, c), do: clamp(%{c | history: snap.history})
-  def message({:console_insert, entry}, c), do: upsert(c, entry)
-  def message({:console_update, entry}, c), do: upsert(c, entry)
-  def message(:console_reset, c), do: %{c | history: [], sel: 0, offset: 0, highlight: %{}}
+  def message(message, c), do: message |> apply_message(c) |> prune()
 
-  def message({:console_delete, id}, c),
+  defp apply_message({:console_snapshot, snap}, c), do: clamp(%{c | history: snap.history})
+  defp apply_message({:console_insert, entry}, c), do: upsert(c, entry)
+  defp apply_message({:console_update, entry}, c), do: upsert(c, entry)
+  defp apply_message(:console_reset, c), do: %{c | history: [], sel: 0, offset: 0}
+
+  defp apply_message({:console_delete, id}, c),
     do: clamp(%{c | history: Enum.reject(c.history, &(&1.id == id))})
+
+  # The highlight cache keeps only the executions in the history.
+  defp prune(c) do
+    ids = MapSet.new(c.history, & &1.id)
+    %{c | highlight: Map.filter(c.highlight, fn {{id, _part}, _} -> MapSet.member?(ids, id) end)}
+  end
 
   # A new entry goes on top; an update keeps the place of the entry.
   defp upsert(c, entry) do
@@ -382,10 +390,12 @@ defmodule Server.Tui.Console do
     hints =
       "j/k move · ^F/^B scroll · n compose · e edit+run · r run · s save · d del · x stop · ^L clear · [/] tabs · , settings · ? help · esc back"
 
-    hstack([
-      text(left, fg: Theme.color(:muted)),
-      text("   ") | Ui.hints(hints, width - String.length(left) - 3)
-    ])
+    hints =
+      if Map.get(Config.settings(), :show_hints, true),
+        do: Ui.hints(hints, width - String.length(left) - 3),
+        else: []
+
+    hstack([text(left, fg: Theme.color(:muted)), text("   ") | hints])
   end
 
   defp pick_view(index, width, height) do

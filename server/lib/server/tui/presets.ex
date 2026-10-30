@@ -16,14 +16,6 @@ defmodule Server.Tui.Presets do
 
   @list_width 40
 
-  # tui/src/sessionTypes.ts:40-45
-  @rtp_examples [
-    {"Enum.map/2 -> return", "call args + return value"},
-    {"MyMod.func -> return;stack", "+ call stack"},
-    {"Demo.tick when '$1' > 100 -> return", "guard on 1st arg"},
-    {"Enum.map/2 · MyMod._ · MyMod", "arity · any fun · whole module"}
-  ]
-
   @doc "The screen state."
   def new, do: %{sel: 0, focus: :list, trace_sel: 0, page: :main}
 
@@ -323,10 +315,10 @@ defmodule Server.Tui.Presets do
           {"Rename preset", "preset name", []}
 
         {:add_trace, _} ->
-          {"New RTP", "redbug spec, e.g. lists:seq/2 -> return", cheat_sheet()}
+          {"New RTP", "redbug spec, e.g. lists:seq/2 -> return", Ui.rtp_cheat_sheet()}
 
         {:edit_trace, _, _} ->
-          {"Edit RTP", "redbug spec, e.g. lists:seq/2 -> return", cheat_sheet()}
+          {"Edit RTP", "redbug spec, e.g. lists:seq/2 -> return", Ui.rtp_cheat_sheet()}
 
         {:limits, _} ->
           {"Limits — keep time msgs (space-separated)", "500 900 10000", []}
@@ -342,14 +334,6 @@ defmodule Server.Tui.Presets do
         text("Enter save · Esc cancel", fg: Theme.color(:muted))
       ] ++ notes
     )
-  end
-
-  # tui/src/RtpCheatSheet.tsx
-  defp cheat_sheet do
-    [text(""), text("Common RTP rules (Elixir)", fg: Theme.color(:muted))] ++
-      Enum.map(@rtp_examples, fn {pattern, description} ->
-        text(String.pad_trailing(pattern, 38) <> description, fg: Theme.color(:muted))
-      end)
   end
 
   # tui/src/PresetManager.tsx:246-273

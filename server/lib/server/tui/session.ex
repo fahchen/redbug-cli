@@ -568,6 +568,8 @@ defmodule Server.Tui.Session do
 
   # A preset of the same name asks first; both add a preset, as the
   # saveAsPreset command of SessionRoot (tui/src/SessionEditor.tsx:109-138).
+  defp submit(:save_preset, "", s, _node), do: s
+
   defp submit(:save_preset, name, s, node) do
     if Enum.any?(Config.presets(), &(&1.name == name)),
       do: %{s | page: {:confirm, ~s(Overwrite preset "#{name}"?), [], {:save_preset, name}}},
@@ -1004,6 +1006,7 @@ defmodule Server.Tui.Session do
       |> Enum.join(" · ")
 
     room = width - Terra.Width.string(chip) - String.length(dirty) - 3
+    hints = if Map.get(Config.settings(), :show_hints, true), do: hints, else: ""
 
     hstack(
       [text(chip, fg: Theme.color(color)), text(dirty, fg: Theme.color(:warning)), text("   ")] ++
