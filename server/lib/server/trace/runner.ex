@@ -154,12 +154,14 @@ defmodule Server.Trace.Runner do
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{redbug_ref: ref} = state) do
     # redbug writes its end text before its process exits, so the text is in the
     # StringIO now. timeout and msg_count are the limits; other ends are errors.
+    output = StringIO.flush(state.io)
+
     ended =
-      case end_reason(StringIO.flush(state.io)) do
-        {"timeout", _text} -> "time"
-        {"msg_count", _text} -> "msgs"
-        {why, text} -> {:error, "Trace ended on the target: #{why}\n#{text}"}
-        nil -> {:error, "Trace ended on the target: #{inspect(reason)}"}
+      case end_reason(output) do
+        "timeout" -> "time"
+        "msg_count" -> "msgs"
+        nil -> {:error, String.trim("Trace ended on the target: #{inspect(reason)}\n#{output}")}
+        why -> {:error, String.trim("Trace ended on the target: #{why}\n#{output}")}
       end
 
     Config.set_session_status(state.session_id, "stopped")
@@ -365,13 +367,16 @@ defmodule Server.Trace.Runner do
 
   defp demonitor_redbug(state), do: state
 
-  # The reason and the text of the last end text of redbug (redbug.erl done/2:
-  # an optional hint line, then "redbug done, ~p - ~p~n"), or nil.
+  # The reason of the last end text of redbug (redbug.erl done/2: an optional
+  # hint line, then "redbug done, ~p - ~p~n"), on one line, or nil. ~p can
+  # break a long reason over lines, so match up to the count at the end. The
+  # count is a whole number, except after a printer crash: then this gives nil,
+  # and the caller shows the whole text.
   @doc false
   def end_reason(output) do
-    case Regex.scan(~r/^redbug done, (.*) - .*$/m, output) do
-      [] -> nil
-      matches -> {matches |> List.last() |> Enum.at(1), String.trim(output)}
+    case Regex.run(~r/.*redbug done, (.*) - \d+\s*\z/s, output) do
+      [_all, why] -> String.replace(why, ~r/\s+/, " ")
+      nil -> nil
     end
   end
 

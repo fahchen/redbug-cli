@@ -29,7 +29,7 @@ defmodule Server.TraceStopTest do
     assert :ok = Trace.start(nid, sid)
 
     assert_receive {:trace_status, %{status: "stopped", ended: "msgs"}}, 10_000
-    refute_received {:trace_error, _}
+    refute_receive {:trace_error, _}, 200
     assert end_text(sid) == ""
   end
 
@@ -39,7 +39,8 @@ defmodule Server.TraceStopTest do
     assert :ok = Trace.start(nid, sid)
 
     assert_receive {:trace_status, %{status: "stopped", ended: "time"}}, 10_000
-    refute_received {:trace_error, _}
+    refute_receive {:trace_error, _}, 200
+    assert end_text(sid) == ""
   end
 
   test "a stop by the user gives no error, and the end text stays off the terminal" do
@@ -52,9 +53,8 @@ defmodule Server.TraceStopTest do
     assert_receive {:trace_status, %{status: "stopped", ended: nil}}, 5_000
 
     # redbug writes the text after the stop call returns.
-    Process.sleep(500)
-    assert end_text(sid) =~ "redbug done, stopped - "
-    refute_received {:trace_error, _}
+    assert poll(fn -> end_text(sid) =~ "redbug done, stopped - " end)
+    refute_receive {:trace_error, _}, 200
   end
 
   test "end_reason/1 reads the last end text of redbug" do
@@ -62,9 +62,24 @@ defmodule Server.TraceStopTest do
 
     hint = "you might want to set the max_queue option (see redbug:help/0)\n"
     text = "redbug done, stopped - 1\n" <> hint <> "redbug done, {msg_queue,5001} - 7\n"
+    assert Server.Trace.Runner.end_reason(text) == "{msg_queue,5001}"
 
-    assert Server.Trace.Runner.end_reason(text) ==
-             {"{msg_queue,5001}", String.trim(text)}
+    # ~p breaks a long reason over lines.
+    long =
+      :io_lib.format("redbug done, ~p - ~p~n", [
+        {{:badmatch, {:error, :enoent}},
+         [{:redbug_targ, :init, 1, [file: ~c"redbug_targ.erl", line: 97]}]},
+        3
+      ])
+      |> IO.iodata_to_binary()
+
+    assert long =~ "\n"
+
+    assert Server.Trace.Runner.end_reason(long) =~
+             ~r/^\{\{badmatch,\{error,enoent\}\}, \[\{redbug_targ,init,1/
+
+    # a printer crash ends with a term, not a count
+    assert Server.Trace.Runner.end_reason("redbug done, printer_crash - {oops}\n") == nil
   end
 
   defp session(limits) do
@@ -79,6 +94,14 @@ defmodule Server.TraceStopTest do
 
     on_exit(fn -> Trace.terminate(sid) end)
     {nid, sid}
+  end
+
+  defp poll(check, tries \\ 50) do
+    cond do
+      check.() -> true
+      tries == 0 -> false
+      true -> Process.sleep(100) && poll(check, tries - 1)
+    end
   end
 
   # The text that is in the StringIO group leader of the runner now.
