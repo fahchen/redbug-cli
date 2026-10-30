@@ -33,7 +33,8 @@ defmodule Server.Code.Format do
 
     with {:ok, tokens, _} <- :erl_scan.string(charlist),
          {:ok, exprs} <- :erl_parse.parse_exprs(tokens) do
-      Enum.map_join(exprs, "\n", &(&1 |> :erl_prettypr.format() |> to_string()))
+      # keep the commas: the worker adds only the final dot before it evaluates.
+      Enum.map_join(exprs, ",\n", &(&1 |> :erl_prettypr.format() |> to_string()))
     else
       _ -> code
     end

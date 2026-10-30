@@ -12,6 +12,10 @@ defmodule Server.Code.FormatTest do
       assert Format.run("lists:seq(1,5).") == "lists:seq(1, 5)"
     end
 
+    test "keeps the commas of an Erlang sequence of several expressions" do
+      assert Format.run("X = 1, X+1.") == "X = 1,\nX + 1"
+    end
+
     test "leaves unparseable input untouched" do
       garbage = "<<<not code>>>"
       assert Format.run(garbage) == garbage
