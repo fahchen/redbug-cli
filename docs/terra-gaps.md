@@ -25,7 +25,7 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 ## Truecolor becomes 256 colors, and only one theme
 
 - Original: 19 themes with truecolor hex values (`tui/src/theme.ts:98-446`). The `theme` setting selects one (`tui/src/App.tsx:98`).
-- Now: the TUI uses the tokyo-night roles, each mapped to the nearest color of the 256-color palette (`server/lib/server/tui/theme.ex`). The `theme` setting has no effect on the Terra TUI.
+- Now: the TUI uses the tokyo-night roles, each mapped to the nearest color of the 256-color palette (`server/lib/server/tui/theme.ex`). The `theme` setting has no effect on the Terra TUI. The settings screen cycles and saves the `theme` setting and shows `(only tokyo-night colors)` after the value.
 - Reason: Terra styles take a named color or a palette index `0..255`, not RGB.
 - Restore: Terra needs RGB colors (`38;2;r;g;b`). Without that, map the other 18 themes to 256 colors and read the `theme` setting.
 - Status: simplified, #7.
@@ -185,7 +185,7 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 ## The console composes code in a single-line input
 
 - Original: `n` (after a snippet pick) and `e` open the code in `$EDITOR`, and the run starts when the editor closes. `v` opens the code, the result, and the stdout in `$EDITOR` (`tui/src/ConsoleTab.tsx:118-130`, `tui/src/ConsoleTab.tsx:223-228`, `tui/src/ConsoleTab.tsx:452-473`).
-- Now: `n` and `e` open a full-screen page with a single-line input. Each line break of the code shows as `⏎`, and Enter runs the code with the line breaks back. `v` has no function; the detail panel shows the code, the result, and the stdout, and Ctrl+F and Ctrl+B scroll it by page.
+- Now: `n` and `e` open a full-screen page with a single-line input. Each line break of the code shows as `↵`, as in the snippet code input, and Enter runs the code with the line breaks back. `v` has no function; the detail panel shows the code, the result, and the stdout, and Ctrl+F and Ctrl+B scroll it by page.
 - Reason: Terra has no suspend and resume of the terminal for a child program, and no multi-line input.
 - Restore: Terra needs a suspend and resume of the terminal (for `$EDITOR`) or a multi-line input widget.
 - Status: simplified, #9.
@@ -212,6 +212,70 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 - Now: the same keys and the same result, on full-screen pages.
 - Reason: Terra has no layers.
 - Restore: the same as for the other overlays.
+- Status: simplified, #9.
+
+## Preset, snippet, and settings overlays become full-screen pages
+
+- Original: the presets and snippets screens show the help, the name, pattern, and limits inputs, and the delete questions as overlays over the screen (`tui/src/PresetManager.tsx:229-335`, `tui/src/SnippetManager.tsx:209-260`). The settings screen is a centered overlay, and its help and inputs are overlays on it (`tui/src/SettingsScreen.tsx:112-197`).
+- Now: each overlay is a full-screen page in the state of the screen. The settings screen is a full-screen page. The list is not visible behind the page.
+- Reason: Terra has no layers, no absolute position, and no alpha blend. A later view replaces the earlier one.
+- Restore: Terra needs an overlay primitive, or the app must merge two grids.
+- Status: simplified, #9.
+
+## The focused panel shows `▸` in its title
+
+- Original: the focused panel of the presets screen has the active border color and the primary title color (`tui/src/ui.tsx:118-120`, `tui/src/PresetManager.tsx:183`, `tui/src/PresetManager.tsx:195`).
+- Now: the title of the focused panel starts with `▸ `. All borders have one color.
+- Reason: Terra draws all box borders in the one `:border` color of the theme. A box has no border color option.
+- Restore: Terra needs a border color option on a box.
+- Status: simplified, #9.
+
+## Snippet code edits on one line, not in `$EDITOR`
+
+- Original: `e` opens the code of the snippet in `$EDITOR` and saves it when the editor closes. A new snippet opens in `$EDITOR` after it is made (`tui/src/SnippetManager.tsx:49-79`).
+- Now: `e` opens a single-line input with the code. Each line break of the code shows as `↵`, and each `↵` becomes a line break again on save. The save formats the code with `Server.Code.Format`, so `;` between expressions gives new lines. A new snippet gets the selection, and its code input opens.
+- Reason: Terra has no multi-line text input. Terra also cannot give the terminal to a child process and take it back.
+- Restore: Terra needs a multi-line text area, or a suspend and resume of the terminal for `$EDITOR`.
+- Status: simplified, #9.
+
+## The snippet code has no scroll box
+
+- Original: the code pane is a scroll box. Ctrl+F and Ctrl+B scroll it by a viewport, and a move to another snippet scrolls it to the top (`tui/src/SnippetManager.tsx:113-114`, `tui/src/SnippetManager.tsx:123`, `tui/src/SnippetManager.tsx:128`). The lists follow the selection (`tui/src/PresetManager.tsx:52-53`, `tui/src/SnippetManager.tsx:43`).
+- Now: the code pane shows one page of lines. Ctrl+F and Ctrl+B move by a page, and a move to another snippet goes back to the first page. The screen key function does not get the screen size, so the page count stops at the last line of the code, and the view stops at the last full page. After extra Ctrl+F presses at the end, Ctrl+B needs the same number of presses before the code moves. The lists show a window that follows the selection.
+- Reason: Terra has no scroll box. The extra Ctrl+B presses are not a Terra limit: the screen contract `key(key, state)` of the app has no size.
+- Restore: the app must give the size to the screen key function, so that the page count stops at the last page.
+- Status: simplified, #9.
+
+## tree-sitter becomes makeup_elixir in the snippet code
+
+- Original: the code pane highlights the code with the tree-sitter Elixir grammar (`tui/src/SnippetManager.tsx:192-197`).
+- Now: `Server.Tui.Highlight` lexes the code with `makeup_elixir` and cuts each line to the pane width. The lexer runs on each draw, with no cache.
+- Reason: the TUI runs in the BEAM with no tree-sitter.
+- Restore: not needed while the colors are close. Add a cache if long snippets make the draw slow on PBeam.
+- Status: simplified, #9.
+
+## The snippet number jump has no timeout
+
+- Original: the digits before `g` jump to that snippet. The digits clear after 2 s (`tui/src/SnippetManager.tsx:148-167`).
+- Now: the digits clear on any key that is not a digit or `g`, and do not clear after a time.
+- Reason: a timeout needs a Terra tick and a timer state for one key buffer. The clear on the next key gives the same result in normal use.
+- Restore: a `{:tick, 2000, msg}` that clears the digits.
+- Status: simplified, #9.
+
+## The settings screen has no `$EDITOR` row
+
+- Original: the settings screen shows the `$EDITOR` command as a read-only row, and the help names it (`tui/src/SettingsScreen.tsx:38`, `tui/src/SettingsScreen.tsx:133-134`, `tui/src/SettingsScreen.tsx:153`).
+- Now: the settings screen has no `$EDITOR` row.
+- Reason: not a Terra limit. The Terra TUI does not start `$EDITOR`, so the row has no function.
+- Restore: add the row again when a Terra TUI screen starts `$EDITOR`.
+- Status: cut, #9.
+
+## Limits take whole numbers only
+
+- Original: the preset limits and the default limits inputs read each value with `Number`, so `1.5` and `1e3` are valid (`tui/src/limits.ts:10-14`).
+- Now: each value must be a whole number of 0 or more, as in the session limits input. Other text changes nothing.
+- Reason: not a Terra limit. The Terra TUI uses the same parser for all limits inputs, and the trace limits are whole numbers.
+- Restore: parse floats and round them, if a user needs that.
 - Status: simplified, #9.
 
 ## Known PBeam limit

@@ -54,7 +54,7 @@ defmodule Server.Tui.ConsoleTest do
     assert screen(m) =~ "New execution — start from"
     assert screen(m) =~ "(blank)"
     keys(m, [:down, :enter])
-    assert screen(m) =~ "a = 1⏎a + 1"
+    assert screen(m) =~ "a = 1↵a + 1"
     keys(m, :esc)
 
     keys(m, "?")

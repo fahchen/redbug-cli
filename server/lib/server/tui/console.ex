@@ -15,7 +15,7 @@ defmodule Server.Tui.Console do
 
   @list_width 38
   # A code line break in a single-line input.
-  @newline "⏎"
+  @newline "↵"
 
   # tui/src/ConsoleTab.tsx:22-46
   @glyphs %{"running" => "⟳", "ok" => "✓", "error" => "✖", "stopped" => "⊘", "timeout" => "⧖"}
