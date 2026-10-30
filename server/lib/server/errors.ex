@@ -19,6 +19,7 @@ defmodule Server.Errors do
     session_not_found: "Session not found",
     not_found: "Node not found",
     unreachable: "Can't reach node — check address / cookie",
+    distribution_off: "Distribution is off (REDBUG_DIST=off) — cannot connect to nodes",
     no_ssh_host: "This node has no SSH host set",
     bad_container: "Invalid container name (letters, digits, . _ - only)",
     no_container: "No container / service name set for this SSH node",

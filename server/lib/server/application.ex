@@ -5,7 +5,7 @@ defmodule Server.Application do
 
   @impl Application
   def start(_type, _args) do
-    ensure_distributed()
+    if Server.Dist.enabled?(), do: ensure_distributed()
     configure_port()
 
     children = [
