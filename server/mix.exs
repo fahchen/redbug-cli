@@ -54,7 +54,9 @@ defmodule Server.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:bandit, "~> 1.0"},
       {:jason, "~> 1.4"},
-      {:nimble_parsec, "~> 1.4"}
+      {:nimble_parsec, "~> 1.4"},
+      # The pinned Terra commit of PBeam (docs/terra-target.md), with no change.
+      {:terra, github: "uminocelo/terra", ref: "30dea5667d7e4ae5777aa3df77acb36c4aac6967"}
     ]
   end
 end

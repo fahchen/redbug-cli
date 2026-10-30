@@ -21,6 +21,9 @@ defmodule Server.Application do
       Server.ParentWatch
     ]
 
+    # last: the TUI reads the stores that the children above start.
+    children = if Server.Tui.enabled?(), do: children ++ [Server.Tui], else: children
+
     Supervisor.start_link(children, strategy: :one_for_one, name: Server.Supervisor)
   end
 
