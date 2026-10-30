@@ -321,6 +321,42 @@ defmodule Server.Tui.SessionTest do
     assert screen(m) =~ "No events yet · space to start"
   end
 
+  test "Ctrl+W saves the patterns as a preset, and i imports from a preset", %{machine: m} do
+    node_id = add_node(m)
+    sid = open(m, node_id, "presets")
+    patterns = fn -> Enum.find(Config.fetch_node(node_id).sessions, &(&1.id == sid)).traces end
+
+    keys(m, ["t", "n"])
+    assert screen(m) =~ "Common RTP rules (Elixir)"
+    keys(m, ["lists:seq/2", :enter])
+    eventually(fn -> length(patterns.()) == 1 end)
+
+    keys(m, [{:ctrl, :w}, "mine", :enter])
+    eventually(fn -> Enum.map(Config.presets(), & &1.name) == ["mine"] end)
+    keys(m, [{:ctrl, :w}, "mine", :enter])
+    assert screen(m) =~ ~s(Overwrite preset "mine"?)
+    keys(m, "y")
+    eventually(fn -> length(Config.presets()) == 2 end)
+
+    {:ok, _} =
+      Config.add_preset(%{
+        name: "more",
+        traces: [
+          %{id: "a", text: "lists:seq/2", enabled: true},
+          %{id: "b", text: "lists:reverse/1", enabled: true},
+          %{id: "c", text: "maps:get/2", enabled: true}
+        ],
+        limits: %{keep: 1, time: 2, msgs: 3}
+      })
+
+    keys(m, ["i", :down, :down, :enter])
+    assert screen(m) =~ "3 selected"
+    keys(m, ["a", "a", :down, " "])
+    assert screen(m) =~ "2 selected"
+    keys(m, :enter)
+    eventually(fn -> Enum.map(patterns.(), & &1.text) == ["lists:seq/2", "maps:get/2"] end)
+  end
+
   test "the status chip shows the node state", %{machine: m} do
     node_id = add_node(m)
     open(m, node_id, "chip")

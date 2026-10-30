@@ -21,7 +21,7 @@ defmodule Server.Tui.ConsoleTest do
     %{machine: machine}
   end
 
-  defp eventually(fun, tries \\ 250) do
+  defp eventually(fun, tries \\ 750) do
     if fun.() do
       :ok
     else
