@@ -97,6 +97,16 @@ Press `?` in the TUI for the active screen's keymap.
 
 ## Tracing Remote Nodes
 
+### Supported target versions
+
+The controller runs Erlang/OTP 29.1.1. A target node can run OTP 27, 28, or 29. The tests check
+OTP 27.2.4, 28.5.0.2, and 29.1.1 (`test/remote/inject_test.exs`).
+
+A beam that OTP 29 compiles does not load on OTP 27, so the controller does not send its beams. It
+sends the abstract code of the console worker and of the redbug target modules, and the target
+compiles them with its own `compiler` application. A target without `compiler` gets the
+controller's beams, and an older OTP can refuse them.
+
 redbug-cli supports three remote-node paths:
 
 | Target shape | Use |
@@ -139,7 +149,11 @@ cd tui && bun run typecheck
 ```
 
 The full session-root test drives the store layer against a real target node, so start a target
-like the quick-start `iex` node first when running the whole server test suite.
+like the quick-start `iex` node first when running the whole server test suite. The server tests
+need a distributed VM: `elixir --name rbe2e@127.0.0.1 --cookie rbtest -S mix test`.
+
+`test/remote/inject_test.exs` starts its own target nodes of OTP 27, 28, and 29. It uses the extra
+Erlang and Elixir versions in [mise.toml](mise.toml), which `mise install` installs.
 
 ### Running Pieces Separately
 
