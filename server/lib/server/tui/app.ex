@@ -1,7 +1,7 @@
 defmodule Server.Tui.App do
   @moduledoc """
   The Terra app of the TUI: the node screen. It runs in the controller BEAM
-  and calls `Server.Config` directly, not over the WebSocket.
+  and calls `Server.Config` directly.
 
   `init/1` starts a `Server.Tui.Bridge`, which sends config changes to the
   runtime in batches as `{:nodes, nodes, settings}` messages, and the trace
@@ -111,7 +111,7 @@ defmodule Server.Tui.App do
   end
 
   # The presets, snippets, and settings screens. `back` is the page to show
-  # when the screen closes (tui/src/App.tsx:113-136).
+  # when the screen closes (tui/src/App.tsx@8b4cec82:113-136).
   defp handle(key, %{page: {:screen, module, screen, back}} = state) do
     case module.key(key, screen) do
       {:ok, screen} ->
@@ -211,7 +211,7 @@ defmodule Server.Tui.App do
 
   defp trace(state, _id, _message), do: state
 
-  # --- sessions pane keys (tui/src/App.tsx:376-449) ---
+  # --- sessions pane keys (tui/src/App.tsx@8b4cec82:376-449) ---
 
   defp sessions_key({:ctrl, :d}, state) do
     case current_session(state) do
@@ -287,8 +287,9 @@ defmodule Server.Tui.App do
     end
   end
 
-  # The createSession command of Server.Stores.NodeStore: the traces of the
-  # preset get new ids. The new session opens, as in tui/src/App.tsx:257-268.
+  # The createSession command of the removed Server.Stores.NodeStore
+  # (server/lib/server/stores/node_store.ex@8b4cec82): the traces of the
+  # preset get new ids. The new session opens, as in tui/src/App.tsx@8b4cec82:257-268.
   defp create_session(state, node_id, name, index) do
     {traces, limits} =
       case Enum.at(Config.presets(), index - 1) do
@@ -386,7 +387,8 @@ defmodule Server.Tui.App do
 
   defp confirm(:quit, state), do: {:quit, state}
 
-  # The same steps as the deleteNode command of Server.Stores.NodeStore: stop
+  # The same steps as the deleteNode command of the removed
+  # Server.Stores.NodeStore (server/lib/server/stores/node_store.ex@8b4cec82): stop
   # the traces and the console of each session, then delete the node.
   defp confirm({:delete, node}, state) do
     Enum.each(node.sessions, fn s ->
@@ -398,7 +400,8 @@ defmodule Server.Tui.App do
     %{state | selected: max(state.selected - 1, 0)}
   end
 
-  # The deleteSession command of Server.Stores.SessionItemStore.
+  # The deleteSession command of the removed Server.Stores.SessionItemStore
+  # (server/lib/server/stores/session_item_store.ex@8b4cec82).
   defp confirm({:delete_session, node_id, session}, state) do
     Server.Trace.terminate(session.id)
     Remote.purge(session.id)
@@ -508,7 +511,7 @@ defmodule Server.Tui.App do
     end
   end
 
-  # tui/src/Tree.tsx:9-15: a dotted quad, or a name with a letter or a dot.
+  # tui/src/Tree.tsx@8b4cec82:9-15: a dotted quad, or a name with a letter or a dot.
   defp valid_host?(host) do
     Regex.match?(~r/^\d{1,3}(\.\d{1,3}){3}$/, host) or
       (Regex.match?(~r/^[A-Za-z0-9.-]+$/, host) and Regex.match?(~r/[A-Za-z.]/, host))
@@ -728,7 +731,7 @@ defmodule Server.Tui.App do
     end
   end
 
-  # tui/src/Tree.tsx:59-82: the number and the name of each session.
+  # tui/src/Tree.tsx@8b4cec82:59-82: the number and the name of each session.
   defp session_rows(_state, %{sessions: []}, _rows),
     do: [text("No sessions · n to add", fg: Theme.color(:muted))]
 
@@ -785,7 +788,7 @@ defmodule Server.Tui.App do
   defp ssh(node),
     do: if(present?(node[:ssh_user]), do: "#{node.ssh_user}@", else: "") <> node.ssh_host
 
-  # tui/src/Tree.tsx:85-89
+  # tui/src/Tree.tsx@8b4cec82:85-89
   defp redact(cookie) when cookie in [nil, ""], do: "—"
 
   defp redact(cookie) do

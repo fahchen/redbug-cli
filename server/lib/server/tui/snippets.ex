@@ -1,9 +1,10 @@
 defmodule Server.Tui.Snippets do
   @moduledoc """
   The snippets screen of the Terra TUI: the snippet list and the code of the
-  selected snippet. The keys follow `tui/src/SnippetManager.tsx`. The screen
-  calls `Server.Config` directly, as `Server.Stores.SnippetsRoot` and
-  `Server.Stores.SnippetStore` do, and formats the code with
+  selected snippet. The keys follow `tui/src/SnippetManager.tsx@8b4cec82`. The
+  screen calls `Server.Config` directly, as the removed
+  `Server.Stores.SnippetsRoot` and `Server.Stores.SnippetStore` did
+  (`server/lib/server/stores/@8b4cec82`), and formats the code with
   `Server.Code.Format` when it saves the code. It reads the snippets in
   `view/3`, so it always shows the current data.
 
@@ -33,7 +34,7 @@ defmodule Server.Tui.Snippets do
   def key(key, %{page: {:input, _, _, _}} = s), do: input_key(key, s)
   def key(key, s), do: main_key(key, %{s | digits: ""}, s.digits, current(s))
 
-  # tui/src/SnippetManager.tsx:84-169
+  # tui/src/SnippetManager.tsx@8b4cec82:84-169
   defp main_key(:esc, _s, _digits, _cur), do: :close
   defp main_key({:char, ","}, s, _digits, _cur), do: {:settings, s}
   defp main_key({:char, "?"}, s, _digits, _cur), do: {:ok, %{s | page: :help}}
@@ -75,7 +76,7 @@ defmodule Server.Tui.Snippets do
   defp main_key({:ctrl, :d}, s, _digits, cur), do: {:ok, delete(cur.id, s)}
   defp main_key(_key, s, _digits, _cur), do: {:ok, s}
 
-  # tui/src/SnippetManager.tsx:84-98
+  # tui/src/SnippetManager.tsx@8b4cec82:84-98
   defp confirm_key({:char, "y"}, id, s), do: {:ok, delete(id, %{s | page: :main})}
   defp confirm_key(k, _id, s) when k in [:esc, {:char, "n"}], do: {:ok, %{s | page: :main}}
   defp confirm_key(_key, _id, s), do: {:ok, s}
@@ -99,7 +100,7 @@ defmodule Server.Tui.Snippets do
     end
   end
 
-  # tui/src/SnippetManager.tsx:49-79 and 229-243: a new snippet gets the
+  # tui/src/SnippetManager.tsx@8b4cec82:49-79 and 229-243: a new snippet gets the
   # selection, and its code input opens.
   defp submit(:new, text, s) do
     case String.trim(text) do
@@ -275,7 +276,7 @@ defmodule Server.Tui.Snippets do
     )
   end
 
-  # tui/src/SnippetManager.tsx:207-225
+  # tui/src/SnippetManager.tsx@8b4cec82:207-225
   defp help_rows do
     [
       {"j / k", "move"},

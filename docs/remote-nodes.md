@@ -1,13 +1,12 @@
 # Remote nodes
 
-The controller and TUI always run locally (the launcher binds the server to `127.0.0.1`). To
-trace a node on another host, the controller only has to reach it over Erlang **distribution**
+The controller and the TUI always run locally, in one BEAM. To trace a node on another host, the controller only has to reach it over Erlang **distribution**
 with a **matching cookie** — nothing is deployed to the target (no agent, sidecar, or code).
 
 ```
    local                                    remote host
  ┌─────────────────────────────┐          ┌──────────────────┐
- │ TUI ─ WS(127.0.0.1) ─ controller ──────┼─ epmd  :4369      │
+ │ TUI + controller (one BEAM) ───────────┼─ epmd  :4369      │
  │                       Erlang dist ─────┼─ app node :<dist> │
  └─────────────────────────────┘          └──────────────────┘
 ```
@@ -64,7 +63,7 @@ as `app@<container-host>`). The controller defaults to longnames, so for a short
 redbug as shortnames too — **no server change needed**:
 
 ```sh
-CONTROLLER_DISTRIBUTION=sname ./dist/redbug      # or: … mise run dev
+CONTROLLER_DISTRIBUTION=sname server/_build/prod/rel/server/bin/server start      # or: … mise run dev
 ```
 
 Leave it unset for a longname target — e.g. one pinned in `deploy.yml` with
@@ -166,7 +165,7 @@ docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$C
 ssh -N -L 9100:172.18.0.4:44001 user@server
 
 # dial the local end; node name must match the container node's own name
-REDBUG_NODES="app@127.0.0.1|127.0.0.1:9100|$RELEASE_COOKIE" ./dist/redbug
+REDBUG_NODES="app@127.0.0.1|127.0.0.1:9100|$RELEASE_COOKIE" server/_build/prod/rel/server/bin/server start
 ```
 
 The local port is free to differ from the remote dist port (the shim pins the endpoint, no
@@ -180,10 +179,7 @@ env:
     ERL_AFLAGS: "-kernel inet_dist_listen_min 9100 -kernel inet_dist_listen_max 9100"
 ```
 
-> **Launching the server by hand.** `mise run dev` handles it, but if you start the server
-> yourself, do **not** pass `--name`: the shim loads only once the app starts, so distribution
-> must come up *after* boot. Set the name via `CONTROLLER_NODE`
-> (`CONTROLLER_NODE=… CONTROLLER_COOKIE=… REDBUG_NODES=… elixir -S mix phx.server`).
+> **Launching the controller by hand.** `mise run dev` and the release (`rel/env.sh.eex`) handle it, but if you start the controller yourself, do **not** pass `--name`: the shim loads only once the app starts, so distribution must come up *after* boot. Set the name via `CONTROLLER_NODE` and give the shim flags (`ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd" CONTROLLER_NODE=… CONTROLLER_COOKIE=… REDBUG_NODES=… elixir -S mix run --no-halt`).
 
 ---
 
@@ -204,6 +200,5 @@ nodes still resolve normally.
 
 - **Cookie == RCE.** The cookie is full remote-code-execution on the target. The config file is
   `0600`; keep it local.
-- Keep the WebSocket on `127.0.0.1` (the default) — **never expose it publicly.**
 - Erlang distribution is **unencrypted** unless tunnelled. Don't expose epmd/dist ports to
   untrusted networks; reach them over a VPN or SSH tunnel.

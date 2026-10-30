@@ -2,8 +2,9 @@ defmodule Server.Tui.Console do
   @moduledoc """
   The console tab of the session screen: the execution history and the detail
   of the selected execution. It calls `Server.Remote` and `Server.Config`
-  directly, as `Server.Stores.ConsoleRoot` does, and takes the console
-  messages of the bridge. The keys follow `tui/src/ConsoleTab.tsx:185-250`;
+  directly, as the removed `Server.Stores.ConsoleRoot` did
+  (`server/lib/server/stores/console_root.ex@8b4cec82`), and takes the console
+  messages of the bridge. The keys follow `tui/src/ConsoleTab.tsx@8b4cec82:185-250`;
   `docs/terra-gaps.md` records the keys and features that differ.
   """
 
@@ -17,7 +18,7 @@ defmodule Server.Tui.Console do
   # A code line break in a single-line input.
   @newline "↵"
 
-  # tui/src/ConsoleTab.tsx:22-46
+  # tui/src/ConsoleTab.tsx@8b4cec82:22-46
   @glyphs %{"running" => "⟳", "ok" => "✓", "error" => "✖", "stopped" => "⊘", "timeout" => "⧖"}
 
   @doc "The console state of a session. The history comes from `{:console_snapshot, snap}`."
@@ -33,7 +34,7 @@ defmodule Server.Tui.Console do
     }
   end
 
-  # --- console messages (Server.Stores.ConsoleRoot.handle_info/2) ---
+  # --- console messages (handle_info/2 of the removed Server.Stores.ConsoleRoot) ---
 
   @doc "Applies a console message of the bridge."
   def message(message, c), do: message |> apply_message(c) |> prune()
@@ -129,7 +130,7 @@ defmodule Server.Tui.Console do
   defp blank_nil(name) when name in [nil, ""], do: nil
   defp blank_nil(name), do: name
 
-  # tui/src/ConsoleTab.tsx:207-217: the selection wraps; the detail goes to its top.
+  # tui/src/ConsoleTab.tsx@8b4cec82:207-217: the selection wraps; the detail goes to its top.
   defp move(%{history: []} = c, _delta), do: c
 
   defp move(c, delta),
@@ -140,7 +141,7 @@ defmodule Server.Tui.Console do
     %{c | offset: offset |> max(0) |> min(last)}
   end
 
-  # The new execution starts from a blank page or a snippet (tui/src/ConsoleTab.tsx:332-348).
+  # The new execution starts from a blank page or a snippet (tui/src/ConsoleTab.tsx@8b4cec82:332-348).
   defp pick_key(k, %{page: {:pick, i}} = c) when k in [:down, {:char, "j"}],
     do: {:ok, %{c | page: {:pick, min(i + 1, length(Config.snippets()))}}}
 
@@ -242,7 +243,7 @@ defmodule Server.Tui.Console do
   defp lexed(c, exec, part, text),
     do: Map.get_lazy(c.highlight, {exec.id, part}, fn -> Highlight.lex(text) end)
 
-  # tui/src/ConsoleTab.tsx:409-444: the code, the result, and the stdout.
+  # tui/src/ConsoleTab.tsx@8b4cec82:409-444: the code, the result, and the stdout.
   defp detail_lines(_c, nil, _size), do: []
 
   defp detail_lines(c, exec, {width, _height}) do
@@ -319,7 +320,7 @@ defmodule Server.Tui.Console do
     ])
   end
 
-  # tui/src/ConsoleTab.tsx:376-389
+  # tui/src/ConsoleTab.tsx@8b4cec82:376-389
   defp history_row(exec, active?) do
     bg = if active?, do: [bg: Theme.color(:element)], else: []
     label = if exec.name not in [nil, ""], do: exec.name, else: first_line(exec.code)
@@ -376,7 +377,7 @@ defmodule Server.Tui.Console do
     end
   end
 
-  # tui/src/ConsoleTab.tsx:279-286
+  # tui/src/ConsoleTab.tsx@8b4cec82:279-286
   defp status_line(c, node, width) do
     running = Enum.count(c.history, &(&1.status == "running"))
 

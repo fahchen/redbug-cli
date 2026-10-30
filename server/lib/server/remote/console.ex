@@ -6,10 +6,10 @@ defmodule Server.Remote.Console do
   Each execution spawns `Server.Remote.Worker` on the target (after
   `Server.Remote.Inject` loads it there) and monitors it, so a run is
   force-stoppable via `Process.exit(pid, :kill)` over distribution. A `@timeout` watchdog kills
-  runaway evals. Results, output and status flow back as PubSub broadcasts on
-  `Server.Remote.topic/1`; the store mirrors them into its stream.
+  runaway evals. Results, output and status flow back as `Server.PubSub`
+  broadcasts on `Server.Remote.topic/1`; the TUI console mirrors them.
 
-  History is server-held, so it survives ws reconnects, and is mirrored to one
+  History is held here, so it survives a close of the console tab, and is mirrored to one
   JSON file per session next to the config (see `path/1`) so it also survives a
   restart. `stop/2` requires the caller to have confirmed (a TUI concern). Code
   is auto-formatted on run via `Server.Code.Format`.
@@ -22,7 +22,6 @@ defmodule Server.Remote.Console do
   alias Server.Schema.ConsoleExec
 
   @registry Server.Remote.Registry
-  @pubsub Server.PubSub
   @timeout 15_000
   @keep 200
   # A runaway `IO.puts` loop would otherwise grow one exec's output without
@@ -236,7 +235,7 @@ defmodule Server.Remote.Console do
   end
 
   # Slice by characters, not bytes: cutting mid-codepoint would produce invalid
-  # UTF-8 that Jason.encode! then refuses. Re-capping an already-capped string is
+  # UTF-8 that JSON.encode! then refuses. Re-capping an already-capped string is
   # a no-op beyond the marker.
   defp cap(text) when byte_size(text) <= @max_output, do: text
   defp cap(text), do: String.slice(text, 0, @max_output) <> "\n… output truncated"
@@ -273,7 +272,7 @@ defmodule Server.Remote.Console do
 
   defp load(session_id) do
     with {:ok, body} <- File.read(path(session_id)),
-         {:ok, list} when is_list(list) <- Jason.decode(body) do
+         {:ok, list} when is_list(list) <- JSON.decode(body) do
       list |> Enum.map(&from_json/1) |> Enum.take(@keep)
     else
       _ -> []
@@ -290,7 +289,7 @@ defmodule Server.Remote.Console do
     File.mkdir_p!(Path.dirname(file))
     tmp = file <> ".tmp"
 
-    with :ok <- File.write(tmp, Jason.encode!(Enum.map(state.history, &Map.from_struct/1))),
+    with :ok <- File.write(tmp, JSON.encode!(Enum.map(state.history, &Map.from_struct/1))),
          :ok <- File.chmod(tmp, 0o600) do
       File.rename(tmp, file)
     end
@@ -322,6 +321,6 @@ defmodule Server.Remote.Console do
   defp mono, do: System.monotonic_time(:millisecond)
 
   defp broadcast(state, message) do
-    Phoenix.PubSub.broadcast(@pubsub, Server.Remote.topic(state.session_id), message)
+    Server.PubSub.broadcast(Server.Remote.topic(state.session_id), message)
   end
 end

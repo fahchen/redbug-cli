@@ -2,8 +2,9 @@ defmodule Server.Tui.Presets do
   @moduledoc """
   The presets screen of the Terra TUI: the preset list and the trace patterns
   and limits of the selected preset. The keys follow
-  `tui/src/PresetManager.tsx`. The screen calls `Server.Config` directly, as
-  `Server.Stores.PresetsRoot` and `Server.Stores.PresetStore` do, and reads
+  `tui/src/PresetManager.tsx@8b4cec82`. The screen calls `Server.Config` directly, as
+  the removed `Server.Stores.PresetsRoot` and `Server.Stores.PresetStore` did
+  (`server/lib/server/stores/@8b4cec82`), and reads
   the presets in `view/3`, so it always shows the current data. The overlays
   of the Bun screen are full-screen pages (`docs/terra-gaps.md`).
   """
@@ -30,7 +31,7 @@ defmodule Server.Tui.Presets do
   def key(key, %{focus: :detail} = s), do: detail_key(key, s, current(s))
   def key(key, s), do: list_key(key, s, current(s))
 
-  # tui/src/PresetManager.tsx:156-189
+  # tui/src/PresetManager.tsx@8b4cec82:156-189
   defp list_key(:esc, _s, _cur), do: :close
   defp list_key(k, s, _cur) when k in [:down, {:char, "j"}], do: {:ok, move(s, :sel, 1)}
   defp list_key(k, s, _cur) when k in [:up, {:char, "k"}], do: {:ok, move(s, :sel, -1)}
@@ -48,7 +49,7 @@ defmodule Server.Tui.Presets do
   defp list_key({:ctrl, :d}, s, cur), do: {:ok, run({:delete, cur.id}, s)}
   defp list_key(_key, s, _cur), do: {:ok, s}
 
-  # tui/src/PresetManager.tsx:125-154
+  # tui/src/PresetManager.tsx@8b4cec82:125-154
   defp detail_key(k, s, _cur) when k in [:esc, :tab], do: {:ok, %{s | focus: :list}}
   defp detail_key(_key, s, nil), do: {:ok, %{s | focus: :list}}
 
@@ -84,7 +85,7 @@ defmodule Server.Tui.Presets do
     end
   end
 
-  # tui/src/PresetManager.tsx:72-91
+  # tui/src/PresetManager.tsx@8b4cec82:72-91
   defp confirm_key({:char, "y"}, action, s), do: {:ok, run(action, %{s | page: :main})}
 
   defp confirm_key(k, _action, s) when k in [:esc, {:char, "n"}],
@@ -113,7 +114,7 @@ defmodule Server.Tui.Presets do
     end
   end
 
-  # tui/src/PresetManager.tsx:278-345. The edit of a pattern saves an empty
+  # tui/src/PresetManager.tsx@8b4cec82:278-345. The edit of a pattern saves an empty
   # text too, as the Bun screen does.
   defp submit({:edit_trace, id, trace_id}, text, s) do
     update_traces(
@@ -135,7 +136,7 @@ defmodule Server.Tui.Presets do
   defp save({:add_trace, id}, text),
     do: update_traces(id, &(&1 ++ [%{id: Config.gen_id(), text: text, enabled: true}]))
 
-  # tui/src/limits.ts: "keep time msgs"; a bad text changes nothing.
+  # tui/src/limits.ts@8b4cec82: "keep time msgs"; a bad text changes nothing.
   defp save({:limits, id}, text) do
     with [{keep, ""}, {time, ""}, {msgs, ""}] when keep >= 0 and time >= 0 and msgs >= 0 <-
            text |> String.split() |> Enum.map(&Integer.parse/1),
@@ -336,7 +337,7 @@ defmodule Server.Tui.Presets do
     )
   end
 
-  # tui/src/PresetManager.tsx:246-273
+  # tui/src/PresetManager.tsx@8b4cec82:246-273
   defp help_rows do
     [
       {:section, "list"},

@@ -1,6 +1,6 @@
 defmodule Server.Tui.Theme do
   @moduledoc """
-  The colours of the Terra TUI: the tokyo-night roles of `tui/src/theme.ts`,
+  The colours of the Terra TUI: the tokyo-night roles of `tui/src/theme.ts@8b4cec82`,
   each mapped to the nearest colour of the 256-colour palette, because Terra
   has no truecolor (see `docs/terra-gaps.md`).
   """

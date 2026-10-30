@@ -1,8 +1,8 @@
 defmodule Server.Tui do
   @moduledoc """
-  Starts the Terra TUI (`Server.Tui.App`) in the controller BEAM when
-  `REDBUG_TUI=terra`. Without it, the controller serves the Bun TUI over the
-  WebSocket as before.
+  Starts the Terra TUI (`Server.Tui.App`) in the controller BEAM. The
+  application starts it unless the `:tui` setting of `:server` is `false`
+  (`config/test.exs` sets it, because the tests drive the app headless).
 
   While the TUI holds the terminal, the logger writes to `REDBUG_SERVER_LOG`
   (default `/tmp/redbug-server.log`), not to the screen. When the TUI quits,
@@ -12,7 +12,7 @@ defmodule Server.Tui do
   require Logger
 
   @spec enabled?() :: boolean()
-  def enabled?, do: System.get_env("REDBUG_TUI") == "terra"
+  def enabled?, do: Application.get_env(:server, :tui, true)
 
   def child_spec(_arg) do
     %{id: __MODULE__, start: {Task, :start_link, [&run/0]}, restart: :temporary}

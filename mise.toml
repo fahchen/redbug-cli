@@ -3,36 +3,25 @@
 # older supported OTP versions for server/test/remote/inject_test.exs.
 erlang = ["29.1.1", "27.2.4", "28.5.0.2"]
 elixir = ["1.20.4-otp-29", "1.18.4-otp-27", "1.19.5-otp-28"]
-bun = "1.3"
 
 [tasks.setup]
-description = "Install all deps: Elixir controller (server) + Bun/opentui/lumis (TUI)"
+description = "Fetch the Elixir deps"
+dir = "server"
 run = """
 set -eu
-root="$PWD"
-# Elixir deps (mix has no --cwd, so run it from server/). Ensure hex/rebar exist
-# first so a fresh toolchain doesn't prompt; the check is a fast no-op once installed.
-cd "$root/server"
+# Ensure hex/rebar exist first so a fresh toolchain doesn't prompt; the check is
+# a fast no-op once installed.
 mix hex.info >/dev/null 2>&1 || { mix local.hex --force && mix local.rebar --force; }
 mix deps.get
-# TUI deps (opentui, lumis, react, musubi workspace links); --cwd avoids a second
-# cd, no-op when the bun lockfile is already satisfied.
-bun --cwd="$root/tui" install
 """
 
 [tasks.dev]
-description = "Start server (random free port) then TUI; cookie via RB_COOKIE (default rbtest)"
+description = "Start the controller with the Terra TUI in this terminal; cookie via RB_COOKIE (default rbtest)"
 depends = ["setup"]
 dir = "server"
 run = """
 set -eu
 cookie="${RB_COOKIE:-rbtest}"
-port_file="/tmp/redbug.port"
-rm -f "$port_file"
-export REDBUG_PORT_FILE="$port_file"
-# Server shares this terminal with the TUI, so silence its stdout/stderr into a
-# log file (tail it when debugging) instead of corrupting the TUI screen.
-log_file="${REDBUG_SERVER_LOG:-/tmp/redbug-server.log}"
 # Always boot with the connect-only epmd shim (see Server.Epmd): pinned endpoints
 # (REDBUG_NODES / SSH tunnels) dial direct, unpinned names fall back to real epmd.
 # The shim module only loads once the app starts, so distribution must NOT come up
@@ -43,25 +32,17 @@ if [ "${REDBUG_DIST:-}" != off ]; then
 fi
 export CONTROLLER_NODE="redbug_controller@127.0.0.1"
 export CONTROLLER_COOKIE="$cookie"
-# tie the controller to this task shell: if it's killed, the controller stops
-# itself (and its traces) instead of orphaning (see Server.ParentWatch).
-export REDBUG_PARENT_PID=$$
-elixir -S mix phx.server >"$log_file" 2>&1 &
-server_pid=$!
-trap 'kill $server_pid 2>/dev/null' EXIT INT TERM
-until [ -f "$port_file" ]; do sleep 0.2; done
-port=$(cat "$port_file")
-until nc -z 127.0.0.1 "$port" 2>/dev/null; do sleep 0.2; done
-# --cwd runs the TUI from tui/ without leaving the server dir (this task's dir).
-REDBUG_PORT="$port" bun --cwd=../tui run dev
+# One BEAM: the TUI (Server.Tui) takes this terminal and writes the log to
+# REDBUG_SERVER_LOG (default /tmp/redbug-server.log). Quitting the TUI stops it.
+exec elixir -S mix run --no-halt
 """
 
 [tasks.package]
-description = "Build single-file redbug (OUT=<path> overrides dist/redbug; bun --compile embeds the server release)"
+description = "Build the release server/_build/prod/rel/server (run bin/server start)"
 depends = ["setup"]
+dir = "server"
 run = """
 set -eu
-root="$(pwd)"
 
 # The release bundles the ERTS that builds it. Fail here when that ERTS is not
 # the one of the [tools] pins (erlang 29.1.1 ships ERTS 17.1).
@@ -72,41 +53,6 @@ case "$got_erts" in
   *) echo "ERROR: building with ERTS $got_erts, expected $want_erts.x (see [tools] in mise.toml)" >&2; exit 1 ;;
 esac
 
-# OUT picks the output path; unset -> dist/redbug. Set OUT=<path-on-PATH> to
-# build straight onto PATH (the binary is self-contained, so a cp installs it too).
-if [ -n "${OUT:-}" ]; then out="$OUT"; else out="$root/dist/redbug"; fi
-mkdir -p "$(dirname "$out")"
-
-echo "==> building release"
-cd "$root/server" && MIX_ENV=prod mix release server --overwrite
-
-echo "==> packing release"
-mkdir -p "$root/tui/embed"
-tar -czf "$root/tui/embed/server.tar.gz" -C "$root/server/_build/prod/rel" server
-
-# Pre-bundle the opentui tree-sitter worker (+ its web-tree-sitter wasm sidecar)
-# into a self-contained dir, then tar it. bun --compile won't fold a Worker spawned
-# from a runtime path string into the binary, so we embed + extract it at startup
-# (see tui/src/ts-worker-bootstrap.ts).
-echo "==> packing tree-sitter worker"
-rm -rf "$root/tui/embed/ts-worker"
-bun --cwd="$root/tui" build node_modules/@opentui/core/parser.worker.js --target=bun --outdir "$root/tui/embed/ts-worker"
-tar -czf "$root/tui/embed/ts-worker.tar.gz" -C "$root/tui/embed" ts-worker
-rm -rf "$root/tui/embed/ts-worker"
-
-echo "==> compiling single-file binary"
-# main.tsx embeds the tarball and extracts + spawns the server at runtime.
-# --no-compile-autoload-* stops the runtime from picking up a stray bunfig.toml
-# or .env from whatever dir the installed binary happens to run in.
-bun --cwd="$root/tui" build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv src/main.tsx --outfile "$out"
-chmod 755 "$out"
-
-# macOS arm64 SIGKILLs an unsigned/quarantined binary; clear attrs + ad-hoc sign
-# so it still runs after being copied or downloaded. No-op off macOS.
-if [ "$(uname)" = "Darwin" ]; then
-  xattr -c "$out"
-  codesign --force --sign - "$out"
-fi
-
-echo "packaged -> $out"
+MIX_ENV=prod mix release server --overwrite
+echo "packaged -> server/_build/prod/rel/server (start: server/_build/prod/rel/server/bin/server start)"
 """

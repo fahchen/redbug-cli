@@ -5,7 +5,7 @@ defmodule Server.Tui.ConsoleTest do
 
       elixir --name rbe2e@127.0.0.1 --cookie rbtest -S mix test
   """
-  # The app reads and writes the shared Server.Config, as the store tests do.
+  # The app reads and writes the shared Server.Config, as the other tests do.
   use ExUnit.Case, async: false
 
   alias Server.Config

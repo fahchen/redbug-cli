@@ -7,7 +7,6 @@ defmodule Server.MixProject do
       version: "0.1.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
-      compilers: Mix.compilers() ++ [:musubi_ts],
       releases: releases(),
       deps: deps()
     ]
@@ -48,12 +47,7 @@ defmodule Server.MixProject do
 
   defp deps do
     [
-      {:musubi, "~> 0.13.0"},
       {:redbug, "~> 2.0"},
-      {:phoenix, "~> 1.8"},
-      {:phoenix_pubsub, "~> 2.1"},
-      {:bandit, "~> 1.0"},
-      {:jason, "~> 1.4"},
       {:nimble_parsec, "~> 1.4"},
       {:makeup_elixir, "~> 1.0"},
       # The pinned Terra commit of PBeam (docs/terra-target.md), with no change.

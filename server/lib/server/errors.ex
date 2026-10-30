@@ -4,9 +4,9 @@ defmodule Server.Errors do
   a `%{message, detail}` map ready for the TUI: `message` is one human-readable
   line, `detail` is the full raw text (or `nil`) for the `e` detail overlay.
 
-  Single source of truth for error copy — stores call `humanize/1` and assign
-  the resulting `Server.Schema.AppError` straight into state, so the wire
-  payload is already human-readable.
+  Single source of truth for error copy — the trace and console runners call
+  `humanize/1` and send the resulting `Server.Schema.AppError` to the TUI, so
+  the message is already human-readable.
   """
 
   alias Server.Schema.AppError

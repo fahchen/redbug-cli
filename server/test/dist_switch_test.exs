@@ -58,8 +58,6 @@ defmodule Server.DistSwitchTest do
       %{
         # Clear the settings that this VM can inherit from its shell.
         "REDBUG_DIST" => nil,
-        "REDBUG_PORT" => nil,
-        "REDBUG_PORT_FILE" => nil,
         "REDBUG_NODES" => nil,
         "CONTROLLER_DISTRIBUTION" => nil,
         "ERL_FLAGS" => nil

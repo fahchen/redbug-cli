@@ -1,6 +1,6 @@
-defmodule Server.Stores.ConsoleRootTest do
+defmodule Server.RemoteConsoleTest do
   @moduledoc """
-  End-to-end test of the ConsoleRoot store + Server.Remote layer against a live
+  End-to-end test of the `Server.Remote` console layer against a live
   target node. Runs code blocks on `target@127.0.0.1` (cookie `rbtest`) over
   distribution. Run with:
 
@@ -8,7 +8,6 @@ defmodule Server.Stores.ConsoleRootTest do
   """
   use ExUnit.Case, async: false
 
-  alias Musubi.Testing
   alias Server.{Config, Remote}
 
   @target "target@127.0.0.1"
@@ -28,47 +27,37 @@ defmodule Server.Stores.ConsoleRootTest do
     %{node_id: node_id, session_id: session_id}
   end
 
-  # History is client-owned (server emits stream ops, never materializes the
-  # list in render/1), so content assertions read Remote.snapshot/1 — the same
-  # source the store mirrors over PubSub. render/1 covers plain fields.
-  test "run / rerun / stop / clear over the store layer", %{node_id: nid, session_id: sid} do
-    s = Testing.mount(Server.Stores.ConsoleRoot, %{"node_id" => nid, "session_id" => sid})
-
-    r = Testing.render(s)
-    assert r.node_id == nid
-    assert r.session_id == sid
-    assert is_list(r.snippets)
-
+  test "run / stop / clear through Server.Remote", %{node_id: nid, session_id: sid} do
     # Elixir block evaluates and finalizes "ok" with the result inspected.
-    Testing.dispatch_command(s, :run, %{code: "1 + 1", name: "math"})
+    Remote.run(nid, sid, "1 + 1", "math")
     math = await_final(sid, "math")
     assert math.status == "ok"
     assert math.result =~ "2"
     assert math.duration_ms >= 0
 
     # Erlang falls through the Elixir path and evaluates too (auto-detected).
-    Testing.dispatch_command(s, :run, %{code: "lists:seq(1,3).", name: "erl"})
+    Remote.run(nid, sid, "lists:seq(1,3).", "erl")
     erl = await_final(sid, "erl")
     assert erl.status == "ok"
     assert erl.result =~ "[1, 2, 3]" or erl.result =~ "[1,2,3]"
 
     # Captured stdout rides along on the entry.
-    Testing.dispatch_command(s, :run, %{code: ~s|IO.puts("hi there")|, name: "io"})
+    Remote.run(nid, sid, ~s|IO.puts("hi there")|, "io")
     io = await_final(sid, "io")
     assert io.status == "ok"
     assert io.output =~ "hi there"
 
     # A long eval is force-stoppable mid-run -> status "stopped".
-    Testing.dispatch_command(s, :run, %{code: "Process.sleep(60_000)", name: "sleep"})
+    Remote.run(nid, sid, "Process.sleep(60_000)", "sleep")
     running = await_running(sid, "sleep")
-    Testing.dispatch_command(s, :stopExecution, %{id: running.id})
+    Remote.stop(sid, running.id)
     stopped = await_final(sid, "sleep")
     assert stopped.status == "stopped"
 
     assert length(Remote.snapshot(sid).history) == 4
 
     # Clear empties the server-held history.
-    Testing.dispatch_command(s, :clearHistory, %{})
+    Remote.clear(sid)
     Process.sleep(200)
     assert Remote.snapshot(sid).history == []
   end

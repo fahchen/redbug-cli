@@ -1,6 +1,6 @@
-defmodule Server.Stores.SessionRootTest do
+defmodule Server.TraceLifecycleTest do
   @moduledoc """
-  End-to-end test of the SessionRoot store against a live target node.
+  End-to-end test of the `Server.Trace` layer against a live target node.
 
   Requires a distributed VM and a reachable `target@127.0.0.1` node (cookie
   `rbtest`) that periodically calls `:lists.seq/2`. Run with:
@@ -9,8 +9,8 @@ defmodule Server.Stores.SessionRootTest do
   """
   use ExUnit.Case, async: false
 
-  alias Musubi.Testing
   alias Server.{Config, Trace}
+  alias Server.Trace.Signature
 
   @target "target@127.0.0.1"
   @cookie "rbtest"
@@ -28,48 +28,60 @@ defmodule Server.Stores.SessionRootTest do
     %{node_id: node_id, session_id: session_id}
   end
 
-  # Stream contents are client-owned: the server emits stream ops as push
-  # patches and never materializes the list in render/1. So event-content
-  # assertions read the materialized Runner buffer (Trace.snapshot/1), which
-  # the store mirrors over the same PubSub topic; render/1 covers plain fields.
-  test "full trace lifecycle over the store layer", %{node_id: nid, session_id: sid} do
-    s = Testing.mount(Server.Stores.SessionRoot, %{"node_id" => nid, "session_id" => sid})
+  test "full trace lifecycle through Server.Trace", %{node_id: nid, session_id: sid} do
+    assert Trace.snapshot(sid).status == "stopped"
 
-    assert Testing.render(s).status == "stopped"
-
-    Testing.dispatch_command(s, :startTrace, %{})
+    assert :ok = Trace.start(nid, sid)
 
     # Drive the trace ourselves instead of waiting on the target's own loop:
     # repeated rpc calls execute lists:seq/2 on the target, which redbug traces.
     driver = drive_target_calls()
     Process.sleep(1500)
 
-    assert Testing.render(s).status == "running"
+    assert Trace.snapshot(sid).status == "running"
     assert length(Trace.snapshot(sid).events) > 0
 
     # Editing RTP while running drifts the signature -> dirty marker.
-    Testing.dispatch_command(s, :addTrace, %{text: "lists:reverse/1"})
-    Process.sleep(200)
-    assert Testing.render(s).dirty == true
+    add_trace(nid, sid, "lists:reverse/1")
+    assert dirty?(nid, sid)
 
     # Applying recompiles and inserts a restart separator; dirty clears.
-    Testing.dispatch_command(s, :applyRestart, %{})
+    Trace.apply_restart(sid)
     Process.sleep(500)
-    assert Testing.render(s).dirty == false
+    refute dirty?(nid, sid)
     assert Enum.any?(Trace.snapshot(sid).events, &(&1.kind == "restart"))
 
     # Stop returns to stopped but retains the buffer (stop != clear).
-    Testing.dispatch_command(s, :stopTrace, %{})
+    Trace.stop(sid)
     Process.sleep(200)
-    assert Testing.render(s).status == "stopped"
+    assert Trace.snapshot(sid).status == "stopped"
     assert length(Trace.snapshot(sid).events) > 0
 
     # Clear empties the buffer.
-    Testing.dispatch_command(s, :clearEvents, %{})
+    Trace.clear(sid)
     Process.sleep(200)
     assert Trace.snapshot(sid).events == []
 
     Process.exit(driver, :kill)
+  end
+
+  defp session(nid, sid) do
+    Config.nodes()
+    |> Enum.find(&(&1.id == nid))
+    |> Map.fetch!(:sessions)
+    |> Enum.find(&(&1.id == sid))
+  end
+
+  defp add_trace(nid, sid, text) do
+    traces = session(nid, sid).traces ++ [%{id: Config.gen_id(), text: text, enabled: true}]
+    Config.update_session(nid, sid, %{traces: traces})
+  end
+
+  # The marker of the session screen: the edited config differs from the
+  # signature that the runner applied.
+  defp dirty?(nid, sid) do
+    s = session(nid, sid)
+    Signature.compute(s.traces, s.limits) != Trace.snapshot(sid).applied_sig
   end
 
   # Spawns a loop that rpc-invokes :lists.seq/2 on the target so the trace has

@@ -20,7 +20,6 @@ defmodule Server.Trace.Runner do
   alias Server.Remote.Inject
 
   @registry Server.Trace.Registry
-  @pubsub Server.PubSub
   # redbug loads these onto the target with the controller's beam, which an older
   # OTP cannot read. Load them first from abstract code, so redbug finds them there.
   @redbug_modules [:redbug_targ, :redbug_compiler]
@@ -362,7 +361,7 @@ defmodule Server.Trace.Runner do
   end
 
   defp broadcast(session_id, message) do
-    Phoenix.PubSub.broadcast(@pubsub, Server.Trace.topic(session_id), message)
+    Server.PubSub.broadcast(Server.Trace.topic(session_id), message)
   end
 
   # --- event mapping (from redbug print_fun message) ---
