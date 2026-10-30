@@ -94,6 +94,11 @@ defmodule Server.Tui.App do
   defp handle({:trace_error, id, error}, state), do: trace(state, id, {:trace_error, error})
   defp handle({:trace_reset, id}, state), do: trace(state, id, :trace_reset)
 
+  defp handle({:console, id, message}, %{session: %{id: id} = session} = state),
+    do: %{state | session: Session.console(message, session)}
+
+  defp handle({:console, _id, _message}, state), do: state
+
   # --- pages ---
 
   defp handle(key, %{page: :session} = state) do
@@ -101,6 +106,7 @@ defmodule Server.Tui.App do
       {:ok, session} -> %{state | session: session}
       {:settings, session} -> open_screen(%{state | session: session}, Settings)
       :close -> close_session(state)
+      {:console, session} -> console(%{state | session: session})
     end
   end
 
@@ -304,6 +310,11 @@ defmodule Server.Tui.App do
     if Config.node_connection(node_id).status != "connected", do: Config.request_connect(node_id)
     Bridge.watch(state.bridge, id)
     %{state | page: :session, session: Session.new(node_id, id, state.settings), digits: ""}
+  end
+
+  defp console(%{session: session} = state) do
+    Bridge.console(state.bridge, session.node_id, session.id)
+    state
   end
 
   defp open_screen(state, module),

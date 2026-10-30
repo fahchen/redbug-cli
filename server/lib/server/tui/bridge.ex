@@ -13,7 +13,7 @@ defmodule Server.Tui.Bridge do
   `{:trace_reset, session_id}`. It stops when the runtime stops.
   """
 
-  alias Server.{Config, Trace}
+  alias Server.{Config, Remote, Trace}
 
   # the most trace events in one batch
   @batch 500
@@ -33,6 +33,17 @@ defmodule Server.Tui.Bridge do
       if Keyword.fetch!(opts, :query_size), do: Terra.Runtime.resize(runtime)
       loop(runtime, nil)
     end)
+  end
+
+  @doc """
+  Follows the console topic of the watched session `session_id` and casts
+  `{:console, session_id, message}`: first `{:console_snapshot, snapshot}`,
+  then the console messages.
+  """
+  @spec console(pid(), String.t(), String.t()) :: :ok
+  def console(bridge, node_id, session_id) do
+    send(bridge, {:console, node_id, session_id})
+    :ok
   end
 
   @doc "Follows the trace topic of `session_id`, or of no session with `nil`."
@@ -57,8 +68,17 @@ defmodule Server.Tui.Bridge do
 
   defp handle({:watch, next}, runtime, session) do
     if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Trace.topic(session))
+    if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Remote.topic(session))
     if next, do: watch_session(runtime, next)
     next
+  end
+
+  # As ConsoleRoot.mount/2: the runner restores its history before the snapshot.
+  defp handle({:console, node_id, session}, runtime, session) do
+    Remote.subscribe(session)
+    Remote.ensure(node_id, session)
+    cast(runtime, {:console, session, {:console_snapshot, Remote.snapshot(session)}})
+    session
   end
 
   defp handle(_message, _runtime, nil), do: nil
@@ -81,6 +101,17 @@ defmodule Server.Tui.Bridge do
 
   defp handle({:trace_reset}, runtime, session) do
     cast(runtime, {:trace_reset, session})
+    session
+  end
+
+  defp handle({tag, _} = message, runtime, session)
+       when tag in [:console_insert, :console_update, :console_delete] do
+    cast(runtime, {:console, session, message})
+    session
+  end
+
+  defp handle({:console_reset}, runtime, session) do
+    cast(runtime, {:console, session, :console_reset})
     session
   end
 

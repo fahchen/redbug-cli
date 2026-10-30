@@ -36,7 +36,7 @@ defmodule Server.Tui.AppTest do
   test "an empty list shows the first-node hint and the status line", %{machine: m} do
     assert screen(m) =~ "No nodes yet"
     assert screen(m) =~ "0/0 connected"
-    assert screen(m) =~ "q quit"
+    assert screen(m) =~ "j/k node"
   end
 
   test "n opens the form, and Enter adds the node", %{machine: m} do

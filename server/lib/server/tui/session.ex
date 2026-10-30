@@ -12,7 +12,7 @@ defmodule Server.Tui.Session do
   import Terra.View
 
   alias Server.{Config, Trace}
-  alias Server.Tui.{Highlight, Theme, Ui}
+  alias Server.Tui.{Console, Highlight, Theme, Ui}
   alias Terra.Widget
 
   # tui/src/sessionTypes.ts
@@ -54,6 +54,9 @@ defmodule Server.Tui.Session do
       group: "none",
       fold: false,
       page: :events,
+      # the tab of the screen (:events or :console) and the console state
+      tab: :events,
+      console: nil,
       editor_sel: 0,
       highlight: %{},
       # running time and the event rate for the status chip
@@ -110,6 +113,12 @@ defmodule Server.Tui.Session do
   def trace({:trace_error, error}, s, _keep), do: %{s | error: error, status: "stopped"}
   def trace(:trace_reset, s, _keep), do: %{s | events: [], sel: nil, highlight: %{}}
 
+  @doc "Applies a console message of the bridge to the console tab."
+  def console(_message, %{console: nil} = s), do: s
+
+  def console(message, s),
+    do: %{s | console: message |> Console.message(s.console) |> Console.cache()}
+
   # A new run starts the clock and the sparkline again.
   defp put_status(%{status: "running"} = s, "running"), do: s
 
@@ -140,9 +149,21 @@ defmodule Server.Tui.Session do
 
   @doc """
   Applies a key. `node` is the node of the session from the config. Returns
-  `{:ok, session}`, or `:close` when the user leaves the session screen.
+  `{:ok, session}`; `{:console, session}` when the console tab opens the first
+  time (the app then asks the bridge for the console messages);
+  `{:settings, session}` to open the settings; or `:close` when the user
+  leaves the session screen.
   """
   def key(key, s, node, size)
+
+  def key(key, %{tab: :console} = s, _node, size) do
+    case Console.key(key, s.console, size) do
+      {:ok, c} -> {:ok, %{s | console: Console.cache(c)}}
+      {:settings, c} -> {:settings, %{s | console: c}}
+      :events -> {:ok, %{s | tab: :events}}
+      :close -> :close
+    end
+  end
 
   def key(key, %{page: {:detail, offset}} = s, _node, size), do: detail_key(key, offset, s, size)
   def key(key, %{page: :editor} = s, node, _size), do: editor_key(key, s, node)
@@ -231,6 +252,14 @@ defmodule Server.Tui.Session do
   defp events_key({:char, "l"}, s, node, _size), do: {:ok, limits_input(s, node, :events)}
   defp events_key({:char, "t"}, s, _node, _size), do: {:ok, %{s | page: :editor, editor_sel: 0}}
   defp events_key({:char, "?"}, s, _node, _size), do: {:ok, %{s | page: :help}}
+  defp events_key({:char, ","}, s, _node, _size), do: {:settings, s}
+
+  defp events_key({:char, t}, %{console: nil} = s, _node, _size) when t in ["[", "]"],
+    do: {:console, %{s | tab: :console, console: Console.new(s.node_id, s.id)}}
+
+  defp events_key({:char, t}, s, _node, _size) when t in ["[", "]"],
+    do: {:ok, %{s | tab: :console}}
+
   defp events_key(_key, s, _node, _size), do: {:ok, s}
 
   defp put_error(s, :ok), do: %{s | error: nil}
@@ -646,6 +675,9 @@ defmodule Server.Tui.Session do
   # --- views ---
 
   @doc "The view of the screen. `tick` drives the connecting spinner."
+  def view(%{tab: :console} = s, node, _settings, width, height, _tick),
+    do: Console.view(s.console, node, header(node, s), width, height)
+
   def view(s, node, settings, width, height, tick) do
     case s.page do
       {:detail, offset} -> detail_view(s, offset, width, height)
@@ -728,9 +760,19 @@ defmodule Server.Tui.Session do
     node_name = if node, do: node.name, else: "?"
     name = if c = config(node, s), do: c.name, else: "?"
 
+    # tui/src/SessionScreen.tsx:430-447: the session name and the two tabs
+    tab = fn label, tab ->
+      if s.tab == tab,
+        do: text(" #{label} ", fg: Theme.color(:title), bold: true),
+        else: text(" #{label} ", fg: Theme.color(:muted))
+    end
+
     hstack([
       text(" redbug ", fg: Theme.color(:title), bold: true),
-      text(" #{node_name} ▸ #{name} ", fg: Theme.color(:text), bg: Theme.color(:element))
+      text(" #{node_name} ▸ #{name} ", fg: Theme.color(:text), bg: Theme.color(:element)),
+      text("  "),
+      tab.("Traces", :events),
+      tab.("Console", :console)
     ])
   end
 
@@ -857,6 +899,8 @@ defmodule Server.Tui.Session do
         "t traces",
         "d del",
         space,
+        "[/] tabs",
+        ", settings",
         "? help",
         "esc back"
       ]
@@ -922,6 +966,8 @@ defmodule Server.Tui.Session do
       {"Ctrl+L", "clear the events"},
       {"e / d", "error detail / delete event"},
       {"Ctrl+D", "delete event (no confirm)"},
+      {"[ / ]", "switch Events ⇄ Console"},
+      {",", "settings"},
       {"esc", "back (asks while the trace runs)"},
       {:section, "detail page"},
       {"j/k", "scroll"},
