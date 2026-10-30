@@ -30,7 +30,14 @@ defmodule Server.Remote.InjectTest do
         {otp, node}
       end)
 
-    %{nodes: nodes}
+    plain_nodes =
+      Map.new(@targets, fn {otp, erlang, _elixir} ->
+        {peer, node} = start_target(otp, erlang, nil)
+        on_exit(fn -> :peer.stop(peer) end)
+        {otp, node}
+      end)
+
+    %{nodes: nodes, plain_nodes: plain_nodes}
   end
 
   for {otp, _erlang, _elixir} <- @targets do
@@ -68,6 +75,10 @@ defmodule Server.Remote.InjectTest do
         refute :rpc.call(node, :erlang, :check_old_code, [Server.Remote.Worker])
       end
 
+      test "gives the Erlang text of Erlang code", %{node_id: nid, session_id: sid} do
+        assert_erlang_cases(nid, sid)
+      end
+
       test "runs a redbug trace", %{node: node, node_id: nid, session_id: sid} do
         assert :ok = Trace.start(nid, sid)
         for _ <- 1..5, do: :rpc.call(node, :lists, :seq, [1, 5])
@@ -75,31 +86,77 @@ defmodule Server.Remote.InjectTest do
         assert :ok = Trace.stop(sid)
       end
     end
+
+    describe "OTP #{otp} target without Elixir" do
+      setup %{plain_nodes: nodes} do
+        node = Map.fetch!(nodes, unquote(otp))
+        cookie = Atom.to_string(Node.get_cookie())
+        {:ok, node_id} = Config.add_node(%{name: Atom.to_string(node), cookie: cookie})
+        {:ok, session_id} = Config.add_session(node_id, %{name: "plain-#{unquote(otp)}"})
+        on_exit(fn -> Remote.terminate(session_id) end)
+        %{node: node, node_id: node_id, session_id: session_id}
+      end
+
+      test "runs console code", %{node: node, node_id: nid, session_id: sid} do
+        assert :rpc.call(node, :erlang, :system_info, [:otp_release]) == ~c"#{unquote(otp)}"
+        assert :rpc.call(node, :code, :which, [Code]) == :non_existing
+
+        {:ok, _} = Remote.run(nid, sid, ~s|io:format("hi~n"), lists:seq(1, 3).|, "seq")
+        assert %{status: "ok", result: "[1,2,3]", output: "hi\n"} = await_final(sid, "seq")
+
+        # The same text as on a target with Elixir (see the test above).
+        assert_erlang_cases(nid, sid)
+
+        # Elixir code is not Erlang: the console gives the Erlang parse error.
+        {:ok, _} = Remote.run(nid, sid, "Enum.sum([1, 2, 3])", "elixir")
+
+        assert %{status: "error", result: "1: syntax error before: '.'"} =
+                 await_final(sid, "elixir")
+      end
+    end
   end
 
-  # The peer runs the `erl` of `erlang`, with the Elixir of `elixir` in its code
-  # path and started, as `iex --name` would.
+  # Erlang code with a final dot, and its status and result on each target. The
+  # Elixir formatter and evaluator would read the last three cases as Elixir.
+  @erlang_cases [
+    {"lists:nth(0, [a]).", "error", "{error,function_clause}"},
+    {"lists:seq(1,.", "error", "1: syntax error before: '.'"},
+    {"{a, b}.", "ok", "{a,b}"},
+    {"[X || X <- [1, 2]].", "ok", "[1,2]"},
+    {"\#{a => 1}.", "ok", "\#{a => 1}"}
+  ]
+
+  defp assert_erlang_cases(nid, sid) do
+    for {code, status, result} <- @erlang_cases do
+      {:ok, _} = Remote.run(nid, sid, code, code)
+      assert %{status: ^status, result: ^result} = await_final(sid, code)
+    end
+  end
+
+  # The peer runs the `erl` of `erlang`. With `elixir`, the Elixir of `elixir` is
+  # in its code path and started, as `iex --name` would; with nil, the peer is a
+  # plain Erlang node.
   defp start_target(otp, erlang, elixir) do
     erl = Path.join([mise_where(erlang), "bin", "erl"])
-    ebin = Path.join([mise_where(elixir), "lib", "elixir", "ebin"])
     [_name, host] = node() |> Atom.to_string() |> String.split("@")
+    kind = if elixir, do: "inject", else: "plain"
 
     {:ok, peer, node} =
       :peer.start(%{
-        name: :"inject#{otp}_#{System.unique_integer([:positive])}",
+        name: :"#{kind}#{otp}_#{System.unique_integer([:positive])}",
         host: String.to_charlist(host),
         exec: String.to_charlist(erl),
-        args: [
-          ~c"-setcookie",
-          Atom.to_charlist(Node.get_cookie()),
-          ~c"-pa",
-          String.to_charlist(ebin)
-        ]
+        args: [~c"-setcookie", Atom.to_charlist(Node.get_cookie()) | elixir_args(elixir)]
       })
 
-    {:ok, _} = :erpc.call(node, :application, :ensure_all_started, [:elixir])
+    if elixir, do: {:ok, _} = :erpc.call(node, :application, :ensure_all_started, [:elixir])
     {peer, node}
   end
+
+  defp elixir_args(nil), do: []
+
+  defp elixir_args(elixir),
+    do: [~c"-pa", String.to_charlist(Path.join([mise_where(elixir), "lib", "elixir", "ebin"]))]
 
   defp mise_where(tool) do
     case System.cmd("mise", ["where", tool], stderr_to_stdout: true) do

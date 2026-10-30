@@ -36,18 +36,35 @@ defmodule Server.Remote.Worker do
     send(reply_to, {:console_result, exec_id, result, output})
   end
 
-  # Elixir path first. Parse-time failures (Erlang syntax won't tokenize as
-  # Elixir) and a missing Elixir runtime (UndefinedFunctionError) fall back to
-  # the Erlang evaluator; genuine Elixir runtime errors are reported as-is.
+  # A final dot marks Erlang code, which the Erlang path runs on each target, so
+  # Erlang code gives the same text on a target with and without Elixir. Code
+  # without the dot takes the Elixir path when the target has the Elixir runtime.
+  # The Erlang path calls no Elixir module, so a plain Erlang target runs it.
   defp eval(code) do
+    if dot_terminated?(code) or not match?({:module, _}, :code.ensure_loaded(Code)) do
+      case erl_eval(code) do
+        {:parse_error, info} -> {:error, parse_error_text(info)}
+        result -> result
+      end
+    else
+      elixir_eval(code)
+    end
+  end
+
+  # Elixir first. Parse-time failures (Erlang syntax won't tokenize as Elixir)
+  # and UndefinedFunctionError fall back to the Erlang evaluator. When the code
+  # parses as Erlang, its Erlang result (also an Erlang error) is the answer, as
+  # on a target without Elixir; else the Elixir error is. Genuine Elixir runtime
+  # errors are reported as-is.
+  defp elixir_eval(code) do
     try do
       {value, _binding} = Code.eval_string(code)
       {:ok, inspect(value, limit: :infinity, pretty: true, width: 100)}
     rescue
       e in [SyntaxError, TokenMissingError, UndefinedFunctionError] ->
         case erl_eval(code) do
-          {:ok, _} = ok -> ok
-          {:error, _} -> {:error, Exception.format(:error, e, [])}
+          {:parse_error, _} -> {:error, Exception.format(:error, e, [])}
+          result -> result
         end
 
       e ->
@@ -57,6 +74,8 @@ defmodule Server.Remote.Worker do
     end
   end
 
+  # Returns `{:parse_error, info}` when the code is not valid Erlang, so the
+  # caller can choose between the Erlang and the Elixir error.
   defp erl_eval(code) do
     charlist = :erlang.binary_to_list(ensure_dot(code))
 
@@ -69,16 +88,24 @@ defmodule Server.Remote.Worker do
         kind, reason -> {:error, fmt("~p", [{kind, reason}])}
       end
     else
-      {:error, info, _} -> {:error, fmt("~p", [info])}
-      other -> {:error, fmt("~p", [other])}
+      {:error, info, _} -> {:parse_error, info}
+      {:error, info} -> {:parse_error, info}
     end
   end
 
-  # Erlang expr sequences must terminate with a period.
+  # Erlang expr sequences must terminate with a period. Erlang string functions
+  # only: this runs on targets without Elixir.
   defp ensure_dot(code) do
-    trimmed = String.trim_trailing(code)
-    if String.ends_with?(trimmed, "."), do: trimmed, else: trimmed <> "."
+    trimmed = :string.trim(code, :trailing)
+    if dot_terminated?(trimmed), do: trimmed, else: trimmed <> "."
   end
+
+  defp dot_terminated?(code),
+    do: :binary.longest_common_suffix([:string.trim(code, :trailing), "."]) == 1
+
+  # `{Location, Module, Descriptor}` of erl_scan/erl_parse as one line of text.
+  defp parse_error_text({location, module, descriptor}),
+    do: fmt("~p: ~ts", [location, module.format_error(descriptor)])
 
   defp fmt(format, args), do: :erlang.iolist_to_binary(:io_lib.format(format, args))
 
