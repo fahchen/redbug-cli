@@ -1,8 +1,9 @@
 defmodule Server.Tui.Settings do
   @moduledoc """
   The settings screen of the Terra TUI. The rows and keys follow
-  `tui/src/SettingsScreen.tsx`. The screen calls `Server.Config` directly, as
-  `Server.Stores.SettingsRoot` does, and reads the settings in `view/3`, so it
+  `tui/src/SettingsScreen.tsx@8b4cec82`. The screen calls `Server.Config` directly, as
+  the removed `Server.Stores.SettingsRoot` did
+  (`server/lib/server/stores/settings_root.ex@8b4cec82`), and reads the settings in `view/3`, so it
   always shows the current data. The overlay of the Bun screen is a full-screen
   page. The `theme` setting cycles and persists, but the Terra TUI has only the
   tokyo-night colors (`docs/terra-gaps.md`).
@@ -14,9 +15,9 @@ defmodule Server.Tui.Settings do
   alias Server.Tui.{Theme, Ui}
   alias Terra.Widget
 
-  # tui/src/theme.ts:98-446 (the keys of `themes`)
+  # tui/src/theme.ts@8b4cec82:98-446 (the keys of `themes`)
   @themes ~w(pico-8 dark light tokyo-night tokyo-storm tokyo-moon tokyo-day catppuccin-mocha dracula nord gruvbox-dark catppuccin-latte catppuccin-frappe catppuccin-macchiato rose-pine solarized one-dark everforest monokai)
-  # tui/src/SettingsScreen.tsx:16-17
+  # tui/src/SettingsScreen.tsx@8b4cec82:16-17
   @columns [:name, :pid, :mfa, :info]
   @sorts ~w(ts_desc ts_asc kind_asc kind_desc pid_asc mfa_asc)
   # theme, sort, 4 columns, limits, show hints, console timeout
@@ -40,7 +41,7 @@ defmodule Server.Tui.Settings do
   def key(_key, %{page: :help} = s), do: {:ok, %{s | page: :main}}
   def key(key, %{page: {:input, _, _, _}} = s), do: input_key(key, s)
 
-  # tui/src/SettingsScreen.tsx:83-115
+  # tui/src/SettingsScreen.tsx@8b4cec82:83-115
   def key(:esc, _s), do: :close
   def key({:char, "?"}, s), do: {:ok, %{s | page: :help}}
 
@@ -54,7 +55,7 @@ defmodule Server.Tui.Settings do
 
   def key(_key, s), do: {:ok, s}
 
-  # tui/src/SettingsScreen.tsx:61-75
+  # tui/src/SettingsScreen.tsx@8b4cec82:61-75
   defp act(%{sel: 0} = s, settings), do: update(s, %{theme: cycle(@themes, settings.theme)})
 
   defp act(%{sel: 1} = s, settings),
@@ -98,7 +99,7 @@ defmodule Server.Tui.Settings do
     end
   end
 
-  # tui/src/limits.ts: "keep time msgs"; a bad text changes nothing.
+  # tui/src/limits.ts@8b4cec82: "keep time msgs"; a bad text changes nothing.
   defp submit(:limits, text, s) do
     case text |> String.split() |> Enum.map(&Integer.parse/1) do
       [{keep, ""}, {time, ""}, {msgs, ""}] when keep >= 0 and time >= 0 and msgs >= 0 ->
@@ -109,7 +110,7 @@ defmodule Server.Tui.Settings do
     end
   end
 
-  # tui/src/SettingsScreen.tsx:186-196: seconds, as parseInt reads them; a
+  # tui/src/SettingsScreen.tsx@8b4cec82:186-196: seconds, as parseInt reads them; a
   # blank or bad text keeps the value.
   defp submit(:timeout, text, s) do
     case Integer.parse(text) do
@@ -203,7 +204,7 @@ defmodule Server.Tui.Settings do
     ])
   end
 
-  # tui/src/SettingsScreen.tsx:153-171
+  # tui/src/SettingsScreen.tsx@8b4cec82:153-171
   defp help_rows do
     [
       {"j / k", "move"},

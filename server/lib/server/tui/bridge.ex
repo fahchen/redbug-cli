@@ -67,13 +67,13 @@ defmodule Server.Tui.Bridge do
   end
 
   defp handle({:watch, next}, runtime, session) do
-    if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Trace.topic(session))
-    if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Remote.topic(session))
+    if session, do: Server.PubSub.unsubscribe(Trace.topic(session))
+    if session, do: Server.PubSub.unsubscribe(Remote.topic(session))
     if next, do: watch_session(runtime, next)
     next
   end
 
-  # As ConsoleRoot.mount/2: the runner restores its history before the snapshot.
+  # As mount/2 of the removed ConsoleRoot: the runner restores its history before the snapshot.
   defp handle({:console, node_id, session}, runtime, session) do
     Remote.subscribe(session)
     Remote.ensure(node_id, session)

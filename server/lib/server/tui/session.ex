@@ -4,9 +4,11 @@ defmodule Server.Tui.Session do
   (trace patterns and limits), and the event detail page. `Server.Tui.App`
   keeps the screen state (a map from `new/3`) and gives it the keys, the
   one-second ticks, and the trace messages of the bridge. The screen calls
-  `Server.Trace` and `Server.Config` directly, as `Server.Stores.SessionRoot`
-  does. The keys follow `tui/src/SessionScreen.tsx`; `docs/terra-gaps.md`
-  records the keys and features that differ.
+  `Server.Trace` and `Server.Config` directly, as the removed
+  `Server.Stores.SessionRoot` did
+  (`server/lib/server/stores/session_root.ex@8b4cec82`). The keys follow
+  `tui/src/SessionScreen.tsx@8b4cec82`; `docs/terra-gaps.md` records the keys
+  and features that differ.
   """
 
   import Terra.View
@@ -15,7 +17,7 @@ defmodule Server.Tui.Session do
   alias Server.Tui.{Console, Highlight, Theme, Ui}
   alias Terra.Widget
 
-  # tui/src/sessionTypes.ts
+  # tui/src/sessionTypes.ts@8b4cec82
   @sorts [
     {"ts", "desc"},
     {"ts", "asc"},
@@ -130,7 +132,7 @@ defmodule Server.Tui.Session do
   defp id(event), do: String.to_integer(event.id)
   defp max_id(events, acc), do: Enum.reduce(events, acc, &max(id(&1), &2))
 
-  # --- state of the status chip (tui/src/SessionScreen.tsx:103-110) ---
+  # --- state of the status chip (tui/src/SessionScreen.tsx@8b4cec82:103-110) ---
 
   defp state(s, node) do
     node_status = if node, do: node.status, else: "idle"
@@ -277,7 +279,7 @@ defmodule Server.Tui.Session do
     s.sel && Enum.find(event_rows(s), fn {e, _ret} -> e.id == s.sel end)
   end
 
-  # tui/src/SessionScreen.tsx:169-173: the selection wraps at the ends, and
+  # tui/src/SessionScreen.tsx@8b4cec82:169-173: the selection wraps at the ends, and
   # with no selection, j selects the first row and k the last row.
   defp move(s, delta) do
     events = event_rows(s)
@@ -294,7 +296,7 @@ defmodule Server.Tui.Session do
   defp select(s, {e, _ret}), do: %{s | sel: e.id}
 
   # Event deletion is local to the screen, as the deleteEvent command of
-  # SessionRoot. The row above takes the selection (tui/src/SessionScreen.tsx:251).
+  # SessionRoot. The row above takes the selection (tui/src/SessionScreen.tsx@8b4cec82:251).
   defp delete_event(s) do
     rows = event_rows(s)
 
@@ -312,7 +314,7 @@ defmodule Server.Tui.Session do
     end
   end
 
-  # --- event rows (tui/src/sessionHelpers.ts:22-71) ---
+  # --- event rows (tui/src/sessionHelpers.ts@8b4cec82:22-71) ---
 
   @doc """
   The rows of the event list: `{:header, label, count}` and `{:event, event,
@@ -398,7 +400,7 @@ defmodule Server.Tui.Session do
     Enum.any?(fields, &(is_binary(&1) and String.contains?(String.downcase(&1), q)))
   end
 
-  # tui/src/sessionHelpers.ts:73-83
+  # tui/src/sessionHelpers.ts@8b4cec82:73-83
   defp parse_sort(setting) do
     case String.split(setting || "", "_") do
       [key, dir] when key in ~w(ts kind pid mfa) ->
@@ -475,7 +477,7 @@ defmodule Server.Tui.Session do
     {:ok, s}
   end
 
-  # --- editor: trace patterns (tui/src/SessionScreen.tsx:379-400) ---
+  # --- editor: trace patterns (tui/src/SessionScreen.tsx@8b4cec82:379-400) ---
 
   defp editor_key(:esc, s, _node), do: {:ok, %{s | page: :events}}
 
@@ -488,11 +490,11 @@ defmodule Server.Tui.Session do
   defp editor_key({:char, "n"}, s, _node), do: {:ok, %{s | page: {:input, :add, "", 0, :editor}}}
   defp editor_key({:char, "l"}, s, node), do: {:ok, limits_input(s, node, :editor)}
 
-  # tui/src/SessionScreen.tsx:377: Ctrl+W saves the patterns as a preset.
+  # tui/src/SessionScreen.tsx@8b4cec82:377: Ctrl+W saves the patterns as a preset.
   defp editor_key({:ctrl, :w}, s, _node),
     do: {:ok, %{s | page: {:input, :save_preset, "", 0, :editor}}}
 
-  # tui/src/SessionScreen.tsx:399-401: i imports patterns from a preset.
+  # tui/src/SessionScreen.tsx@8b4cec82:399-401: i imports patterns from a preset.
   defp editor_key({:char, "i"}, s, _node) do
     if Config.presets() == [], do: {:ok, s}, else: {:ok, %{s | page: {:import, 0}}}
   end
@@ -532,7 +534,7 @@ defmodule Server.Tui.Session do
     end
   end
 
-  # tui/src/limits.ts: "keep time msgs", space-separated.
+  # tui/src/limits.ts@8b4cec82: "keep time msgs", space-separated.
   defp limits_input(s, node, back) do
     l = session_limits(node, s)
     value = "#{l.keep} #{l.time} #{l.msgs}"
@@ -567,7 +569,7 @@ defmodule Server.Tui.Session do
   end
 
   # A preset of the same name asks first; both add a preset, as the
-  # saveAsPreset command of SessionRoot (tui/src/SessionEditor.tsx:109-138).
+  # saveAsPreset command of SessionRoot (tui/src/SessionEditor.tsx@8b4cec82:109-138).
   defp submit(:save_preset, "", s, _node), do: s
 
   defp submit(:save_preset, name, s, node) do
@@ -583,7 +585,7 @@ defmodule Server.Tui.Session do
         Config.update_session(s.node_id, s.id, %{limits: limits})
         s
 
-      # tui/src/SessionScreen.tsx:564-568: a bad text changes nothing.
+      # tui/src/SessionScreen.tsx@8b4cec82:564-568: a bad text changes nothing.
       :error ->
         s
     end
@@ -604,7 +606,7 @@ defmodule Server.Tui.Session do
     Config.add_preset(%{name: name, traces: traces, limits: session_limits(node, s)})
   end
 
-  # --- import from a preset (tui/src/SessionScreen.tsx:319-368) ---
+  # --- import from a preset (tui/src/SessionScreen.tsx@8b4cec82:319-368) ---
 
   defp import_key(k, %{page: {:import, i}} = s) when k in [:down, {:char, "j"}],
     do: {:ok, %{s | page: {:import, min(i + 1, length(Config.presets()) - 1)}}}
@@ -739,7 +741,7 @@ defmodule Server.Tui.Session do
     |> Highlight.wrap_lines(width)
   end
 
-  # tui/src/SessionDetail.tsx:57-95: the payload, the return, and the stack.
+  # tui/src/SessionDetail.tsx@8b4cec82:57-95: the payload, the return, and the stack.
   defp body_lines(e, ret) do
     {payload, stack} = split_info(e)
     label = %{"call" => "args", "retn" => "return"} |> Map.get(e.kind, "payload")
@@ -754,7 +756,7 @@ defmodule Server.Tui.Session do
     [[{label, muted}] | Highlight.lex(payload)] ++ returns ++ stack
   end
 
-  # tui/src/sessionHelpers.ts:5-19
+  # tui/src/sessionHelpers.ts@8b4cec82:5-19
   defp split_info(%{kind: "call", info: info}) do
     {stack, payload} = info |> String.split("\n") |> Enum.split_with(&stack_line?/1)
 
@@ -795,7 +797,7 @@ defmodule Server.Tui.Session do
     # the header, the border, the column header, the flash, and the status line
     room = max(height - 5 - length(flash), 1)
     columns = Map.get(settings, :columns) || @all_columns
-    # tui/src/SessionScreen.tsx:156-159: the pid column fits the longest pid.
+    # tui/src/SessionScreen.tsx@8b4cec82:156-159: the pid column fits the longest pid.
     pid_width = Enum.reduce(s.events, @col.pid, &max(String.length(&1.pid), &2))
     widths = %{inner: max(width - 4, 10), pid: pid_width}
     all = rows(s)
@@ -858,7 +860,7 @@ defmodule Server.Tui.Session do
     node_name = if node, do: node.name, else: "?"
     name = if c = config(node, s), do: c.name, else: "?"
 
-    # tui/src/SessionScreen.tsx:430-447: the session name and the two tabs
+    # tui/src/SessionScreen.tsx@8b4cec82:430-447: the session name and the two tabs
     tab = fn label, tab ->
       if s.tab == tab,
         do: text(" #{label} ", fg: Theme.color(:title), bold: true),
@@ -903,7 +905,7 @@ defmodule Server.Tui.Session do
     |> text(fg: Theme.color(:muted))
   end
 
-  # tui/src/SessionEvents.tsx:23-75
+  # tui/src/SessionEvents.tsx@8b4cec82:23-75
   defp event_row(%{kind: "restart"} = e, _ret, selected?, _prev, _columns, widths),
     do:
       text(
@@ -945,7 +947,7 @@ defmodule Server.Tui.Session do
   defp blank(value) when value in [nil, ""], do: "-"
   defp blank(value), do: value
 
-  # tui/src/sessionTypes.ts:23-29
+  # tui/src/sessionTypes.ts@8b4cec82:23-29
   defp kind_mark("call"), do: "→"
   defp kind_mark("retn"), do: "←"
   defp kind_mark("send"), do: "↑"
@@ -975,7 +977,7 @@ defmodule Server.Tui.Session do
     Enum.reverse([{String.duplicate(" ", max(width - used, 0)), :muted} | parts])
   end
 
-  # tui/src/SessionStatus.tsx:24-46 and tui/src/SessionScreen.tsx:411-424
+  # tui/src/SessionStatus.tsx@8b4cec82:24-46 and tui/src/SessionScreen.tsx@8b4cec82:411-424
   defp status_line(s, node, width, tick) do
     {chip, color} = chip(s, node, tick)
     dirty = if state(s, node) == :running and dirty?(node, s), do: "  ⚠ unapplied", else: ""
@@ -1042,7 +1044,7 @@ defmodule Server.Tui.Session do
     end
   end
 
-  # tui/src/sessionHelpers.ts:144-149
+  # tui/src/sessionHelpers.ts@8b4cec82:144-149
   defp sparkline(buckets) do
     top = Enum.max([1 | buckets])
     n = length(@ramp) - 1
@@ -1187,7 +1189,7 @@ defmodule Server.Tui.Session do
     )
   end
 
-  # tui/src/SessionEditor.tsx:83-105
+  # tui/src/SessionEditor.tsx@8b4cec82:83-105
   defp import_traces_view(index, selected, sel, width, height) do
     preset = Enum.at(Config.presets(), index) || %{name: "?", traces: []}
 

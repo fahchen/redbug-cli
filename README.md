@@ -26,26 +26,26 @@ anything to the target node.
 - **Reach nodes anywhere.** On your machine, across a private network, or behind SSH — including
   containerized deployments.
 - **Pick up where you left off.** Sessions, trace patterns, snippets, and node config are saved.
-- **Dig into any event.** Read payloads and stack traces in the TUI, or open an event in `$EDITOR`.
+- **Dig into any event.** Read payloads and stack traces in the TUI.
 
 ## Quick Start
 
 Tool versions are pinned in [mise.toml](mise.toml). Install the toolchain, then run the dev task:
 
 ```sh
-mise install   # Erlang, Elixir, Bun (from [tools])
-mise run dev    # installs deps if needed, then boots controller + TUI
+mise install   # Erlang and Elixir (from [tools])
+mise run dev    # fetches deps if needed, then starts the controller with the TUI
 ```
 
-This starts the controller on a random local port and opens the TUI.
+This starts one BEAM in the terminal: the controller and the [Terra](https://github.com/uminocelo/terra) TUI. The log goes to `/tmp/redbug-server.log` (`REDBUG_SERVER_LOG`), not to the screen.
 
 The workflow is driven by three [mise tasks](mise.toml) (`mise tasks` to list, `mise run <task>`):
 
 | Task | Does |
 |---|---|
-| `setup` | Fetch Elixir controller deps + install Bun/TUI deps |
-| `dev` | Boot the controller on a free port, then the TUI (`RB_COOKIE`, default `rbtest`) |
-| `package` | Build the single-file `dist/redbug` (server release embedded) |
+| `setup` | Fetch the Elixir deps |
+| `dev` | Start the controller with the TUI in this terminal (`RB_COOKIE`, default `rbtest`) |
+| `package` | Build the release `server/_build/prod/rel/server` (ERTS included) |
 
 `dev` and `package` depend on `setup`, so a fresh checkout only needs `mise install` first.
 
@@ -78,16 +78,14 @@ The call and return events stream into the session.
 
 ## Install / Package
 
-Build the single-file executable:
+Build the release and start it:
 
 ```sh
 mise run package
-./dist/redbug
+server/_build/prod/rel/server/bin/server start
 ```
 
-The packaged binary embeds the Elixir controller release and the Bun TUI launcher. On first run it
-extracts the controller to a per-build cache directory, starts it locally, and tears it down when
-the TUI exits.
+The release includes the ERTS that builds it, and runs the controller and the TUI in one BEAM. When the TUI quits, the BEAM stops. A single-file executable is not available now: the Bun build that made `dist/redbug` is removed, and `mix pbeam.build` is the next step (see `docs/terra-gaps.md`).
 
 Current packaging target: macOS arm64.
 
@@ -130,21 +128,17 @@ the config local and private.
 
 | Variable | Component | Default | Purpose |
 |---|---|---|---|
-| `REDBUG_HOST` | TUI | `127.0.0.1` | Controller host |
-| `REDBUG_PORT` | TUI / server | random when unset | WebSocket port |
-| `REDBUG_PORT_FILE` | server | - | Writes the chosen port for launchers |
 | `REDBUG_NODES` | server | - | Env-injected nodes: `name@host\|dial_ip:port\|cookie` |
 | `RB_COOKIE` | dev | `rbtest` | Cookie used by `mise run dev` |
 | `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
 | `CONTROLLER_DISTRIBUTION` | server | `name` | Use `sname` for shortname targets |
 | `REDBUG_DIST` | server | on | `off` starts the controller without distribution (for a VM without distribution, such as PBeam): local nodes, sessions, presets, and snippets work, and a connect fails |
-| `REDBUG_TUI` | server | - | `terra` starts the Terra TUI in the controller BEAM (node screen and session screen for now; see `docs/terra-gaps.md`) |
+| `REDBUG_SERVER_LOG` | server | `/tmp/redbug-server.log` | Log file while the TUI holds the terminal |
 | `XDG_CONFIG_HOME` | server | `~/.config` | Config base directory |
 
 ## Security
 
 - The Erlang distribution cookie is remote-code-execution capability on the target.
-- Keep the WebSocket bound to `127.0.0.1`.
 - Erlang distribution is unencrypted unless tunnelled; use SSH or a trusted private network.
 - Do not expose epmd or distribution ports to untrusted networks.
 
@@ -152,36 +146,19 @@ the config local and private.
 
 ```sh
 cd server && mix test
-cd tui && bun run typecheck
 ```
 
-The full session-root test drives the store layer against a real target node, so start a target
-like the quick-start `iex` node first when running the whole server test suite. The server tests
-need a distributed VM: `elixir --name rbe2e@127.0.0.1 --cookie rbtest -S mix test`.
+The trace and console tests (`test/trace/lifecycle_test.exs`, `test/remote/console_test.exs`, and the live tests of `test/tui/`) run against a real target node, so start a target like the quick-start `iex` node first when running the whole server test suite. The server tests need a distributed VM: `elixir --name rbe2e@127.0.0.1 --cookie rbtest -S mix test`. The tests drive the TUI headless with `Terra.Test`; `config/test.exs` turns off the start of the TUI.
 
 `test/remote/inject_test.exs` starts its own target nodes of OTP 27, 28, and 29. It uses the extra
 Erlang and Elixir versions in [mise.toml](mise.toml), which `mise install` installs.
 
-### Running Pieces Separately
-
-Pin the port with `REDBUG_PORT` when starting the controller and TUI yourself:
-
-```sh
-cd server
-REDBUG_PORT=4010 elixir --name redbug_controller@127.0.0.1 --cookie rbtest -S mix phx.server
-
-cd ../tui
-REDBUG_HOST=127.0.0.1 REDBUG_PORT=4010 bun run dev
-```
-
 ### Architecture
 
-redbug-cli has two parts:
+redbug-cli is one Elixir application in one BEAM:
 
-- **Controller**: an Elixir [musubi](https://hex.pm/packages/musubi) app with
-  server-authoritative state over a Phoenix WebSocket. It owns config, connects to target nodes,
-  and runs redbug.
-- **TUI**: an [opentui](https://opentui.com) / React client on Bun.
+- **Controller**: it owns the config, connects to target nodes, and runs redbug.
+- **TUI**: a [Terra](https://github.com/uminocelo/terra) app in the same BEAM. It calls the controller directly and gets its updates as local messages. [docs/terra-gaps.md](docs/terra-gaps.md) records the features of the old Bun TUI that Terra cannot show.
 
 The domain model is:
 

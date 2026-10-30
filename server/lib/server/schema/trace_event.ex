@@ -9,17 +9,17 @@ defmodule Server.Schema.TraceEvent do
   `pair` and depth 0.
   """
 
-  use Musubi.State
+  @type t :: %__MODULE__{
+          id: String.t(),
+          kind: String.t(),
+          pid: String.t(),
+          name: String.t(),
+          mfa: String.t(),
+          info: String.t(),
+          pair: String.t(),
+          depth: integer(),
+          ts: String.t()
+        }
 
-  state do
-    field(:id, String.t())
-    field(:kind, String.t())
-    field(:pid, String.t())
-    field(:name, String.t())
-    field(:mfa, String.t())
-    field(:info, String.t())
-    field(:pair, String.t())
-    field(:depth, integer())
-    field(:ts, String.t())
-  end
+  defstruct [:id, :kind, :pid, :name, :mfa, :info, :pair, :depth, :ts]
 end

@@ -1,6 +1,6 @@
 defmodule Server.Tui.SettingsTest do
   @moduledoc "The settings screen of the Terra TUI (`Server.Tui.Settings`)."
-  # The app reads and writes the shared Server.Config, as the store tests do.
+  # The app reads and writes the shared Server.Config, as the other tests do.
   use ExUnit.Case, async: false
 
   alias Server.Config

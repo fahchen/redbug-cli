@@ -5,22 +5,21 @@ defmodule Server.Trace do
   A `Server.Trace.Runner` GenServer owns the live redbug session for one config
   session plus its event buffer. Runners are started on demand under
   `Server.Trace.Supervisor` and addressed by `session_id` via
-  `Server.Trace.Registry`. Stores (`Server.Stores.SessionRoot`) forward intent
-  here and subscribe to per-session PubSub broadcasts; they never call `:redbug`
-  directly.
+  `Server.Trace.Registry`. The TUI (`Server.Tui.Session` through
+  `Server.Tui.Bridge`) forwards intent here and subscribes to per-session
+  `Server.PubSub` broadcasts; it never calls `:redbug` directly.
   """
 
   alias Server.{Runners, Trace.Runner}
 
   @registry Server.Trace.Registry
   @supervisor Server.Trace.Supervisor
-  @pubsub Server.PubSub
 
   @doc "PubSub topic carrying a session's trace events/status."
   def topic(session_id), do: "session:" <> session_id
 
   @doc "Subscribe the caller to a session's trace broadcasts."
-  def subscribe(session_id), do: Phoenix.PubSub.subscribe(@pubsub, topic(session_id))
+  def subscribe(session_id), do: Server.PubSub.subscribe(topic(session_id))
 
   @doc "Start (or restart) tracing for a session. Ensures a runner exists."
   def start(node_id, session_id) do

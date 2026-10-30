@@ -1,8 +1,8 @@
 import Config
 
-# Endpoint must not bind the port in tests; the store/runner paths under test
-# do not exercise the HTTP/WS layer.
-config :server, ServerWeb.Endpoint, server: false
+# The tests drive the TUI headless with Terra.Test, so the app does not start
+# Server.Tui (it would take the terminal of mix test).
+config :server, :tui, false
 
 # Isolate persistence away from the user's real XDG config.json.
 config :server, :config_path, Path.join(System.tmp_dir!(), "redbug_test_config.json")
