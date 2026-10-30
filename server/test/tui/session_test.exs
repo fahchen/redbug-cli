@@ -218,6 +218,35 @@ defmodule Server.Tui.SessionTest do
     assert map_size(Terra.Test.state(m).session.highlight) == 2
   end
 
+  test "k with no selection selects the last row, and the selection wraps", %{machine: m} do
+    node_id = add_node(m)
+    sid = open(m, node_id, "wrap")
+    cast(m, {:trace_events, sid, [event(2, "send"), event(1, "send")]})
+    eventually(fn -> screen(m) =~ "(1, 2)" end)
+
+    keys(m, "k")
+    assert Terra.Test.state(m).session.sel == "1"
+    keys(m, "j")
+    assert Terra.Test.state(m).session.sel == "2"
+  end
+
+  test "the bridge keeps the order of queued trace messages" do
+    bridge = Server.Tui.Bridge.start_link(self(), query_size: false)
+    Server.Tui.Bridge.watch(bridge, "order")
+    assert_receive {:"$gen_cast", {:event, {:trace_snapshot, "order", _}}}
+
+    :erlang.suspend_process(bridge)
+    send(bridge, {:trace_event, event(1, "send")})
+    send(bridge, {:trace_reset})
+    send(bridge, {:trace_event, event(2, "send")})
+    send(bridge, {:trace_event, event(3, "send")})
+    :erlang.resume_process(bridge)
+
+    assert_receive {:"$gen_cast", {:event, {:trace_events, "order", [%{id: "1"}]}}}
+    assert_receive {:"$gen_cast", {:event, {:trace_reset, "order"}}}
+    assert_receive {:"$gen_cast", {:event, {:trace_events, "order", [%{id: "3"}, %{id: "2"}]}}}
+  end
+
   test "the snapshot and a late event with the same id give one row", %{machine: m} do
     node_id = add_node(m)
     sid = open(m, node_id, "dedupe")
@@ -278,8 +307,12 @@ defmodule Server.Tui.SessionTest do
         %{keep: 10, time: 20, msgs: 30}
     end)
 
+    # a bad text changes nothing, as in the Bun TUI
     keys(m, ["l"] ++ List.duplicate(:backspace, 20) ++ ["x", :enter])
-    assert screen(m) =~ "Limits must be three numbers"
+    refute screen(m) =~ "restart failed"
+
+    assert Enum.find(Config.fetch_node(node_id).sessions, &(&1.id == sid)).limits ==
+             %{keep: 10, time: 20, msgs: 30}
 
     keys(m, ["d", "y"])
     eventually(fn -> patterns.() == [] end)

@@ -306,7 +306,7 @@ defmodule Server.Tui.App do
 
   # The sessions pane takes the focus even when it is empty, so `n` there
   # adds the first session.
-  defp nodes_key(key, state) when key in [:enter, :tab] do
+  defp nodes_key(key, state) when key in [:enter, :tab, :right] do
     if current(state), do: %{state | focus: :sessions, sess_sel: 0}, else: state
   end
 
@@ -838,7 +838,7 @@ defmodule Server.Tui.App do
     [
       {:section, "nodes"},
       {"j/k  ↓/↑", "move the node selection"},
-      {"enter  tab", "go to the sessions pane"},
+      {"enter  tab  →", "go to the sessions pane"},
       {"n", "new node"},
       {"e", "edit the node"},
       {"c", "connect, or disconnect a connected node"},

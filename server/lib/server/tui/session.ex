@@ -246,28 +246,21 @@ defmodule Server.Tui.Session do
     s.sel && Enum.find(event_rows(s), fn {e, _ret} -> e.id == s.sel end)
   end
 
+  # tui/src/SessionScreen.tsx:169-173: the selection wraps at the ends, and
+  # with no selection, j selects the first row and k the last row.
   defp move(s, delta) do
     events = event_rows(s)
     index = s.sel && Enum.find_index(events, fn {e, _ret} -> e.id == s.sel end)
 
     case {events, index} do
-      {[], _} ->
-        s
-
-      {[{e, _} | _], nil} ->
-        %{s | sel: e.id}
-
-      _ ->
-        %{
-          s
-          | sel:
-              events
-              |> Enum.at((index + delta) |> max(0) |> min(length(events) - 1))
-              |> elem(0)
-              |> Map.fetch!(:id)
-        }
+      {[], _} -> s
+      {_, nil} when delta > 0 -> select(s, hd(events))
+      {_, nil} -> select(s, List.last(events))
+      _ -> select(s, Enum.at(events, Integer.mod(index + delta, length(events))))
     end
   end
+
+  defp select(s, {e, _ret}), do: %{s | sel: e.id}
 
   # Event deletion is local to the screen, as the deleteEvent command of
   # SessionRoot. The row above takes the selection (tui/src/SessionScreen.tsx:251).
@@ -532,16 +525,11 @@ defmodule Server.Tui.Session do
       {:ok, keep, time, msgs} ->
         limits = Map.merge(session_limits(node, s), %{keep: keep, time: time, msgs: msgs})
         Config.update_session(s.node_id, s.id, %{limits: limits})
-        %{s | error: nil}
+        s
 
+      # tui/src/SessionScreen.tsx:564-568: a bad text changes nothing.
       :error ->
-        %{
-          s
-          | error: %Server.Schema.AppError{
-              message: "Limits must be three numbers: keep time msgs",
-              detail: nil
-            }
-        }
+        s
     end
   end
 
@@ -569,10 +557,10 @@ defmodule Server.Tui.Session do
 
   # --- detail page ---
 
-  defp open_detail(s, {width, _height}) do
+  defp open_detail(s, _size) do
     case selected(s) do
       nil -> s
-      {e, ret} -> %{cache(s, e, ret, detail_width(width)) | page: {:detail, 0}}
+      {e, ret} -> %{cache(s, e, ret) | page: {:detail, 0}}
     end
   end
 
@@ -608,41 +596,37 @@ defmodule Server.Tui.Session do
 
   defp detail_width(width), do: max(width - 6, 10)
   # the border, the two meta lines and their blank line, and the hint line
-  defp detail_rows(height), do: max(height - 7, 1)
+  defp detail_rows(height), do: max(height - 6, 1)
 
-  # The lexer runs once for each event, return, and width: the update keeps
-  # its result, and the view reads it.
-  defp cache(s, e, ret, width) do
-    key = {e.id, ret, width}
+  # The lexer runs once for each event and return: the update keeps its
+  # result, and the view cuts it to the width of the screen.
+  defp cache(s, e, ret) do
+    key = {e.id, ret}
 
     if Map.has_key?(s.highlight, key),
       do: s,
-      else: %{s | highlight: Map.put(s.highlight, key, body_lines(e, ret, width))}
+      else: %{s | highlight: Map.put(s.highlight, key, body_lines(e, ret))}
   end
 
-  defp lines(s, e, ret, width),
-    do: Map.get_lazy(s.highlight, {e.id, ret, width}, fn -> body_lines(e, ret, width) end)
+  defp lines(s, e, ret, width) do
+    s.highlight
+    |> Map.get_lazy({e.id, ret}, fn -> body_lines(e, ret) end)
+    |> Highlight.wrap_lines(width)
+  end
 
   # tui/src/SessionDetail.tsx:57-95: the payload, the return, and the stack.
-  defp body_lines(e, ret, width) do
+  defp body_lines(e, ret) do
     {payload, stack} = split_info(e)
     label = %{"call" => "args", "retn" => "return"} |> Map.get(e.kind, "payload")
     muted = Theme.color(:muted)
+    returns = if ret, do: [[], [{"return", muted}] | Highlight.lex(ret)], else: []
 
-    [[{label, muted}] | Highlight.lines(payload, width)] ++
-      if(ret, do: [[], [{"return", muted}] | Highlight.lines(ret, width)], else: []) ++
-      if stack == [],
-        do: [],
-        else:
-          [[], [{"stack", muted}]] ++
-            (stack
-             |> Enum.with_index(1)
-             |> Enum.map(fn {line, i} ->
-               [
-                 {String.pad_leading("#{i}. ", 4), muted},
-                 {Ui.fit(line, max(width - 4, 1)), muted}
-               ]
-             end))
+    stack_lines =
+      for {line, i} <- Enum.with_index(stack, 1),
+          do: [{String.pad_leading("#{i}. ", 4), muted}, {line, muted}]
+
+    stack = if stack == [], do: [], else: [[], [{"stack", muted}] | stack_lines]
+    [[{label, muted}] | Highlight.lex(payload)] ++ returns ++ stack
   end
 
   # tui/src/sessionHelpers.ts:5-19
@@ -789,7 +773,10 @@ defmodule Server.Tui.Session do
 
   defp event_row(e, ret, selected?, prev, columns, widths) do
     bg = sel_bg(selected?)
-    ditto_name? = prev != nil and prev.name == e.name and not selected?
+
+    ditto_name? =
+      prev != nil and e.name not in [nil, ""] and prev.name == e.name and not selected?
+
     ditto_pid? = prev != nil and prev.pid == e.pid and not selected?
     pair = if e.pair in [nil, ""], do: "", else: "##{e.pair}"
     lead = String.duplicate("  ", min(e.depth || 0, 8))

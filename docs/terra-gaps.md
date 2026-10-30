@@ -166,6 +166,22 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 - Restore: a `{:tick, 2000, msg}` that clears the digits.
 - Status: simplified, #8.
 
+## No changed-trace marker in the editor
+
+- Original: while the trace runs with changes that are not applied, the trace editor shows `* ` before each pattern that differs from the applied one (`tui/src/SessionEditor.tsx:173-180`, `tui/src/sessionHelpers.ts:136-140`).
+- Now: no marker on the patterns. The status line shows `⚠ unapplied` and the hint `a apply`.
+- Reason: not a Terra limit. The TUI gets only the applied signature from the runner, not the applied patterns.
+- Restore: the runner snapshot and status messages need the applied patterns.
+- Status: cut, #8.
+
+## Session-screen features that come with #1425
+
+- Original: `[` and `]` switch to the console tab, `,` opens the settings, `i` in the trace editor imports patterns from a preset, and Ctrl+W saves the patterns as a preset (`tui/src/SessionScreen.tsx:255-258`, `tui/src/SessionScreen.tsx:308`, `tui/src/SessionScreen.tsx:312-375`, `tui/src/SessionScreen.tsx:399-401`).
+- Now: these keys have no function on the session screen.
+- Reason: not a Terra limit. The console, the presets, and the settings screens of the Terra TUI are the scope of fahchen/pbeam#1425.
+- Restore: fahchen/pbeam#1425. Ctrl+W must take another key if the terminal reads it as a word erase (to be checked).
+- Status: cut, #8.
+
 ## Known PBeam limit
 
 On PBeam (`pbeam erl` of the release, `REDBUG_DIST=off`), the node screen works, but `q` then `y` ends the VM with exit status 1 and the error `pbeam: unsupported erlang:process_info/2 arguments ... [current_stacktrace, registered_name]`. `gen_server:client_stacktrace/1` makes that call when a `gen_server` stops abnormally during the shutdown (OTP 29.1.1 `lib/stdlib/src/gen_server.erl:2804`). On ERTS the same steps give exit status 0. This is a PBeam gap, not a Terra gap.

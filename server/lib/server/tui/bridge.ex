@@ -44,39 +44,47 @@ defmodule Server.Tui.Bridge do
 
   defp loop(runtime, session) do
     receive do
-      {:config_updated} ->
-        flush()
-        send_state(runtime)
-        loop(runtime, session)
-
-      {:watch, next} ->
-        if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Trace.topic(session))
-        if next, do: watch_session(runtime, next)
-        loop(runtime, next)
-
-      {:trace_event, event} when session != nil ->
-        cast(runtime, {:trace_events, session, take_events([event], 1)})
-        loop(runtime, session)
-
-      {:trace_status, payload} when session != nil ->
-        cast(runtime, {:trace_status, session, payload})
-        loop(runtime, session)
-
-      {:trace_error, error} when session != nil ->
-        cast(runtime, {:trace_error, session, error})
-        loop(runtime, session)
-
-      {:trace_reset} when session != nil ->
-        cast(runtime, {:trace_reset, session})
-        loop(runtime, session)
-
-      {:DOWN, _ref, :process, ^runtime, _reason} ->
-        :ok
-
-      _other ->
-        loop(runtime, session)
+      {:DOWN, _ref, :process, ^runtime, _reason} -> :ok
+      message -> loop(runtime, handle(message, runtime, session))
     end
   end
+
+  defp handle({:config_updated}, runtime, session) do
+    flush()
+    send_state(runtime)
+    session
+  end
+
+  defp handle({:watch, next}, runtime, session) do
+    if session, do: Phoenix.PubSub.unsubscribe(Server.PubSub, Trace.topic(session))
+    if next, do: watch_session(runtime, next)
+    next
+  end
+
+  defp handle(_message, _runtime, nil), do: nil
+
+  defp handle({:trace_event, event}, runtime, session) do
+    {events, pending} = take_events([event], 1)
+    cast(runtime, {:trace_events, session, events})
+    if pending, do: handle(pending, runtime, session), else: session
+  end
+
+  defp handle({:trace_status, payload}, runtime, session) do
+    cast(runtime, {:trace_status, session, payload})
+    session
+  end
+
+  defp handle({:trace_error, error}, runtime, session) do
+    cast(runtime, {:trace_error, session, error})
+    session
+  end
+
+  defp handle({:trace_reset}, runtime, session) do
+    cast(runtime, {:trace_reset, session})
+    session
+  end
+
+  defp handle(_other, _runtime, session), do: session
 
   # The snapshot comes after the subscription, so no event falls between them.
   defp watch_session(runtime, session) do
@@ -88,14 +96,18 @@ defmodule Server.Tui.Bridge do
 
   defp send_state(runtime), do: cast(runtime, {:nodes, Config.nodes(), Config.settings()})
 
-  # The trace events that are already queued go in the same batch, newest first.
-  defp take_events(acc, n) when n >= @batch, do: acc
+  # The trace events that are already queued go in the same batch, newest
+  # first. The batch stops at the next other trace message, which is returned
+  # as pending, so the order of the trace messages stays the same.
+  defp take_events(acc, n) when n >= @batch, do: {acc, nil}
 
   defp take_events(acc, n) do
     receive do
       {:trace_event, event} -> take_events([event | acc], n + 1)
+      {tag, _} = message when tag in [:trace_status, :trace_error] -> {acc, message}
+      {:trace_reset} = message -> {acc, message}
     after
-      0 -> acc
+      0 -> {acc, nil}
     end
   end
 

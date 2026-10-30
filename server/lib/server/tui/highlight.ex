@@ -2,14 +2,19 @@ defmodule Server.Tui.Highlight do
   @moduledoc """
   Colors a term text with the `makeup_elixir` lexer for the event detail page.
   The result is a list of lines; each line is a list of `{text, color}` parts,
-  cut to the given width (Terra has no wrap). The app keeps the result for each
-  event, so the lexer runs once for each event and width.
+  cut to the given width (Terra has no wrap). The session screen keeps the
+  result of `lex/1` for each event, so the lexer runs once for each event, and
+  cuts it with `wrap_lines/2` for the width of the screen.
   """
 
   alias Server.Tui.Theme
 
   @spec lines(String.t(), pos_integer()) :: [[{String.t(), 0..255}]]
-  def lines(text, width) do
+  def lines(text, width), do: text |> lex() |> wrap_lines(width)
+
+  @doc "The colored lines of `text`, not cut to a width. The lexer runs here."
+  @spec lex(String.t()) :: [[{String.t(), 0..255}]]
+  def lex(text) do
     text
     |> tokens()
     |> Enum.flat_map(fn {color, value} -> split_lines(value, color) end)
@@ -18,8 +23,12 @@ defmodule Server.Tui.Highlight do
       part, [line | lines] -> [[part | line] | lines]
     end)
     |> Enum.reverse()
-    |> Enum.flat_map(&wrap(Enum.reverse(&1), max(width, 1)))
+    |> Enum.map(&Enum.reverse/1)
   end
+
+  @doc "Cuts each line of parts into lines of `width` cells."
+  @spec wrap_lines([[{String.t(), 0..255}]], pos_integer()) :: [[{String.t(), 0..255}]]
+  def wrap_lines(lines, width), do: Enum.flat_map(lines, &wrap(&1, max(width, 1)))
 
   defp tokens(text) do
     Makeup.Lexers.ElixirLexer.lex(text)
