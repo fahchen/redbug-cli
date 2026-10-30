@@ -198,7 +198,7 @@ defmodule Server.Config do
     # stale "connected/running". node_type: :all because the controller is a
     # hidden node, so every target link is a hidden connection — the default
     # (visible-only) monitor would never fire for them.
-    :net_kernel.monitor_nodes(true, %{node_type: :all})
+    if Server.Dist.enabled?(), do: :net_kernel.monitor_nodes(true, %{node_type: :all})
 
     {:ok, %{}}
   end
@@ -236,7 +236,8 @@ defmodule Server.Config do
         {:error, reason} ->
           attempts = status_of(id).attempts + 1
 
-          if attempts >= @max_attempts do
+          # with distribution off, a retry cannot succeed: stop on the first fail.
+          if attempts >= @max_attempts or reason == :distribution_off do
             set_status(id, %{state: :error, error: Server.Errors.humanize(reason), attempts: attempts})
           else
             set_status(id, %{state: :connecting, attempts: attempts})
@@ -512,6 +513,10 @@ defmodule Server.Config do
   # retry chain (request_connect/1) reuses it. On success it lands the node on
   # :connected via add_connected/1.
   defp do_connect(id) do
+    if Server.Dist.enabled?(), do: dial(id), else: {:error, :distribution_off}
+  end
+
+  defp dial(id) do
     case fetch_node(id) do
       nil ->
         {:error, :not_found}

@@ -83,7 +83,7 @@ defmodule Server.Remote.Console do
         {:reply, {:ok, exec_id}, %{state | running: Map.put(state.running, exec_id, run_meta)}}
 
       {:error, reason} ->
-        state = finalize(state, exec_id, "error", "could not start: #{inspect(reason)}", "")
+        state = finalize(state, exec_id, "error", "could not start: #{Server.Errors.humanize(reason).message}", "")
         {:reply, {:ok, exec_id}, state}
     end
   end

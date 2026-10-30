@@ -37,7 +37,10 @@ log_file="${REDBUG_SERVER_LOG:-/tmp/redbug-server.log}"
 # (REDBUG_NODES / SSH tunnels) dial direct, unpinned names fall back to real epmd.
 # The shim module only loads once the app starts, so distribution must NOT come up
 # at boot via --name; the app self-distributes (CONTROLLER_NODE) afterwards.
-export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
+# REDBUG_DIST=off starts no distribution, so it needs no epmd flags (see Server.Dist).
+if [ "${REDBUG_DIST:-}" != off ]; then
+  export ERL_FLAGS="-start_epmd false -epmd_module Elixir.Server.Epmd${ERL_FLAGS:+ $ERL_FLAGS}"
+fi
 export CONTROLLER_NODE="redbug_controller@127.0.0.1"
 export CONTROLLER_COOKIE="$cookie"
 # tie the controller to this task shell: if it's killed, the controller stops

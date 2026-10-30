@@ -132,6 +132,7 @@ the config local and private.
 | `RB_COOKIE` | dev | `rbtest` | Cookie used by `mise run dev` |
 | `CONTROLLER_NODE` | server | `redbug_controller@127.0.0.1` | Controller node name |
 | `CONTROLLER_DISTRIBUTION` | server | `name` | Use `sname` for shortname targets |
+| `REDBUG_DIST` | server | on | `off` starts the controller without distribution (for a VM without distribution, such as PBeam): local nodes, sessions, presets, and snippets work, and a connect fails |
 | `XDG_CONFIG_HOME` | server | `~/.config` | Config base directory |
 
 ## Security
