@@ -17,8 +17,6 @@ defmodule Server.Remote.Console do
 
   use GenServer, restart: :transient
 
-  require Logger
-
   alias Server.{Code.Format, Config}
   alias Server.Schema.ConsoleExec
 
