@@ -13,23 +13,32 @@ defmodule Server.DistSwitchTest do
   {:ok, _} = Application.ensure_all_started(:server)
   Server.Config.add_node(%{name: System.fetch_env!("RB_TEST_TARGET"), cookie: System.fetch_env!("RB_TEST_COOKIE")})
   [node] = Server.Config.nodes()
-  result = {Node.alive?(), Process.whereis(:net_kernel) != nil, Server.Config.connect_node(node.id)}
+  connect = Server.Config.connect_node(node.id)
+  # with distribution off, a trace start must stop before any call to the target.
+  trace =
+    if Server.Dist.enabled?() do
+      :skip
+    else
+      trace = %{id: "t1", text: "lists:seq/2", enabled: true}
+      Server.Config.add_session(node.id, %{name: "s", traces: [trace], limits: Server.Config.settings().default_limits})
+      [session] = hd(Server.Config.nodes()).sessions
+      Server.Trace.start(node.id, session.id)
+    end
+  result = {Node.alive?(), Process.whereis(:net_kernel) != nil, connect, trace}
   IO.puts(result |> :erlang.term_to_binary() |> Base.encode64())
   """
 
-  test "REDBUG_DIST=off boots without distribution, and connect fails with :distribution_off" do
-    assert {false, false, {:error, :distribution_off}} =
+  test "REDBUG_DIST=off boots without distribution; connect and trace start fail with :distribution_off" do
+    assert {false, false, {:error, :distribution_off}, {:error, :distribution_off}} =
              boot(%{"REDBUG_DIST" => "off"}, "nobody@127.0.0.1", "c")
   end
 
   test "without REDBUG_DIST, the app starts distribution and connects to a node" do
-    # The child connects to this VM, which the app (or `elixir --name`) made distributed.
-    assert Node.alive?()
-    cookie = Atom.to_string(Node.get_cookie())
+    # The child dials its own name, so the case does not need this VM to be distributed.
     name = "rb_dist_on_#{System.unique_integer([:positive])}@127.0.0.1"
-    env = %{"REDBUG_DIST" => nil, "CONTROLLER_NODE" => name, "CONTROLLER_COOKIE" => cookie}
+    env = %{"CONTROLLER_NODE" => name, "CONTROLLER_COOKIE" => "c"}
 
-    assert {true, true, :ok} = boot(env, Atom.to_string(Node.self()), cookie)
+    assert {true, true, :ok, :skip} = boot(env, name, "c")
   end
 
   defp boot(env, target, cookie) do
@@ -46,7 +55,17 @@ defmodule Server.DistSwitchTest do
       |> Enum.flat_map(&["-pa", &1])
 
     env =
-      Map.merge(env, %{
+      %{
+        # Clear the settings that this VM can inherit from its shell.
+        "REDBUG_DIST" => nil,
+        "REDBUG_PORT" => nil,
+        "REDBUG_PORT_FILE" => nil,
+        "REDBUG_NODES" => nil,
+        "CONTROLLER_DISTRIBUTION" => nil,
+        "ERL_FLAGS" => nil
+      }
+      |> Map.merge(env)
+      |> Map.merge(%{
         "RB_TEST_CONFIG" => config,
         "RB_TEST_TARGET" => target,
         "RB_TEST_COOKIE" => cookie

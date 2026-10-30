@@ -168,7 +168,7 @@ defmodule Server.Trace.Runner do
          enabled = Enum.filter(session.traces, & &1.enabled),
          {:ok, patterns} <- require_patterns(enabled),
          target = String.to_atom(node.name),
-         _ = Config.connect_node(state.node_id),
+         :ok <- require_distribution(Config.connect_node(state.node_id)),
          :ok <- Inject.ensure_loaded(target, @redbug_modules) do
       redbug_stop(target)
       wait_redbug_down(target, 50)
@@ -235,6 +235,11 @@ defmodule Server.Trace.Runner do
     broadcast(state.session_id, {:trace_event, sep})
     state
   end
+
+  # Other connect errors pass: redbug reports them from the target calls. With
+  # distribution off, no target call can work, so stop here with that reason.
+  defp require_distribution({:error, :distribution_off} = error), do: error
+  defp require_distribution(_), do: :ok
 
   defp require_patterns([]), do: {:error, :no_enabled_rtp}
 

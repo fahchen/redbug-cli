@@ -16,7 +16,9 @@ export type EmbeddedServer = { port: number; stop: () => void }
 // back to real epmd. The shim module only loads once the app starts, so
 // distribution must not come up at release boot (RELEASE_DISTRIBUTION=none);
 // Server.Application then self-distributes after the code is available.
+// REDBUG_DIST=off starts no distribution, so it gets no epmd flags (Server.Dist).
 function shimEnv(): Record<string, string> {
+  if (process.env.REDBUG_DIST === "off") return { RELEASE_DISTRIBUTION: "none" }
   const shim = "-start_epmd false -epmd_module Elixir.Server.Epmd"
   const existing = process.env.ERL_FLAGS
   return {
