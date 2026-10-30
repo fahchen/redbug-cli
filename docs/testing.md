@@ -7,7 +7,16 @@ cd server && mix test
 ```
 
 The e2e test (`test/session_root_test.exs`) drives the full store layer against a real target
-node, so start a throwaway target first (see the README quick start).
+node, so start a throwaway target first (see the README quick start). The e2e tests need a
+distributed VM:
+
+```sh
+cd server && elixir --name rbe2e@127.0.0.1 --cookie rbtest -S mix test
+```
+
+`test/remote/inject_test.exs` starts one peer target node for each supported OTP version (27, 28,
+and 29) with the extra Erlang and Elixir pins of `mise.toml`, and runs the console and a redbug
+trace on each one.
 
 The TUI has no headless test harness. Verify layout/visual changes by screenshotting the running
 app (below).

@@ -1,10 +1,9 @@
 defmodule Server.Remote.Worker do
   @moduledoc """
   The body of one Console execution. Runs **on the target node** — the
-  controller loads this module's BEAM onto the target via
-  `:code.load_binary/3` (see `Server.Remote.Console`) before spawning it, the
-  same code-injection trick `:redbug` uses, so the target needs nothing
-  pre-installed.
+  controller loads this module onto the target with `Server.Remote.Inject`
+  (the target compiles its abstract code) before spawning it, so the target
+  needs nothing pre-installed.
 
   The process is spawned with `Node.spawn/4` and monitored from the controller,
   which is what makes an execution force-stoppable: `Process.exit(pid, :kill)`

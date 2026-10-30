@@ -17,9 +17,13 @@ defmodule Server.Trace.Runner do
   require Logger
 
   alias Server.Config
+  alias Server.Remote.Inject
 
   @registry Server.Trace.Registry
   @pubsub Server.PubSub
+  # redbug loads these onto the target with the controller's beam, which an older
+  # OTP cannot read. Load them first from abstract code, so redbug finds them there.
+  @redbug_modules [:redbug_targ, :redbug_compiler]
 
   defstruct [
     :node_id,
@@ -162,10 +166,10 @@ defmodule Server.Trace.Runner do
     with {:ok, node} <- fetch_node(state.node_id),
          {:ok, session} <- fetch_session(node, state.session_id),
          enabled = Enum.filter(session.traces, & &1.enabled),
-         {:ok, patterns} <- require_patterns(enabled) do
-      target = String.to_atom(node.name)
-      Config.connect_node(state.node_id)
-
+         {:ok, patterns} <- require_patterns(enabled),
+         target = String.to_atom(node.name),
+         _ = Config.connect_node(state.node_id),
+         :ok <- Inject.ensure_loaded(target, @redbug_modules) do
       redbug_stop(target)
       wait_redbug_down(target, 50)
 
