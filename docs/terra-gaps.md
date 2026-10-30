@@ -174,13 +174,45 @@ Status values: `cut` (the feature is not in the Terra TUI), `simplified` (a smal
 - Restore: the runner snapshot and status messages need the applied patterns.
 - Status: cut, #8.
 
-## Session-screen features that come with #1425
+## Session-screen features of #1425
 
 - Original: `[` and `]` switch to the console tab, `,` opens the settings, `i` in the trace editor imports patterns from a preset, and Ctrl+W saves the patterns as a preset (`tui/src/SessionScreen.tsx:255-258`, `tui/src/SessionScreen.tsx:308`, `tui/src/SessionScreen.tsx:312-375`, `tui/src/SessionScreen.tsx:399-401`).
-- Now: these keys have no function on the session screen.
-- Reason: not a Terra limit. The console, the presets, and the settings screens of the Terra TUI are the scope of fahchen/pbeam#1425.
-- Restore: fahchen/pbeam#1425. Ctrl+W must take another key if the terminal reads it as a word erase (to be checked).
-- Status: cut, #8.
+- Now: all four work with the same keys. #8 cut them until #9.
+- Reason: not a Terra limit. The console, the presets, and the settings screens of the Terra TUI came with fahchen/pbeam#1425.
+- Restore: done.
+- Status: restored, #9.
+
+## The console composes code in a single-line input
+
+- Original: `n` (after a snippet pick) and `e` open the code in `$EDITOR`, and the run starts when the editor closes. `v` opens the code, the result, and the stdout in `$EDITOR` (`tui/src/ConsoleTab.tsx:118-130`, `tui/src/ConsoleTab.tsx:223-228`, `tui/src/ConsoleTab.tsx:452-473`).
+- Now: `n` and `e` open a full-screen page with a single-line input. Each line break of the code shows as `⏎`, and Enter runs the code with the line breaks back. `v` has no function; the detail panel shows the code, the result, and the stdout, and Ctrl+F and Ctrl+B scroll it by page.
+- Reason: Terra has no suspend and resume of the terminal for a child program, and no multi-line input.
+- Restore: Terra needs a suspend and resume of the terminal (for `$EDITOR`) or a multi-line input widget.
+- Status: simplified, #9.
+
+## Console overlays become full-screen pages
+
+- Original: the snippet pick, the save as snippet name, the stop, clear, and delete questions, and the help show as overlays over the console (`tui/src/ConsoleTab.tsx:296-370`).
+- Now: each one is a full-screen page. The snippet pick is a list without the type-to-search of the dialog.
+- Reason: Terra has no layers (see "Overlays become full-screen pages").
+- Restore: the same as for the node screen overlays.
+- Status: simplified, #9.
+
+## The console history and detail have no scroll box or spinner
+
+- Original: the history is a scroll box that follows the selection, and a running execution shows a spinner (`tui/src/ConsoleTab.tsx:267-276`, `tui/src/ConsoleTab.tsx:376-389`). The border of the history takes the node status color (`tui/src/ConsoleTab.tsx:111-114`).
+- Now: the history shows a window of rows that follows the selection. A running execution shows the fixed glyph `⟳`. All borders use the one border color.
+- Reason: Terra has no scroll box and no border color for each box. A spinner needs a tick for each running execution; the app ticks only while a node connects.
+- Restore: a scroll box and a border option in Terra; a tick while an execution runs.
+- Status: simplified, #9.
+
+## Preset import selects with space, and the overwrite adds a preset
+
+- Original: `i` picks a preset, then space toggles each pattern, `a` toggles all, and Enter imports (`tui/src/SessionScreen.tsx:319-368`, `tui/src/SessionEditor.tsx:63-105`). Ctrl+W asks "Overwrite preset?" for a name that exists; the saveAsPreset command then adds a second preset with that name.
+- Now: the same keys and the same result, on full-screen pages.
+- Reason: Terra has no layers.
+- Restore: the same as for the other overlays.
+- Status: simplified, #9.
 
 ## Known PBeam limit
 
