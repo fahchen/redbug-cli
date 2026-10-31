@@ -5,10 +5,10 @@ defmodule Server.Schema.AppError do
   `Server.Errors.humanize/1`.
   """
 
-  use Musubi.State
+  @type t :: %__MODULE__{
+          message: String.t(),
+          detail: String.t() | nil
+        }
 
-  state do
-    field(:message, String.t())
-    field(:detail, String.t() | nil)
-  end
+  defstruct [:message, :detail]
 end

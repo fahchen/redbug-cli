@@ -4,14 +4,14 @@ defmodule Server.Config do
 
   Persisted config (`:nodes`, `:presets`, `:settings`) plus runtime state
   (`:node_status`, `:session_status`) live in a named ETS table owned by this
-  GenServer. Stores read the table directly via the `nodes/0`, `presets/0`,
-  `settings/0`, … helpers (no GenServer round-trip) and subscribe to the
-  `"config"` PubSub topic; every mutation here writes ETS, persists the config
-  slice to the XDG config path (mode 0600, see `path/0`), then broadcasts
-  `{:config_updated}` so subscribed stores re-read and re-render.
+  GenServer. The TUI reads the table directly via the `nodes/0`, `presets/0`,
+  `settings/0`, … helpers (no GenServer round-trip) and subscribes to the
+  `"config"` `Server.PubSub` topic; every mutation here writes ETS, persists the
+  config slice to the XDG config path (mode 0600, see `path/0`), then broadcasts
+  `{:config_updated}` so the subscribed TUI re-reads and re-renders.
 
   Remote-node side-effects (`Node.connect_node/1`, later `:redbug`) run inside
-  this process — stores forward intent here and never touch distribution
+  this process — the TUI forwards intent here and never touches distribution
   directly.
   """
 
@@ -22,7 +22,6 @@ defmodule Server.Config do
   @table :redbug_config
   @endpoints :redbug_endpoints
   @topic "config"
-  @pubsub Server.PubSub
 
   # Connection state machine (per node, in the `:node_status` ETS map). A node is
   # `:idle` until asked to connect; `request_connect/1` drives it :connecting →
@@ -70,7 +69,7 @@ defmodule Server.Config do
     end
   end
 
-  @doc "Connection `status`/`error` for one node id (for stores that surface it, e.g. the session screen)."
+  @doc "Connection `status`/`error` for one node id (for TUI screens that show it, e.g. the session screen)."
   def node_connection(id) do
     st = Map.get(lookup(:node_status, %{}), id, @idle_status)
     %{status: Atom.to_string(st.state), error: st.error}
@@ -198,7 +197,7 @@ defmodule Server.Config do
     # stale "connected/running". node_type: :all because the controller is a
     # hidden node, so every target link is a hidden connection — the default
     # (visible-only) monitor would never fire for them.
-    :net_kernel.monitor_nodes(true, %{node_type: :all})
+    if Server.Dist.enabled?(), do: :net_kernel.monitor_nodes(true, %{node_type: :all})
 
     {:ok, %{}}
   end
@@ -236,8 +235,13 @@ defmodule Server.Config do
         {:error, reason} ->
           attempts = status_of(id).attempts + 1
 
-          if attempts >= @max_attempts do
-            set_status(id, %{state: :error, error: Server.Errors.humanize(reason), attempts: attempts})
+          # with distribution off, a retry cannot succeed: stop on the first fail.
+          if attempts >= @max_attempts or reason == :distribution_off do
+            set_status(id, %{
+              state: :error,
+              error: Server.Errors.humanize(reason),
+              attempts: attempts
+            })
           else
             set_status(id, %{state: :connecting, attempts: attempts})
             Process.send_after(self(), {:attempt_connect, id}, @retry_ms)
@@ -342,7 +346,10 @@ defmodule Server.Config do
 
   def handle_call({:update_session, node_id, id, attrs}, _from, state) do
     if env_id?(node_id) do
-      update_env_sessions(env_name(node_id), &update_in_list(&1, id, fn s -> Map.merge(s, attrs) end))
+      update_env_sessions(
+        env_name(node_id),
+        &update_in_list(&1, id, fn s -> Map.merge(s, attrs) end)
+      )
     else
       put_nodes(
         update_in_list(lookup(:nodes, []), node_id, fn node ->
@@ -489,7 +496,7 @@ defmodule Server.Config do
 
   # connect_node/1 runs on every console execution, so set_status only writes +
   # broadcasts when the status actually changes, else each run triggers a global
-  # re-render of every subscribed store.
+  # re-render of every subscribed TUI screen.
   defp add_connected(id), do: set_status(id, %{state: :connected, error: nil, attempts: 0})
   defp drop_connected(id), do: set_status(id, @idle_status)
 
@@ -512,6 +519,10 @@ defmodule Server.Config do
   # retry chain (request_connect/1) reuses it. On success it lands the node on
   # :connected via add_connected/1.
   defp do_connect(id) do
+    if Server.Dist.enabled?(), do: dial(id), else: {:error, :distribution_off}
+  end
+
+  defp dial(id) do
     case fetch_node(id) do
       nil ->
         {:error, :not_found}
@@ -573,10 +584,11 @@ defmodule Server.Config do
       settings: settings(),
       env_sessions: lookup(:env_sessions, %{})
     })
+
     broadcast()
   end
 
-  defp broadcast, do: Phoenix.PubSub.broadcast(@pubsub, @topic, {:config_updated})
+  defp broadcast, do: Server.PubSub.broadcast(@topic, {:config_updated})
 
   # --- list helpers ---
 
@@ -617,10 +629,10 @@ defmodule Server.Config do
     end
   end
 
-  # --- subscription (called by stores) ---
+  # --- subscription (called by the TUI bridge) ---
 
   @doc "Subscribe the calling process to config-change broadcasts."
-  def subscribe, do: Phoenix.PubSub.subscribe(@pubsub, @topic)
+  def subscribe, do: Server.PubSub.subscribe(@topic)
 
   # --- JSON persistence (config slice only, 0600) ---
 
@@ -646,7 +658,7 @@ defmodule Server.Config do
   defp load do
     case File.read(path()) do
       {:ok, body} ->
-        case Jason.decode(body) do
+        case JSON.decode(body) do
           {:ok, json} -> from_json(json)
           {:error, _} -> default_config()
         end
@@ -660,9 +672,15 @@ defmodule Server.Config do
     dir = Path.dirname(path())
     File.mkdir_p!(dir)
     File.chmod(dir, 0o700)
-    File.write!(path(), Jason.encode!(config, pretty: true))
+    File.write!(path(), pretty_json(config))
     File.chmod(path(), 0o600)
   end
+
+  # Elixir's JSON has no pretty print and OTP's :json.format/2 writes nil as
+  # "nil". So encode with JSON (nil becomes null), decode with :json (null
+  # stays the atom null), and format that.
+  defp pretty_json(config),
+    do: config |> JSON.encode!() |> :json.decode() |> :json.format(%{indent: 2})
 
   defp default_config,
     do: %{nodes: [], presets: [], snippets: [], settings: @default_settings, env_sessions: %{}}
@@ -685,7 +703,10 @@ defmodule Server.Config do
               {[nd | defs], Map.put(eps, String.to_atom(name), endpoint)}
 
             :error ->
-              Logger.warning("REDBUG_NODES: ignoring malformed entry #{inspect(redact_entry(entry))}")
+              Logger.warning(
+                "REDBUG_NODES: ignoring malformed entry #{inspect(redact_entry(entry))}"
+              )
+
               {defs, eps}
           end
         end)

@@ -6,20 +6,24 @@
 cd server && mix test
 ```
 
-The e2e test (`test/session_root_test.exs`) drives the full store layer against a real target
-node, so start a throwaway target first (see the README quick start).
+The trace and console tests (`test/trace/lifecycle_test.exs`, `test/remote/console_test.exs`, and the live tests of `test/tui/`) run against a real target node, so start a throwaway target first (see the README quick start). The e2e tests need a distributed VM:
 
-The TUI has no headless test harness. Verify layout/visual changes by screenshotting the running
-app (below).
+```sh
+cd server && elixir --name rbe2e@127.0.0.1 --cookie rbtest -S mix test
+```
+
+`test/remote/inject_test.exs` starts one peer target node for each supported OTP version (27, 28, and 29) with the extra Erlang and Elixir pins of `mise.toml`, and runs the console and a redbug trace on each one.
+
+The tests in `test/tui/` drive the Terra TUI headless with `Terra.Test`: they send keys and read the screen text. `config/test.exs` turns off the start of the TUI (`config :server, :tui, false`), so `mix test` keeps the terminal. Verify colors and layout by screenshotting the running app (below).
 
 ## Screenshotting the TUI
 
-opentui renders to a terminal, so there is no native web view. To capture screens, host the TUI
+The Terra TUI renders to a terminal, so there is no native web view. To capture screens, host the TUI
 inside a browser terminal ([ttyd](https://github.com/tsl0922/ttyd)) and screenshot the page.
 
 ```
  mise run dev  ──►  ttyd (:7681)  ──►  browser  ──►  screenshot
-  (server+TUI)      web terminal       xterm.js
+ (controller+TUI)   web terminal       xterm.js
 ```
 
 ### 1. Host the TUI as a web page
@@ -41,8 +45,7 @@ ttyd --writable -p 7681 -t fontSize=15 -t 'fontFamily=Terminus (TTF)' \
 ```
 
 ttyd spawns the child **only when a browser connects**, so nothing boots until step 2. `mise run
-dev` starts the controller on a random port, then the TUI; the server log goes to
-`/tmp/redbug-server.log`.
+dev` starts the controller and the TUI in one BEAM; the log goes to `/tmp/redbug-server.log`.
 
 ### 2. Open, drive, capture
 
@@ -55,8 +58,8 @@ On macOS, capture the window with `screencapture` (interactive selection or `-w`
 screencapture -i ~/shot.png
 ```
 
-Most screens render with the **local controller only** (no target node): the tree, settings,
-presets, snippets, and every modal (`?` help, `n` node editor, `t` trace editor). Only the Session
+Most screens render with the **local controller only** (no target node): the node screen, settings,
+presets, snippets, and every page (`?` help, `n` node editor, `t` trace editor). Only the Session
 Events stream needs a connected target with a live trace.
 
 ### 3. (optional) Submit screenshots for review
@@ -71,7 +74,7 @@ suikou review url <review-id>
 
 ### Teardown
 
-Quitting the TUI (`q`) tears the controller down. Stop ttyd with `Ctrl-C` (or `pkill ttyd`).
+Quitting the TUI (`q`, then `y`) stops the BEAM. Stop ttyd with `Ctrl-C` (or `pkill ttyd`).
 
 ### Agent note
 

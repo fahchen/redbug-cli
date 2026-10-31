@@ -7,16 +7,16 @@ defmodule Server.Schema.ConsoleExec do
   stdout. `duration_ms` is nil while running.
   """
 
-  use Musubi.State
+  @type t :: %__MODULE__{
+          id: String.t(),
+          name: String.t(),
+          code: String.t(),
+          status: String.t(),
+          result: String.t(),
+          output: String.t(),
+          ts: String.t(),
+          duration_ms: integer() | nil
+        }
 
-  state do
-    field(:id, String.t())
-    field(:name, String.t())
-    field(:code, String.t())
-    field(:status, String.t())
-    field(:result, String.t())
-    field(:output, String.t())
-    field(:ts, String.t())
-    field(:duration_ms, integer() | nil)
-  end
+  defstruct [:id, :name, :code, :status, :result, :output, :ts, :duration_ms]
 end

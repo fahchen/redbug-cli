@@ -32,7 +32,9 @@ defmodule Server.SshTunnelTest do
     end
 
     test "filled container keeps docker discovery" do
-      assert {:ok, cmd} = SshTunnel.discover_cmd(%{name: "loyalty@10.0.0.8", container: "loyalty"})
+      assert {:ok, cmd} =
+               SshTunnel.discover_cmd(%{name: "loyalty@10.0.0.8", container: "loyalty"})
+
       assert to_string(cmd) =~ "docker ps --filter label=service=loyalty"
     end
   end
@@ -46,6 +48,7 @@ defmodule Server.SshTunnelTest do
   test "parse_port reads the epmd node port" do
     out = "name app at port 44001\n"
     assert SshTunnel.parse_port(out) == {:ok, 44001}
+
     assert SshTunnel.parse_port("epmd: up and running on port 4369 with data:\n") ==
              {:error, :no_port}
   end

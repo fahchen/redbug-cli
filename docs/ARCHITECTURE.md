@@ -1,4 +1,4 @@
-# redbug-cli TUI — Architecture
+# redbug-cli — Architecture
 
 ## Domain Model
 
@@ -15,101 +15,111 @@ Node ──▸ Session ──▸ Traces (RTP) ──▸ Events
 - **Session**: a trace session on a node, with its own RTP list, limits, and event buffer.
 - **Trace (RTP)**: a redbug trace pattern, e.g. `Demo.add/2 -> return`.
 - **Event**: a single call/return/send/recv captured by an active trace.
-- **Console**: per-session code runner — execute Elixir code on the target node via `$EDITOR`.
+- **Console**: per-session code runner — execute Elixir or Erlang code on the target node.
 - **Preset**: reusable template of traces + limits.
-- **Snippet**: reusable Elixir code block for the Console.
+- **Snippet**: reusable code block for the Console.
 
-All state is server-authoritative (Elixir/Phoenix), synced to the TUI via musubi (JSON Patch over WebSocket).
+## One BEAM
+
+The controller and the TUI are one Elixir application (`server/`) in one BEAM. There is no WebSocket and no second process.
+
+```
+Server.Supervisor
+├── Server.PubSub            local topic broadcasts (a Registry with duplicate keys)
+├── Server.Config            config + node status in ETS, persisted to config.json
+├── Server.SshTunnel         SSH tunnels to container nodes
+├── Server.Trace.*           one redbug runner per session (Registry + DynamicSupervisor)
+├── Server.Remote.*          one console runner per session (Registry + DynamicSupervisor)
+└── Server.Tui               the Terra TUI (a temporary Task, the last child)
+```
+
+- `Server.Tui` runs `Terra.run/2` with `Server.Tui.App`. While the TUI holds the terminal, the logger writes to `REDBUG_SERVER_LOG` (default `/tmp/redbug-server.log`). When the TUI quits, the BEAM stops. `config/test.exs` turns the TUI off (`config :server, :tui, false`), because the tests drive the app headless with `Terra.Test`.
+- The screens call `Server.Config`, `Server.Trace`, and `Server.Remote` directly in `update/2`.
+- `Server.Tui.Bridge` subscribes to the `Server.PubSub` topics (`"config"`, the trace topic, and the console topic of the open session). It sends each burst of updates to the Terra runtime as one event with `GenServer.cast(pid, {:event, m})`.
+- Without distribution (`REDBUG_DIST=off`), the local nodes, sessions, presets, and snippets work, and each connect fails with `:distribution_off` (see `Server.Dist`).
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Server | Elixir / Phoenix + musubi |
-| TUI runtime | Bun + React 19 |
-| Renderer | `@opentui/react` (terminal UI) |
-| State sync | `@musubi/react` (StoreProxy + snapshot) |
-| Code highlight | tree-sitter (Elixir grammar, WASM) |
-| Editor | `$EDITOR` (subprocess) |
+| Controller | Elixir, redbug |
+| TUI | [Terra](https://github.com/uminocelo/terra) at the pinned commit of PBeam, with no change |
+| Colors | 256-color palette, tokyo-night roles (`Server.Tui.Theme`) |
+| Code highlight | `makeup_elixir` (`Server.Tui.Highlight`) |
+| Persistence | Elixir `JSON` |
 
-## Design Principles
-
-1. **Borders as accents, not frames.** Panels read as colored margins; active pane gets
-   a brighter border, inactive is subtle.
-2. **Color-weight hierarchy over dividers.** `text` vs `textMuted` separates primary
-   from secondary. Almost no rule lines.
-3. **Keyboard-first.** Every action has a keybinding. Hint bar shows common keys;
-   Help overlay (`?`) shows all.
-4. **One overlay primitive: `Overlay` (ui.tsx) + `DialogSelect`** — fuzzy-filtered
-   list picker used everywhere (sort, filter scope, snippet picker, preset picker).
-5. **Semantic theme tokens.** `theme.ts` exports `theme` (light/dark customizable)
-   with `primary`, `error`, `warning`, `success`, `text`, `textMuted`, `background*`,
-   `border*`, `selectedForeground`.
-6. **No hand-written components.** UI uses only OpenTUI built-ins (`<box>`, `<text>`,
-   `<input>`, `<select>`, `<scrollbox>`, `<code>`, `<tab-select>`) plus shared
-   components from `ui.tsx`.
+[terra-gaps.md](terra-gaps.md) records each feature of the old Bun TUI that the Terra TUI cuts or simplifies.
 
 ## Screen Inventory
 
-### 1. Tree (`App.tsx` + `Tree.tsx` + `NodeModal.tsx`)
-Node/Session tree. Entry point for connecting, creating sessions, and navigating.
+Each overlay of the old Bun TUI is a full-screen page. Press `?` on a screen for its keys.
+
+### 1. Nodes (`server/lib/server/tui/app.ex`)
+
+The node list, the node detail, and the sessions pane of the selected node.
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Move selection |
-| `enter` | Enter session / open |
-| `n` | New node |
-| `s` | New session |
+| `j` / `k`, `↓` / `↑` | Move selection |
+| `enter` / `tab` / `→` | Go to the sessions pane |
+| `n` | New node (in the pane: new session) |
 | `e` | Edit node |
+| `r` | Rename session (in the pane) |
 | `c` | Connect / disconnect |
-| `d` / `⌃D` | Delete / delete (no confirm) |
-| `p` | Preset manager |
-| `l` | Snippet manager |
+| `d` / `⌃D` | Delete (asks) / delete (does not ask) |
+| `<number>g` | Go to the session of that number (in the pane) |
+| `p` | Presets |
+| `l` | Snippets |
 | `,` | Settings |
 | `?` | Help |
-| `q` | Quit |
+| `q` | Quit (asks) |
 
-### 2. Session Events (`SessionScreen.tsx` + `SessionEvents.tsx` + `SessionDetail.tsx`)
+### 2. Session events (`server/lib/server/tui/session.ex`)
+
 Live trace event stream. Events tab (default) + Console tab.
 
 | Key | Action |
 |---|---|
 | `j` / `k` | Move selection |
-| `enter` | Open detail pane |
-| `space` | Start / restart / retry trace |
+| `enter` | Open the detail page (`⌃N` / `⌃P` next / previous event) |
+| `space` | Start / restart / reconnect |
 | `x` | Stop trace |
-| `t` | Trace editor (RTP) |
-| `o` | Sort overlay |
-| `/` | Filter overlay |
+| `a` | Apply RTP edits + restart |
+| `t` | Trace editor (`⌃W` save as preset, `i` import from a preset) |
+| `o` | Sort |
+| `/` | Filter (Tab changes the scope) |
 | `g` | Cycle grouping |
-| `l` | Limits overlay |
-| `z` | Zoom detail |
-| `v` | View event in `$EDITOR` |
-| `⌃S` | Apply RTP edits + restart |
+| `f` | Fold call + return into one row |
+| `l` | Limits |
+| `e` | Error detail |
+| `d` / `⌃D` | Delete event (asks) / delete (does not ask) |
 | `⌃L` | Clear events |
 | `[` / `]` | Switch Events ⇄ Console |
-| `esc` | Back to Tree |
+| `,` | Settings |
+| `esc` | Back to the nodes (asks while the trace runs) |
 | `?` | Help |
 
-### 3. Session Console (`ConsoleTab.tsx`)
-Per-session Elixir code runner. Execute code on the target node.
+### 3. Session console (`server/lib/server/tui/console.ex`)
+
+Per-session code runner. The code is a single-line input; a line break shows as `↵`.
 
 | Key | Action |
 |---|---|
 | `j` / `k` | Move selection |
-| `n` | New execution (pick snippet, compose in `$EDITOR`) |
+| `n` | New execution (pick snippet, compose) |
 | `e` | Edit + run selected |
 | `r` | Run selected as-is |
-| `v` | View full code + output in `$EDITOR` |
 | `s` | Save as snippet |
-| `d` / `⌃D` | Delete / delete (no confirm) |
+| `d` / `⌃D` | Delete (asks) / delete (does not ask) |
 | `x` | Force-stop running execution |
 | `⌃L` | Clear history |
+| `⌃F` / `⌃B` | Scroll the detail by a page |
 | `[` / `]` | Switch to Events |
-| `esc` | Back to Tree |
+| `esc` | Back |
 | `?` | Help |
 
-### 4. Presets (`PresetManager.tsx`)
+### 4. Presets (`server/lib/server/tui/presets.ex`)
+
 CRUD for reusable trace templates (traces + limits).
 
 | Key | Action |
@@ -120,26 +130,31 @@ CRUD for reusable trace templates (traces + limits).
 | `e` | Edit pattern |
 | `r` | Rename |
 | `l` | Limits |
-| `d` / `⌃D` | Delete / delete (no confirm) |
-| `esc` | Back to Tree |
+| `d` / `⌃D` | Delete (asks) / delete (does not ask) |
+| `,` | Settings |
+| `esc` | Back |
 | `?` | Help |
 
-### 5. Snippets (`SnippetManager.tsx`)
-CRUD for reusable Elixir code blocks. Code edited in `$EDITOR`.
+### 5. Snippets (`server/lib/server/tui/snippets.ex`)
+
+CRUD for reusable code blocks. The code is a single-line input; a line break shows as `↵`.
 
 | Key | Action |
 |---|---|
 | `j` / `k` | Move |
-| `e` | Edit in `$EDITOR` |
+| `e` | Edit code |
 | `n` | New snippet |
 | `r` | Rename |
 | `f` | Format code |
-| `d` / `⌃D` | Delete / delete (no confirm) |
+| `d` / `⌃D` | Delete (asks) / delete (does not ask) |
+| `⌃F` / `⌃B` | Scroll the code by a page |
 | `#g` | Jump to snippet # |
-| `esc` | Back to Tree |
+| `,` | Settings |
+| `esc` | Back |
 | `?` | Help |
 
-### 6. Settings (`SettingsScreen.tsx`, overlay from `,`)
+### 6. Settings (`server/lib/server/tui/settings.ex`, from `,`)
+
 Global preferences: theme, default sort, column visibility, limits, hints, console timeout.
 
 | Key | Action |
@@ -152,50 +167,32 @@ Global preferences: theme, default sort, column visibility, limits, hints, conso
 ## Source Map
 
 ```
-tui/src/
-├── App.tsx                 Tree page (nodes + sessions)
-├── Tree.tsx                NodeRow, SessionRow, NodeDetailBand, EmptyTree
-├── NodeModal.tsx           Tree modal layer (help, new/edit node, new session)
-│
-├── SessionScreen.tsx       Session page orchestrator (events + console tabs)
-├── SessionEvents.tsx       Event list rendering (ColumnHeader, EventRow, Cell)
-├── SessionDetail.tsx       Detail pane (DetailMeta, EventDetailBody)
-├── SessionEditor.tsx       Trace editor overlay (RTP list, add/edit, import)
-├── SessionOverlays.tsx     Filter, sort, limits, help, confirm, zoom overlays
-├── SessionStatus.tsx       SessionStat status display
-├── ConsoleTab.tsx          Console tab (code execution history)
-│
-├── PresetManager.tsx       Preset CRUD page
-├── SnippetManager.tsx      Snippet CRUD page
-├── SettingsScreen.tsx      Settings overlay
-│
-├── ui.tsx                  Shared components (Overlay, Panel, StatusBar, Chip, etc.)
-├── ConfirmOverlay.tsx      Shared confirm dialog
-├── RtpCheatSheet.tsx       RTP syntax reference
-├── DialogSelect.tsx        Fuzzy-filtered list picker
-│
-├── sessionHelpers.ts       Pure functions (processEvents, sparkline, elixirTerm)
-├── sessionTypes.ts         Types + constants (Sort, Filter, COL, RTP_EXAMPLES)
-├── useSessionLiveness.ts   Liveness tracking + sparkline hook
-├── types.ts                Rtp, TraceEvent type aliases
-│
-├── theme.ts                Theme tokens (dark/light/PICO-8/catppuccin/...)
-├── musubi.ts               musubi store roots + dispatcher
-├── limits.ts               Limits parsing + formatting
-├── editor.ts               $EDITOR subprocess helper
-├── treesitter.ts           Tree-sitter code highlighting
-├── fuzzy.ts                Fuzzy matching for DialogSelect
-│
-├── index.tsx               Entry point
-└── main.tsx                Bun compile entry
+server/lib/server/
+├── application.ex          Supervision tree; starts distribution unless REDBUG_DIST=off
+├── pub_sub.ex              Local topic broadcasts (Registry)
+├── config.ex               Config + node status (ETS), persistence, connect
+├── trace.ex, trace/        redbug runners, patterns, signature
+├── remote.ex, remote/      Console runners, the worker injected into the target
+├── tui.ex                  Starts the Terra TUI and the log file
+└── tui/
+    ├── app.ex              Terra app: nodes screen, node form, sessions pane, screen routing
+    ├── bridge.ex           PubSub subscriptions to batched Terra events
+    ├── session.ex          Session screen (events, editor, detail, overlays as pages)
+    ├── console.ex          Console tab
+    ├── presets.ex          Presets screen
+    ├── snippets.ex         Snippets screen
+    ├── settings.ex         Settings screen
+    ├── highlight.ex        makeup_elixir to 256-color segments
+    ├── theme.ex            tokyo-night roles to 256 colors
+    └── ui.ex               Shared view parts (fit, chip, hints, page, confirm, help)
 ```
 
 ## Global Conventions
 
 - **`space`** is the universal "go" action — start, restart, retry. Never destructive.
 - **`x`** is stop. Destructive, so its own key.
-- **`?`** opens the contextual Help overlay from every screen.
-- **`esc`** goes back: closes overlay → closes detail → exits screen → returns to Tree.
-- **`d`** shows a confirm prompt; **`⌃D`** deletes immediately (no confirm).
-- **Hints bar** shows the most-used keys for the current focus. Full keymap is in Help (`?`).
-- **`$EDITOR`** is used for composing code (Console `n`/`e`), viewing events (`v`), and editing snippets (`e`).
+- **`?`** opens the contextual Help page from every screen.
+- **`esc`** goes back: closes page → exits screen → returns to the nodes.
+- **`d`** shows a confirm page; **`⌃D`** deletes immediately (no confirm).
+- **Hints bar** shows the most-used keys for the current focus (the `show_hints` setting). Full keymap is in Help (`?`).
+- **Ctrl+S** is not a key: the terminal reads it as XOFF in the raw mode of OTP, so `a` applies the edits.

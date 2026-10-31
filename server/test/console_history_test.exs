@@ -26,13 +26,22 @@ defmodule Server.Remote.ConsoleHistoryTest do
 
   defp seed(ctx, execs) do
     File.mkdir_p!(Path.dirname(ctx.path))
-    File.write!(ctx.path, Jason.encode!(execs))
+    File.write!(ctx.path, JSON.encode!(execs))
     Remote.ensure(ctx.node_id, ctx.session_id)
   end
 
   defp exec(id, fields \\ %{}) do
     Map.merge(
-      %{id: id, name: id, code: "1 + 1", status: "ok", result: "2", output: "", ts: "10:00:00", duration_ms: 3},
+      %{
+        id: id,
+        name: id,
+        code: "1 + 1",
+        status: "ok",
+        result: "2",
+        output: "",
+        ts: "10:00:00",
+        duration_ms: 3
+      },
       fields
     )
   end
@@ -59,7 +68,7 @@ defmodule Server.Remote.ConsoleHistoryTest do
     Remote.delete_exec(ctx.session_id, "e1")
 
     assert [%{id: "e2"}] = Remote.snapshot(ctx.session_id).history
-    assert [%{"id" => "e2"}] = ctx.path |> File.read!() |> Jason.decode!()
+    assert [%{"id" => "e2"}] = ctx.path |> File.read!() |> JSON.decode!()
   end
 
   test "purge drops the file — nothing else knows its name", ctx do

@@ -5,22 +5,21 @@ defmodule Server.Remote do
   A console runner owns one session's execution history and spawns/kills work
   on the target node. Runners are started on demand under
   `Server.Remote.Supervisor`, addressed by `session_id` via
-  `Server.Remote.Registry`. The `Server.Stores.ConsoleRoot` store forwards
-  intent here and subscribes to per-session PubSub broadcasts; it never spawns
-  remote work directly.
+  `Server.Remote.Registry`. The TUI (`Server.Tui.Console` through
+  `Server.Tui.Bridge`) forwards intent here and subscribes to per-session
+  `Server.PubSub` broadcasts; it never spawns remote work directly.
   """
 
   alias Server.{Runners, Remote.Console}
 
   @registry Server.Remote.Registry
   @supervisor Server.Remote.Supervisor
-  @pubsub Server.PubSub
 
   @doc "PubSub topic carrying a session's console exec inserts/updates."
   def topic(session_id), do: "console:" <> session_id
 
   @doc "Subscribe the caller to a session's console broadcasts."
-  def subscribe(session_id), do: Phoenix.PubSub.subscribe(@pubsub, topic(session_id))
+  def subscribe(session_id), do: Server.PubSub.subscribe(topic(session_id))
 
   @doc """
   Start the session's runner if it is not up yet.
@@ -38,10 +37,12 @@ defmodule Server.Remote do
   end
 
   @doc "Force-stop (kill) a running execution."
-  def stop(session_id, exec_id), do: Runners.with_runner(@registry, session_id, &Console.stop(&1, exec_id))
+  def stop(session_id, exec_id),
+    do: Runners.with_runner(@registry, session_id, &Console.stop(&1, exec_id))
 
   @doc "Delete an execution entry from the history."
-  def delete_exec(session_id, exec_id), do: Runners.with_runner(@registry, session_id, &Console.delete(&1, exec_id))
+  def delete_exec(session_id, exec_id),
+    do: Runners.with_runner(@registry, session_id, &Console.delete(&1, exec_id))
 
   @doc "Clear the execution history."
   def clear(session_id), do: Runners.with_runner(@registry, session_id, &Console.clear/1)

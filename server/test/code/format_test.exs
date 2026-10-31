@@ -9,7 +9,21 @@ defmodule Server.Code.FormatTest do
     end
 
     test "formats an Erlang expression sequence" do
-      assert Format.run("lists:seq(1,5).") == "lists:seq(1, 5)"
+      assert Format.run("lists:seq(1,5).") == "lists:seq(1, 5)."
+    end
+
+    test "keeps the commas of an Erlang sequence of several expressions" do
+      assert Format.run("X = 1, X+1.") == "X = 1,\nX + 1."
+    end
+
+    test "reads text with a final dot as Erlang" do
+      # Elixir reads `#` as a comment and `{a, b}` as variables.
+      assert Format.run("\#{a=>1}.") == "\#{a => 1}."
+      assert Format.run("{a,b}.") == "{a, b}."
+    end
+
+    test "adds the dot to Erlang text that has none" do
+      assert Format.run("lists:seq(1,5)") == "lists:seq(1, 5)."
     end
 
     test "leaves unparseable input untouched" do

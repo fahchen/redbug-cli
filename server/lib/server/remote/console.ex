@@ -3,13 +3,13 @@ defmodule Server.Remote.Console do
   Owns one session's Console: a capped, append-only history of code
   executions run on the target node.
 
-  Each execution spawns `Server.Remote.Worker` on the target (after injecting
-  its BEAM there) and monitors it, so a run is force-stoppable via
-  `Process.exit(pid, :kill)` over distribution. A `@timeout` watchdog kills
-  runaway evals. Results, output and status flow back as PubSub broadcasts on
-  `Server.Remote.topic/1`; the store mirrors them into its stream.
+  Each execution spawns `Server.Remote.Worker` on the target (after
+  `Server.Remote.Inject` loads it there) and monitors it, so a run is
+  force-stoppable via `Process.exit(pid, :kill)` over distribution. A `@timeout` watchdog kills
+  runaway evals. Results, output and status flow back as `Server.PubSub`
+  broadcasts on `Server.Remote.topic/1`; the TUI console mirrors them.
 
-  History is server-held, so it survives ws reconnects, and is mirrored to one
+  History is held here, so it survives a close of the console tab, and is mirrored to one
   JSON file per session next to the config (see `path/1`) so it also survives a
   restart. `stop/2` requires the caller to have confirmed (a TUI concern). Code
   is auto-formatted on run via `Server.Code.Format`.
@@ -17,13 +17,11 @@ defmodule Server.Remote.Console do
 
   use GenServer, restart: :transient
 
-  require Logger
-
   alias Server.{Code.Format, Config}
+  alias Server.Remote.Inject
   alias Server.Schema.ConsoleExec
 
   @registry Server.Remote.Registry
-  @pubsub Server.PubSub
   @timeout 15_000
   @keep 200
   # A runaway `IO.puts` loop would otherwise grow one exec's output without
@@ -84,7 +82,15 @@ defmodule Server.Remote.Console do
         {:reply, {:ok, exec_id}, %{state | running: Map.put(state.running, exec_id, run_meta)}}
 
       {:error, reason} ->
-        state = finalize(state, exec_id, "error", "could not start: #{inspect(reason)}", "")
+        state =
+          finalize(
+            state,
+            exec_id,
+            "error",
+            "could not start: #{Server.Errors.humanize(reason).message}",
+            ""
+          )
+
         {:reply, {:ok, exec_id}, state}
     end
   end
@@ -103,6 +109,7 @@ defmodule Server.Remote.Console do
 
   def handle_call({:delete, exec_id}, _from, state) do
     entry = Enum.find(state.history, &(&1.id == exec_id))
+
     if entry do
       broadcast(state, {:console_delete, exec_id})
     end
@@ -183,7 +190,7 @@ defmodule Server.Remote.Console do
     with {:ok, node} <- fetch_node(state.node_id),
          target = String.to_atom(node.name),
          :ok <- Config.connect_node(state.node_id),
-         :ok <- ensure_worker(target) do
+         :ok <- Inject.ensure_loaded(target, [Server.Remote.Worker]) do
       pid = Node.spawn(target, Server.Remote.Worker, :run, [self(), exec_id, code])
       ref = Process.monitor(pid)
       timer = Process.send_after(self(), {:timeout, exec_id}, timeout_ms())
@@ -198,20 +205,6 @@ defmodule Server.Remote.Console do
     end
   end
 
-  # Inject the worker BEAM onto the target so Node.spawn can reach it.
-  defp ensure_worker(target) do
-    case :code.get_object_code(Server.Remote.Worker) do
-      {mod, bin, file} ->
-        case :rpc.call(target, :code, :load_binary, [mod, file, bin]) do
-          {:module, ^mod} -> :ok
-          other -> {:error, other}
-        end
-
-      :error ->
-        {:error, :worker_unavailable}
-    end
-  end
-
   # --- finalize / history ---
 
   defp finalize(state, exec_id, status, text, output, meta \\ nil) do
@@ -221,7 +214,13 @@ defmodule Server.Remote.Console do
       Enum.map(state.history, fn e ->
         if e.id == exec_id do
           # nil output keeps the already-streamed stdout (see :DOWN handler).
-          %{e | status: status, result: text, output: cap(output || e.output), duration_ms: duration}
+          %{
+            e
+            | status: status,
+              result: text,
+              output: cap(output || e.output),
+              duration_ms: duration
+          }
         else
           e
         end
@@ -251,7 +250,7 @@ defmodule Server.Remote.Console do
   end
 
   # Slice by characters, not bytes: cutting mid-codepoint would produce invalid
-  # UTF-8 that Jason.encode! then refuses. Re-capping an already-capped string is
+  # UTF-8 that JSON.encode! then refuses. Re-capping an already-capped string is
   # a no-op beyond the marker.
   defp cap(text) when byte_size(text) <= @max_output, do: text
   defp cap(text), do: String.slice(text, 0, @max_output) <> "\n… output truncated"
@@ -288,7 +287,7 @@ defmodule Server.Remote.Console do
 
   defp load(session_id) do
     with {:ok, body} <- File.read(path(session_id)),
-         {:ok, list} when is_list(list) <- Jason.decode(body) do
+         {:ok, list} when is_list(list) <- JSON.decode(body) do
       list |> Enum.map(&from_json/1) |> Enum.take(@keep)
     else
       _ -> []
@@ -305,7 +304,7 @@ defmodule Server.Remote.Console do
     File.mkdir_p!(Path.dirname(file))
     tmp = file <> ".tmp"
 
-    with :ok <- File.write(tmp, Jason.encode!(Enum.map(state.history, &Map.from_struct/1))),
+    with :ok <- File.write(tmp, JSON.encode!(Enum.map(state.history, &Map.from_struct/1))),
          :ok <- File.chmod(tmp, 0o600) do
       File.rename(tmp, file)
     end
@@ -319,7 +318,8 @@ defmodule Server.Remote.Console do
       name: Map.get(j, "name", ""),
       code: Map.get(j, "code", ""),
       # Nothing is running after a restart: a "running" row would spin forever.
-      status: if(Map.get(j, "status") == "running", do: "stopped", else: Map.get(j, "status", "ok")),
+      status:
+        if(Map.get(j, "status") == "running", do: "stopped", else: Map.get(j, "status", "ok")),
       result: Map.get(j, "result", ""),
       output: Map.get(j, "output", ""),
       ts: Map.get(j, "ts", ""),
@@ -337,6 +337,6 @@ defmodule Server.Remote.Console do
   defp mono, do: System.monotonic_time(:millisecond)
 
   defp broadcast(state, message) do
-    Phoenix.PubSub.broadcast(@pubsub, Server.Remote.topic(state.session_id), message)
+    Server.PubSub.broadcast(Server.Remote.topic(state.session_id), message)
   end
 end
