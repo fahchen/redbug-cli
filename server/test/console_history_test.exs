@@ -32,7 +32,16 @@ defmodule Server.Remote.ConsoleHistoryTest do
 
   defp exec(id, fields \\ %{}) do
     Map.merge(
-      %{id: id, name: id, code: "1 + 1", status: "ok", result: "2", output: "", ts: "10:00:00", duration_ms: 3},
+      %{
+        id: id,
+        name: id,
+        code: "1 + 1",
+        status: "ok",
+        result: "2",
+        output: "",
+        ts: "10:00:00",
+        duration_ms: 3
+      },
       fields
     )
   end

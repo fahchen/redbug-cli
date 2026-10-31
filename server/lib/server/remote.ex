@@ -37,10 +37,12 @@ defmodule Server.Remote do
   end
 
   @doc "Force-stop (kill) a running execution."
-  def stop(session_id, exec_id), do: Runners.with_runner(@registry, session_id, &Console.stop(&1, exec_id))
+  def stop(session_id, exec_id),
+    do: Runners.with_runner(@registry, session_id, &Console.stop(&1, exec_id))
 
   @doc "Delete an execution entry from the history."
-  def delete_exec(session_id, exec_id), do: Runners.with_runner(@registry, session_id, &Console.delete(&1, exec_id))
+  def delete_exec(session_id, exec_id),
+    do: Runners.with_runner(@registry, session_id, &Console.delete(&1, exec_id))
 
   @doc "Clear the execution history."
   def clear(session_id), do: Runners.with_runner(@registry, session_id, &Console.clear/1)

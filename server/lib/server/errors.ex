@@ -14,7 +14,8 @@ defmodule Server.Errors do
   @messages %{
     noconnection: "Lost connection to the node — reconnect to resume",
     no_enabled_rtp: "No trace pattern enabled — press space to enable at least one",
-    no_matching_functions: "No such function on the target — check module, name, and arity (it must be loaded there)",
+    no_matching_functions:
+      "No such function on the target — check module, name, and arity (it must be loaded there)",
     node_not_found: "Node not found",
     session_not_found: "Session not found",
     not_found: "Node not found",
@@ -46,7 +47,10 @@ defmodule Server.Errors do
   end
 
   def humanize({:ssh_connect, reason}),
-    do: %AppError{message: "SSH connect failed — check host, user, and key", detail: inspect(reason)}
+    do: %AppError{
+      message: "SSH connect failed — check host, user, and key",
+      detail: inspect(reason)
+    }
 
   def humanize({:ssh_forward, reason}),
     do: %AppError{message: "SSH port-forward failed", detail: inspect(reason)}
@@ -59,14 +63,16 @@ defmodule Server.Errors do
 
   def humanize({:name_mode_mismatch, :short}),
     do: %AppError{
-      message: "Node runs -sname (shortname); redbug's controller is -name (longname) — Erlang can't connect the two",
+      message:
+        "Node runs -sname (shortname); redbug's controller is -name (longname) — Erlang can't connect the two",
       detail:
         "Run the target with -name (e.g. Kamal RELEASE_DISTRIBUTION=name / -name app@<ip>), or run redbug in shortname mode. A single VM can only be one mode."
     }
 
   def humanize({:name_mode_mismatch, :long}),
     do: %AppError{
-      message: "Node runs -name (longname); redbug's controller is -sname (shortname) — Erlang can't connect the two",
+      message:
+        "Node runs -name (longname); redbug's controller is -sname (shortname) — Erlang can't connect the two",
       detail: "Run redbug in longname mode, or the target with -sname."
     }
 

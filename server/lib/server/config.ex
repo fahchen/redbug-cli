@@ -237,7 +237,11 @@ defmodule Server.Config do
 
           # with distribution off, a retry cannot succeed: stop on the first fail.
           if attempts >= @max_attempts or reason == :distribution_off do
-            set_status(id, %{state: :error, error: Server.Errors.humanize(reason), attempts: attempts})
+            set_status(id, %{
+              state: :error,
+              error: Server.Errors.humanize(reason),
+              attempts: attempts
+            })
           else
             set_status(id, %{state: :connecting, attempts: attempts})
             Process.send_after(self(), {:attempt_connect, id}, @retry_ms)
@@ -342,7 +346,10 @@ defmodule Server.Config do
 
   def handle_call({:update_session, node_id, id, attrs}, _from, state) do
     if env_id?(node_id) do
-      update_env_sessions(env_name(node_id), &update_in_list(&1, id, fn s -> Map.merge(s, attrs) end))
+      update_env_sessions(
+        env_name(node_id),
+        &update_in_list(&1, id, fn s -> Map.merge(s, attrs) end)
+      )
     else
       put_nodes(
         update_in_list(lookup(:nodes, []), node_id, fn node ->
@@ -577,6 +584,7 @@ defmodule Server.Config do
       settings: settings(),
       env_sessions: lookup(:env_sessions, %{})
     })
+
     broadcast()
   end
 
@@ -671,7 +679,8 @@ defmodule Server.Config do
   # Elixir's JSON has no pretty print and OTP's :json.format/2 writes nil as
   # "nil". So encode with JSON (nil becomes null), decode with :json (null
   # stays the atom null), and format that.
-  defp pretty_json(config), do: config |> JSON.encode!() |> :json.decode() |> :json.format(%{indent: 2})
+  defp pretty_json(config),
+    do: config |> JSON.encode!() |> :json.decode() |> :json.format(%{indent: 2})
 
   defp default_config,
     do: %{nodes: [], presets: [], snippets: [], settings: @default_settings, env_sessions: %{}}
@@ -694,7 +703,10 @@ defmodule Server.Config do
               {[nd | defs], Map.put(eps, String.to_atom(name), endpoint)}
 
             :error ->
-              Logger.warning("REDBUG_NODES: ignoring malformed entry #{inspect(redact_entry(entry))}")
+              Logger.warning(
+                "REDBUG_NODES: ignoring malformed entry #{inspect(redact_entry(entry))}"
+              )
+
               {defs, eps}
           end
         end)

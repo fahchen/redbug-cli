@@ -235,29 +235,30 @@ defmodule Server.SshTunnel do
   def discover_cmd(%{container: c}) when is_binary(c) and c != "" do
     with {:ok, svc} <- safe_container(c) do
       cmd = """
-    set -e
-    C=
-    if command -v docker >/dev/null 2>&1; then
-      C=$(docker ps --filter label=service=#{svc} --filter label=role=web -q | head -1)
-      [ -n "$C" ] || C=$(docker ps --filter name=#{svc} -q | head -1)
-    fi
-    if [ -n "$C" ]; then
-      docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{println}}{{end}}' "$C" | grep . | head -1
-      docker exec "$C" sh -c 'for p in /proc/[0-9]*/cmdline; do a=$(tr "\\0" " " < "$p" 2>/dev/null); case "$a" in *beam.smp*) printf "%s\\n" "$a"; break;; esac; done'
-      docker exec "$C" sh -c 'E=$(command -v epmd 2>/dev/null || ls -d /app/erts-*/bin/epmd 2>/dev/null | head -1); "$E" -names'
-      echo "HOST=$(docker exec "$C" hostname -s 2>/dev/null)"
-      echo "COOKIE=$(docker exec "$C" sh -c 'cat /app/releases/COOKIE 2>/dev/null || cat "$HOME/.erlang.cookie" 2>/dev/null' 2>/dev/null)"
-    else
-      echo 127.0.0.1
-      A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | grep -- "#{svc}" | head -1)
-      [ -n "$A" ] || A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | head -1)
-      [ -n "$A" ] || { echo "no container or beam for #{svc}" >&2; exit 3; }
-      echo "$A"
-      B=$(printf '%s' "$A" | grep -oE '[-]bindir [^ ]+' | awk '{print $2}')
-      { [ -n "$B" ] && "$B/epmd" -names 2>/dev/null; } || epmd -names 2>/dev/null
-      echo "HOST=$(hostname -s 2>/dev/null)"
-    fi
-    """
+      set -e
+      C=
+      if command -v docker >/dev/null 2>&1; then
+        C=$(docker ps --filter label=service=#{svc} --filter label=role=web -q | head -1)
+        [ -n "$C" ] || C=$(docker ps --filter name=#{svc} -q | head -1)
+      fi
+      if [ -n "$C" ]; then
+        docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{println}}{{end}}' "$C" | grep . | head -1
+        docker exec "$C" sh -c 'for p in /proc/[0-9]*/cmdline; do a=$(tr "\\0" " " < "$p" 2>/dev/null); case "$a" in *beam.smp*) printf "%s\\n" "$a"; break;; esac; done'
+        docker exec "$C" sh -c 'E=$(command -v epmd 2>/dev/null || ls -d /app/erts-*/bin/epmd 2>/dev/null | head -1); "$E" -names'
+        echo "HOST=$(docker exec "$C" hostname -s 2>/dev/null)"
+        echo "COOKIE=$(docker exec "$C" sh -c 'cat /app/releases/COOKIE 2>/dev/null || cat "$HOME/.erlang.cookie" 2>/dev/null' 2>/dev/null)"
+      else
+        echo 127.0.0.1
+        A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | grep -- "#{svc}" | head -1)
+        [ -n "$A" ] || A=$(ps -eo args 2>/dev/null | grep '[b]eam\\.smp' | head -1)
+        [ -n "$A" ] || { echo "no container or beam for #{svc}" >&2; exit 3; }
+        echo "$A"
+        B=$(printf '%s' "$A" | grep -oE '[-]bindir [^ ]+' | awk '{print $2}')
+        { [ -n "$B" ] && "$B/epmd" -names 2>/dev/null; } || epmd -names 2>/dev/null
+        echo "HOST=$(hostname -s 2>/dev/null)"
+      fi
+      """
+
       {:ok, String.to_charlist(cmd)}
     end
   end

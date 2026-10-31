@@ -20,8 +20,14 @@ defmodule Server.Runners do
   @doc "Start `child` for the session if no runner exists; no-op if one already runs."
   def ensure(registry, supervisor, child, node_id, session_id) do
     case whereis(registry, session_id) do
-      nil -> DynamicSupervisor.start_child(supervisor, {child, node_id: node_id, session_id: session_id})
-      _pid -> :ok
+      nil ->
+        DynamicSupervisor.start_child(
+          supervisor,
+          {child, node_id: node_id, session_id: session_id}
+        )
+
+      _pid ->
+        :ok
     end
   end
 

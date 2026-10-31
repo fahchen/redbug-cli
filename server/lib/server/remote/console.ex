@@ -82,7 +82,15 @@ defmodule Server.Remote.Console do
         {:reply, {:ok, exec_id}, %{state | running: Map.put(state.running, exec_id, run_meta)}}
 
       {:error, reason} ->
-        state = finalize(state, exec_id, "error", "could not start: #{Server.Errors.humanize(reason).message}", "")
+        state =
+          finalize(
+            state,
+            exec_id,
+            "error",
+            "could not start: #{Server.Errors.humanize(reason).message}",
+            ""
+          )
+
         {:reply, {:ok, exec_id}, state}
     end
   end
@@ -101,6 +109,7 @@ defmodule Server.Remote.Console do
 
   def handle_call({:delete, exec_id}, _from, state) do
     entry = Enum.find(state.history, &(&1.id == exec_id))
+
     if entry do
       broadcast(state, {:console_delete, exec_id})
     end
@@ -205,7 +214,13 @@ defmodule Server.Remote.Console do
       Enum.map(state.history, fn e ->
         if e.id == exec_id do
           # nil output keeps the already-streamed stdout (see :DOWN handler).
-          %{e | status: status, result: text, output: cap(output || e.output), duration_ms: duration}
+          %{
+            e
+            | status: status,
+              result: text,
+              output: cap(output || e.output),
+              duration_ms: duration
+          }
         else
           e
         end
@@ -303,7 +318,8 @@ defmodule Server.Remote.Console do
       name: Map.get(j, "name", ""),
       code: Map.get(j, "code", ""),
       # Nothing is running after a restart: a "running" row would spin forever.
-      status: if(Map.get(j, "status") == "running", do: "stopped", else: Map.get(j, "status", "ok")),
+      status:
+        if(Map.get(j, "status") == "running", do: "stopped", else: Map.get(j, "status", "ok")),
       result: Map.get(j, "result", ""),
       output: Map.get(j, "output", ""),
       ts: Map.get(j, "ts", ""),

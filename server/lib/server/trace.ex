@@ -34,7 +34,8 @@ defmodule Server.Trace do
   def node_down(session_id), do: Runners.with_runner(@registry, session_id, &Runner.node_down/1)
 
   @doc "Apply current config (RTP/limit edits) by restarting the trace; inserts a separator."
-  def apply_restart(session_id), do: Runners.with_runner(@registry, session_id, &Runner.apply_restart/1)
+  def apply_restart(session_id),
+    do: Runners.with_runner(@registry, session_id, &Runner.apply_restart/1)
 
   @doc "Clear the event buffer."
   def clear(session_id), do: Runners.with_runner(@registry, session_id, &Runner.clear/1)
